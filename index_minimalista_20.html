@@ -324,7 +324,11 @@ function calcMesAnterior(mes){
 }
 function sameMonthFromTs(ts,mes){
   const d=safeDate(ts);
-  return !!(d&&mes&&d.toISOString().slice(0,7)===mes);
+  if(!d||!mes) return false;
+  // Use local timezone to match monthKeyLocal behavior (avoids UTC boundary mismatch near midnight)
+  const y=d.getFullYear();
+  const mo=String(d.getMonth()+1).padStart(2,'0');
+  return `${y}-${mo}`===mes;
 }
 function snapshotDocsForCurrentOwner(snap){
   return (snap?.docs||[]).map(d=>({id:d.id,...d.data()})).filter(canAccessDoc);
@@ -745,8 +749,8 @@ window.toggleAuthMode=function(event){
   const lbl=document.getElementById("auth-lbl");
   if(lbl){
     lbl.innerHTML=formLogin?.classList.contains("hidden")
-      ?'Já tem conta? <a href="#" onclick="toggleAuthMode(event)">Entrar</a>'
-      :'Não tem conta? <a href="#" onclick="toggleAuthMode(event)">Cadastre-se</a>';
+      ?'Já tem conta? <a href="javascript:void(0)" onclick="toggleAuthMode(event)">Entrar</a>'
+      :'Não tem conta? <a href="javascript:void(0)" onclick="toggleAuthMode(event)">Cadastre-se</a>';
   }
 };
 function setupLoginBindings(){
@@ -4602,8 +4606,7 @@ applyTheme(getConfig().tema);
 (function setupRecoveryFinalSistema(){
   function expose(name){
     try{
-      let fn;
-      try{ fn=eval(name); }catch(_e){ fn=window[name]; }
+      let fn=window[name];
       if(typeof fn==='function') window[name]=fn;
     }catch(e){ console.warn('EXPOSE_WARN',name,e); }
   }
@@ -4850,7 +4853,6 @@ window.__patchedToNumber=function(v,fallback=0){
   if(s.includes(',')){ s=s.replace(/\./g,'').replace(',','.'); }
   const n=Number(s);
   if(!Number.isFinite(n)){
-    console.warn('[Mello] toNumber: valor inválido:', v);
     return fallback;
   }
   return n;
@@ -5014,10 +5016,7 @@ window.loadData=async function(){
 html,body{height:100%;background:var(--bg);color:var(--t);font-family:var(--fh);font-size:14px;-webkit-font-smoothing:antialiased;}
 a{color:var(--accent);text-decoration:none;}
 input,select,button,textarea{font-family:var(--fh);}
-::-webkit-scrollbar{width:5px;height:5px}
-::-webkit-scrollbar-track{background:var(--bg3)}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:var(--accent-lt)}
+/* scrollbar: see premium definition below */
 
 /* ════════════════════════════════════════════════════════════
    MELLO STYLE v58 — UPGRADE VISUAL PREMIUM
@@ -11572,7 +11571,7 @@ input,select,textarea,button{font-size:16px;}
         <div class="af"><label>Senha</label><input id="reg-pass" type="password" placeholder="mínimo 6 caracteres"/></div>
         <button type="button" class="btn-auth" onclick="doRegister(event)">Criar conta</button>
       </div>
-      <div class="auth-tog" id="auth-lbl">Não tem conta? <a href="#" onclick="toggleAuthMode()">Cadastre-se</a></div>
+      <div class="auth-tog" id="auth-lbl">Não tem conta? <a href="javascript:void(0)" onclick="toggleAuthMode()">Cadastre-se</a></div>
     </div>
   </div>
 </div>
@@ -11707,7 +11706,7 @@ input,select,textarea,button{font-size:16px;}
           </div>
         </div>
         <div style="margin-top:12px;text-align:center">
-          <a href="#" onclick="closeGastosDrawer();navigate('gastos');" style="font-size:12px;color:var(--accent);font-weight:600">Ver todos os gastos →</a>
+          <a href="javascript:void(0)" onclick="closeGastosDrawer();navigate('gastos');" style="font-size:12px;color:var(--accent);font-weight:600">Ver todos os gastos →</a>
         </div>
       </div>
     </div>
@@ -11815,7 +11814,7 @@ input,select,textarea,button{font-size:16px;}
       <div class="db-section-wrap" id="dash-prod-hora-wrap" style="margin-bottom:18px;">
         <div class="db-section-hd">
           <div class="db-section-title"><span class="db-section-icon">⏱</span> Produtividade por Hora <span class="db-badge-pill">Análise</span></div>
-          <a href="#" onclick="navigate('controlehora')" class="dash-link">Abrir controle →</a>
+          <a href="javascript:void(0)" onclick="navigate('controlehora')" class="dash-link">Abrir controle →</a>
         </div>
         <div id="dash-prod-hora"></div>
       </div>
@@ -11824,7 +11823,7 @@ input,select,textarea,button{font-size:16px;}
       <div class="db-section-wrap" style="margin-bottom:18px;">
         <div class="db-section-hd">
           <div class="db-section-title"><span class="db-section-icon">🎯</span> Central Executiva <span class="db-badge-pill">Ao vivo</span></div>
-          <a href="#" onclick="navigate('relatorio')" class="dash-link">Ver relatório completo →</a>
+          <a href="javascript:void(0)" onclick="navigate('relatorio')" class="dash-link">Ver relatório completo →</a>
         </div>
         <div id="dash-exec"></div>
       </div>
@@ -11839,7 +11838,7 @@ input,select,textarea,button{font-size:16px;}
       <div class="fin-section-wrapper db-section-wrap" id="fin-section-wrap" style="margin-bottom:18px;">
         <div class="db-section-hd" style="margin-bottom:14px">
           <div class="db-section-title"><span class="db-section-icon">💰</span> Financeiro Acumulado</div>
-          <a href="#" onclick="navigate('gastos')" class="dash-link" style="display:flex;align-items:center;gap:5px;">＋ Lançar gasto</a>
+          <a href="javascript:void(0)" onclick="navigate('gastos')" class="dash-link" style="display:flex;align-items:center;gap:5px;">＋ Lançar gasto</a>
         </div>
         <div class="fin-mega-row">
           <div class="fin-mega"><div class="fm-label">Faturamento total</div><div class="fm-value" id="fin-fat">R$ 0,00</div><div class="fm-hint">Peças × valor/peça</div></div>
@@ -11960,7 +11959,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="card db-card-elevated">
             <div class="db-card-hd">
               <span><span class="db-card-icon">▣</span>Progresso das OFs</span>
-              <a href="#" onclick="navigate('lotes')" class="dash-link">Ver todas →</a>
+              <a href="javascript:void(0)" onclick="navigate('lotes')" class="dash-link">Ver todas →</a>
             </div>
             <div class="of-prog-list" id="of-prog-list"></div>
           </div>
@@ -12029,7 +12028,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="card db-card-elevated">
             <div class="db-card-hd">
               <span><span class="db-card-icon">▣</span>Lotes em Andamento</span>
-              <a href="#" onclick="navigate('lotes')" class="dash-link">Ver todos →</a>
+              <a href="javascript:void(0)" onclick="navigate('lotes')" class="dash-link">Ver todos →</a>
             </div>
             <div id="dash-lotes"><div class="empty-state sm"><p>Sem lotes.</p></div></div>
           </div>
@@ -12044,7 +12043,7 @@ input,select,textarea,button{font-size:16px;}
             <span>Atividade Recente</span>
             <span class="db-badge-live"><span class="live-dot" style="width:5px;height:5px;margin-right:4px;"></span>Ao vivo</span>
           </span>
-          <a href="#" onclick="navigate('historico')" class="dash-link">Ver histórico completo →</a>
+          <a href="javascript:void(0)" onclick="navigate('historico')" class="dash-link">Ver histórico completo →</a>
         </div>
         <div class="tbl-wrap">
           <table>
@@ -12125,7 +12124,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff" style="grid-column:span 2"><label>Observações</label><input id="lote-obs" type="text" placeholder="Cor, tecido, detalhes internos..."/></div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
-          <button class="btn-save" onclick="salvarLote()" style="flex:1;max-width:220px;">+ Cadastrar OF</button>
+          <button type="button" class="btn-save" onclick="salvarLote()" style="flex:1;max-width:220px;">+ Cadastrar OF</button>
           <span style="font-size:11px;color:var(--t3);">* Campos obrigatórios</span>
         </div>
       </div>
@@ -12159,7 +12158,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Meta diária (pçs)</label><input id="func-meta-dia" type="number" min="0" placeholder="Opcional"/></div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
-          <button class="btn-save" onclick="salvarFuncionario()" style="flex:1;max-width:200px;">+ Cadastrar Funcionário</button>
+          <button type="button" class="btn-save" onclick="salvarFuncionario()" style="flex:1;max-width:200px;">+ Cadastrar Funcionário</button>
           <span style="font-size:11px;color:var(--t3);">Jornada é ajustada automaticamente pela escala</span>
         </div>
       </div>
@@ -12188,7 +12187,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Observações</label><input id="prod-obs" type="text" placeholder="Opcional" onkeydown="if(event.key==='Enter')salvarRegistro()"/></div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
-          <button class="btn-save" onclick="salvarRegistro()" style="flex:1;max-width:180px;">⚡ Registrar</button>
+          <button type="button" class="btn-save" onclick="salvarRegistro()" style="flex:1;max-width:180px;">⚡ Registrar</button>
           <span style="font-size:11px;color:var(--t3);">Dica: pressione Enter nos campos para registrar rapidamente</span>
         </div>
       </div>
@@ -12263,7 +12262,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Parcelas</label><select id="gasto-parcelas" onchange="atualizarPreviewParcela()"><option value="1">À vista (1×)</option></select></div>
         </div>
         <div id="gasto-parcela-preview" style="display:none;margin-bottom:12px;font-size:12px;font-weight:600;color:var(--accent-lt);background:rgba(191,195,202,.07);border:1px solid rgba(191,195,202,.18);border-radius:8px;padding:9px 13px;"></div>
-        <button class="btn-save" onclick="salvarGasto()">+ Registrar Gasto</button>
+        <button type="button" class="btn-save" onclick="salvarGasto()">+ Registrar Gasto</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
         <div class="card" style="padding:16px 20px;border-top:3px solid var(--accent);background:rgba(191,195,202,.03);">
@@ -12324,7 +12323,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Horas *</label><select id="bh-horas"></select></div>
           <div class="ff"><label>Observações</label><input id="bh-obs" type="text" placeholder="Opcional — ex: atestado, sábado..."/></div>
         </div>
-        <button class="btn-save" onclick="salvarPonto()">+ Registrar</button>
+        <button type="button" class="btn-save" onclick="salvarPonto()">+ Registrar</button>
       </div>
 
       <!-- Seletor de mês + saldos -->
@@ -12401,10 +12400,10 @@ input,select,textarea,button{font-size:16px;}
             <div class="cph-status" id="cph-status">Parado</div>
             <div class="cph-time" id="cph-time">00:00:00</div>
             <div class="cph-actions">
-              <button class="btn-save" id="cph-btn-iniciar" onclick="iniciarCronometroProducao()">▶ Iniciar</button>
-              <button class="btn-outline" id="cph-btn-pausar" onclick="pausarCronometroProducao()">⏸ Pausar</button>
-              <button class="btn-outline" id="cph-btn-continuar" onclick="continuarCronometroProducao()">▶ Continuar</button>
-              <button class="btn-outline" onclick="zerarCronometroProducao()">↺ Zerar</button>
+              <button type="button" class="btn-save" id="cph-btn-iniciar" onclick="iniciarCronometroProducao()">▶ Iniciar</button>
+              <button type="button" class="btn-outline" id="cph-btn-pausar" onclick="pausarCronometroProducao()">⏸ Pausar</button>
+              <button type="button" class="btn-outline" id="cph-btn-continuar" onclick="continuarCronometroProducao()">▶ Continuar</button>
+              <button type="button" class="btn-outline" onclick="zerarCronometroProducao()">↺ Zerar</button>
             </div>
           </div>
 
@@ -12412,7 +12411,7 @@ input,select,textarea,button{font-size:16px;}
             <div class="ff"><label>Quantidade de peças *</label><input id="cph-qtd" type="number" min="1" placeholder="Ex: 120"/></div>
             <div class="ff" style="grid-column:span 2"><label>Observação</label><input id="cph-obs" type="text" placeholder="Opcional"/></div>
           </div>
-          <button class="btn-save cph-finalizar" id="cph-btn-finalizar" onclick="finalizarCronometroProducao()">✓ Finalizar medição e salvar</button>
+          <button type="button" class="btn-save cph-finalizar" id="cph-btn-finalizar" onclick="finalizarCronometroProducao()">✓ Finalizar medição e salvar</button>
         </div>
 
         <div class="card cph-side-card">
@@ -12511,7 +12510,7 @@ input,select,textarea,button{font-size:16px;}
 </div><!-- /#app-shell -->
 
 <!-- BOTÃO LAYOUT TOGGLE -->
-<button class="btn-layout-toggle" id="layout-toggle-btn" onclick="toggleLayout()" title="Alternar entre visualização celular e PC" style="bottom:18px;right:18px;font-size:11px;padding:8px 15px;border-radius:40px;gap:6px;letter-spacing:.3px;opacity:.85;">
+<button type="button" class="btn-layout-toggle" id="layout-toggle-btn" onclick="toggleLayout()" title="Alternar entre visualização celular e PC" style="bottom:18px;right:18px;font-size:11px;padding:8px 15px;border-radius:40px;gap:6px;letter-spacing:.3px;opacity:.85;">
   <span class="lt-icon" id="lt-icon" style="font-size:14px;">📱</span>
   <span id="lt-label">Modo Celular</span>
 </button>
@@ -15026,7 +15025,7 @@ input.field-error:focus, select.field-error:focus {
 
 <!-- ── MELHORIAS UX: Voltar ao topo, load-bar, lazy spinner ── -->
 <div id="load-bar" aria-hidden="true"></div>
-<button id="back-to-top" onclick="window.backToTop&&window.backToTop()" aria-label="Voltar ao topo" title="Voltar ao topo">↑</button>
+<button type="button" id="back-to-top" onclick="window.backToTop&&window.backToTop()" aria-label="Voltar ao topo" title="Voltar ao topo">↑</button>
 <div id="page-loading-overlay" aria-hidden="true"><div class="page-loading-spinner"></div></div>
 
 </html>
