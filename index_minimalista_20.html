@@ -6,133 +6,6 @@
 <title>Mello Style / FacçãoOS — Estável Premium</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js">
-/* ══════════════════════════════════════════════════════════
-   MODO DEMO — dados fictícios para demonstração ao cliente
-   Nenhum dado é salvo no Firebase durante o modo demo.
-══════════════════════════════════════════════════════════ */
-const DEMO_FUNCIONARIOS=[
-  {id:'df1',nome:'Ana Silva',cargo:'Costureira',setor:'Produção',salario:1500,bonus:200,jornadaMin:570,telefone:'(11) 99876-1111',admissao:'2023-01-10',metaDia:55,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2023-01-10T08:00:00'},
-  {id:'df2',nome:'Maria Santos',cargo:'Costureira',setor:'Produção',salario:1400,bonus:150,jornadaMin:570,telefone:'(11) 99876-2222',admissao:'2023-03-15',metaDia:50,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2023-03-15T08:00:00'},
-  {id:'df3',nome:'Ketelen Oliveira',cargo:'Revisora',setor:'Qualidade',salario:1600,bonus:250,jornadaMin:420,telefone:'(11) 99876-3333',admissao:'2022-06-20',metaDia:40,status:'Ativo',escalaPadrao:'ketelen_7h',criadoEm:'2022-06-20T08:00:00'},
-  {id:'df4',nome:'Patrícia Costa',cargo:'Costureira',setor:'Produção',salario:1350,bonus:100,jornadaMin:570,telefone:'(11) 99876-4444',admissao:'2024-01-05',metaDia:45,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2024-01-05T08:00:00'},
-  {id:'df5',nome:'Fernanda Lima',cargo:'Acabamento',setor:'Acabamento',salario:1300,bonus:80,jornadaMin:570,telefone:'(11) 99876-5555',admissao:'2023-08-12',metaDia:40,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2023-08-12T08:00:00'},
-];
-const DEMO_CLIENTES=[
-  {id:'dc1',nome:'Renner S.A.',contato:'compras@renner.com.br',obs:'Cliente prioritário',criadoEm:'2024-01-01T08:00:00'},
-  {id:'dc2',nome:'Hering',contato:'fornecedores@hering.com.br',obs:'',criadoEm:'2024-01-01T08:00:00'},
-  {id:'dc3',nome:'Magazine Luiza',contato:'moda@magazineluiza.com.br',obs:'Entregas quinzenais',criadoEm:'2024-03-01T08:00:00'},
-  {id:'dc4',nome:'Riachuelo',contato:'producao@riachuelo.com.br',obs:'',criadoEm:'2024-06-01T08:00:00'},
-];
-const DEMO_LOTES=[
-  {id:'dl1',numeroOf:'001',produto:'Blusa Feminina Manga Curta',cliente:'Renner S.A.',prioridade:'Alta',qtdTotal:600,valorPeca:12.50,status:'Concluído',competenciaFaturamento:'2026-05',criadoEm:'2026-05-02T08:00:00',concluidoEm:'2026-05-28T17:00:00',prazo:'2026-05-30',obs:'Entrega urgente'},
-  {id:'dl2',numeroOf:'002',produto:'Calça Social Masculina',cliente:'Hering',prioridade:'Normal',qtdTotal:300,valorPeca:19.00,status:'Concluído',competenciaFaturamento:'2026-05',criadoEm:'2026-05-08T08:00:00',concluidoEm:'2026-05-29T17:00:00',prazo:'2026-05-31',obs:''},
-  {id:'dl3',numeroOf:'003',produto:'Vestido Casual Estampado',cliente:'Renner S.A.',prioridade:'Alta',qtdTotal:200,valorPeca:25.00,status:'Em andamento',competenciaFaturamento:'2026-06',criadoEm:'2026-06-02T08:00:00',prazo:'2026-06-30',obs:'Estampas exclusivas'},
-  {id:'dl4',numeroOf:'004',produto:'Camiseta Básica Unissex',cliente:'Magazine Luiza',prioridade:'Normal',qtdTotal:600,valorPeca:9.50,status:'Em andamento',competenciaFaturamento:'2026-06',criadoEm:'2026-06-03T08:00:00',prazo:'2026-06-28',obs:''},
-  {id:'dl5',numeroOf:'005',produto:'Short Jeans Feminino',cliente:'Riachuelo',prioridade:'Baixa',qtdTotal:250,valorPeca:14.00,status:'Aberto',competenciaFaturamento:'2026-06',criadoEm:'2026-06-15T08:00:00',prazo:'2026-07-15',obs:'Aguardando tecido'},
-];
-const DEMO_REGISTROS=[
-  // OF 001 — Maio 2026
-  {id:'dr01',funcionarioId:'df1',loteId:'dl1',etapa:'Ombrinho',qtd:120,obs:'',criadoEm:'2026-05-05T09:00:00'},
-  {id:'dr02',funcionarioId:'df2',loteId:'dl1',etapa:'Ombrinho',qtd:100,obs:'',criadoEm:'2026-05-05T09:30:00'},
-  {id:'dr03',funcionarioId:'df4',loteId:'dl1',etapa:'Gola',qtd:90,obs:'',criadoEm:'2026-05-08T10:00:00'},
-  {id:'dr04',funcionarioId:'df1',loteId:'dl1',etapa:'Pesponto',qtd:85,obs:'',criadoEm:'2026-05-10T09:00:00'},
-  {id:'dr05',funcionarioId:'df2',loteId:'dl1',etapa:'Manga',qtd:80,obs:'',criadoEm:'2026-05-12T11:00:00'},
-  {id:'dr06',funcionarioId:'df5',loteId:'dl1',etapa:'Lateral',qtd:75,obs:'',criadoEm:'2026-05-15T14:00:00'},
-  {id:'dr07',funcionarioId:'df4',loteId:'dl1',etapa:'Bainha',qtd:70,obs:'',criadoEm:'2026-05-19T09:00:00'},
-  {id:'dr08',funcionarioId:'df3',loteId:'dl1',etapa:'Revisão',qtd:80,obs:'100% aprovadas',criadoEm:'2026-05-22T15:00:00'},
-  // OF 002 — Maio 2026
-  {id:'dr09',funcionarioId:'df1',loteId:'dl2',etapa:'Ombrinho',qtd:60,obs:'',criadoEm:'2026-05-12T09:00:00'},
-  {id:'dr10',funcionarioId:'df2',loteId:'dl2',etapa:'Pesponto',qtd:55,obs:'',criadoEm:'2026-05-14T10:00:00'},
-  {id:'dr11',funcionarioId:'df4',loteId:'dl2',etapa:'Manga',qtd:50,obs:'',criadoEm:'2026-05-16T09:00:00'},
-  {id:'dr12',funcionarioId:'df5',loteId:'dl2',etapa:'Lateral',qtd:50,obs:'',criadoEm:'2026-05-19T14:00:00'},
-  {id:'dr13',funcionarioId:'df3',loteId:'dl2',etapa:'Revisão',qtd:55,obs:'',criadoEm:'2026-05-22T11:00:00'},
-  // OF 003 — Junho 2026
-  {id:'dr14',funcionarioId:'df2',loteId:'dl3',etapa:'Ombrinho',qtd:40,obs:'',criadoEm:'2026-06-03T09:00:00'},
-  {id:'dr15',funcionarioId:'df1',loteId:'dl3',etapa:'Gola',qtd:35,obs:'',criadoEm:'2026-06-05T10:00:00'},
-  {id:'dr16',funcionarioId:'df4',loteId:'dl3',etapa:'Manga',qtd:30,obs:'',criadoEm:'2026-06-10T09:00:00'},
-  {id:'dr17',funcionarioId:'df5',loteId:'dl3',etapa:'Pesponto',qtd:28,obs:'',criadoEm:'2026-06-12T14:00:00'},
-  {id:'dr18',funcionarioId:'df3',loteId:'dl3',etapa:'Revisão',qtd:22,obs:'',criadoEm:'2026-06-16T15:00:00'},
-  // OF 004 — Junho 2026
-  {id:'dr19',funcionarioId:'df1',loteId:'dl4',etapa:'Ombrinho',qtd:85,obs:'',criadoEm:'2026-06-04T09:00:00'},
-  {id:'dr20',funcionarioId:'df2',loteId:'dl4',etapa:'Ombrinho',qtd:75,obs:'',criadoEm:'2026-06-04T09:30:00'},
-  {id:'dr21',funcionarioId:'df4',loteId:'dl4',etapa:'Gola',qtd:65,obs:'',criadoEm:'2026-06-08T10:00:00'},
-  {id:'dr22',funcionarioId:'df5',loteId:'dl4',etapa:'Pesponto',qtd:55,obs:'',criadoEm:'2026-06-11T11:00:00'},
-  {id:'dr23',funcionarioId:'df1',loteId:'dl4',etapa:'Manga',qtd:45,obs:'',criadoEm:'2026-06-15T09:00:00'},
-  {id:'dr24',funcionarioId:'df2',loteId:'dl4',etapa:'Lateral',qtd:38,obs:'',criadoEm:'2026-06-18T14:00:00'},
-  {id:'dr25',funcionarioId:'df4',loteId:'dl4',etapa:'Bainha',qtd:32,obs:'',criadoEm:'2026-06-20T09:00:00'},
-  {id:'dr26',funcionarioId:'df3',loteId:'dl4',etapa:'Revisão',qtd:28,obs:'',criadoEm:'2026-06-22T15:00:00'},
-];
-const DEMO_GASTOS=[
-  // Maio 2026
-  {id:'dg01',descricao:'Aluguel do Galpão',categoria:'Aluguel',valor:2800,tipo:'fixo',competencia:'2026-05',criadoEm:'2026-05-01T08:00:00'},
-  {id:'dg02',descricao:'Energia Elétrica',categoria:'Energia',valor:480,tipo:'fixo',competencia:'2026-05',criadoEm:'2026-05-01T08:00:00'},
-  {id:'dg03',descricao:'Internet e Telefone',categoria:'Telecom',valor:180,tipo:'fixo',competencia:'2026-05',criadoEm:'2026-05-01T08:00:00'},
-  {id:'dg04',descricao:'Fios, linhas e aviamentos',categoria:'Materiais',valor:320,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-05T09:00:00'},
-  {id:'dg05',descricao:'Agulhas e peças de máquina',categoria:'Materiais',valor:140,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-10T10:00:00'},
-  {id:'dg06',descricao:'Material de escritório',categoria:'Administrativo',valor:85,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-15T14:00:00'},
-  {id:'dg07',descricao:'Manutenção de máquinas',categoria:'Manutenção',valor:250,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-20T11:00:00'},
-  // Junho 2026
-  {id:'dg08',descricao:'Aluguel do Galpão',categoria:'Aluguel',valor:2800,tipo:'fixo',competencia:'2026-06',criadoEm:'2026-06-01T08:00:00'},
-  {id:'dg09',descricao:'Energia Elétrica',categoria:'Energia',valor:390,tipo:'fixo',competencia:'2026-06',criadoEm:'2026-06-01T08:00:00'},
-  {id:'dg10',descricao:'Internet e Telefone',categoria:'Telecom',valor:180,tipo:'fixo',competencia:'2026-06',criadoEm:'2026-06-01T08:00:00'},
-  {id:'dg11',descricao:'Fios, linhas e aviamentos',categoria:'Materiais',valor:280,tipo:'variavel',competencia:'2026-06',criadoEm:'2026-06-05T09:00:00'},
-  {id:'dg12',descricao:'Manutenção preventiva',categoria:'Manutenção',valor:380,tipo:'variavel',competencia:'2026-06',criadoEm:'2026-06-12T10:00:00'},
-  {id:'dg13',descricao:'Embalagens e etiquetas',categoria:'Materiais',valor:160,tipo:'variavel',competencia:'2026-06',criadoEm:'2026-06-18T14:00:00'},
-];
-
-window.doLoginDemo=function(){
-  __isDemoMode=true;
-  window.__isDemoMode=true;
-
-  // Configurações do demo
-  saveStoredConfig({
-    empresa:'Mello Style',empresaId:'mello-style-demo',
-    metaDia:220,metaMes:5000,metaFaturamento:40000,
-    metaLucro:10000,metaMargem:25,metaCusto:25000,tema:'escuro'
-  });
-  try{applyTheme('escuro');}catch(_e){}
-
-  // Carregar dados demo
-  funcionarios=[...DEMO_FUNCIONARIOS];
-  lotes=[...DEMO_LOTES];
-  registros=[...DEMO_REGISTROS];
-  gastos=[...DEMO_GASTOS];
-  clientes=[...DEMO_CLIENTES];
-  pontos=[];
-  controleProducaoHora=[];
-
-  // Abrir o app sem autenticação Firebase
-  const loginPage=document.getElementById('page-login');
-  const shell=document.getElementById('app-shell');
-  if(loginPage){loginPage.style.display='none';loginPage.classList.remove('active');}
-  if(shell){shell.style.display='';shell.classList.remove('hidden-shell');}
-
-  // Exibir badge
-  const badge=document.getElementById('demo-mode-badge');
-  if(badge)badge.style.display='flex';
-
-  try{populateSelects();}catch(_e){}
-  try{navigate('dashboard');}catch(_e){}
-  document.title='Mello Style — MODO DEMO';
-  setTimeout(()=>{
-    toast('🎯 Modo Demo ativo — dados fictícios para demonstração ao cliente');
-  },400);
-};
-
-window.sairDoDemo=function(){
-  __isDemoMode=false;
-  window.__isDemoMode=false;
-  const badge=document.getElementById('demo-mode-badge');
-  if(badge)badge.style.display='none';
-  funcionarios=[];registros=[];lotes=[];gastos=[];clientes=[];pontos=[];controleProducaoHora=[];
-  const loginPage=document.getElementById('page-login');
-  const shell=document.getElementById('app-shell');
-  if(shell){shell.style.display='none';shell.classList.add('hidden-shell');}
-  if(loginPage){loginPage.style.display='';loginPage.classList.add('active');}
-  document.title='Mello Style v91 — Login';
-  toast('Modo Demo encerrado. Faça login para continuar.');
-};
-
 </script>
 <script type="module">
 
@@ -5029,6 +4902,134 @@ window.loadData=async function(){
 };
 
 })();
+
+/* ══════════════════════════════════════════════════════════
+   MODO DEMO — dados fictícios para demonstração ao cliente
+   Nenhum dado é salvo no Firebase durante o modo demo.
+══════════════════════════════════════════════════════════ */
+const DEMO_FUNCIONARIOS=[
+  {id:'df1',nome:'Ana Silva',cargo:'Costureira',setor:'Produção',salario:1500,bonus:200,jornadaMin:570,telefone:'(11) 99876-1111',admissao:'2023-01-10',metaDia:55,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2023-01-10T08:00:00'},
+  {id:'df2',nome:'Maria Santos',cargo:'Costureira',setor:'Produção',salario:1400,bonus:150,jornadaMin:570,telefone:'(11) 99876-2222',admissao:'2023-03-15',metaDia:50,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2023-03-15T08:00:00'},
+  {id:'df3',nome:'Ketelen Oliveira',cargo:'Revisora',setor:'Qualidade',salario:1600,bonus:250,jornadaMin:420,telefone:'(11) 99876-3333',admissao:'2022-06-20',metaDia:40,status:'Ativo',escalaPadrao:'ketelen_7h',criadoEm:'2022-06-20T08:00:00'},
+  {id:'df4',nome:'Patrícia Costa',cargo:'Costureira',setor:'Produção',salario:1350,bonus:100,jornadaMin:570,telefone:'(11) 99876-4444',admissao:'2024-01-05',metaDia:45,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2024-01-05T08:00:00'},
+  {id:'df5',nome:'Fernanda Lima',cargo:'Acabamento',setor:'Acabamento',salario:1300,bonus:80,jornadaMin:570,telefone:'(11) 99876-5555',admissao:'2023-08-12',metaDia:40,status:'Ativo',escalaPadrao:'geral_9h45_sex_6h',criadoEm:'2023-08-12T08:00:00'},
+];
+const DEMO_CLIENTES=[
+  {id:'dc1',nome:'Renner S.A.',contato:'compras@renner.com.br',obs:'Cliente prioritário',criadoEm:'2024-01-01T08:00:00'},
+  {id:'dc2',nome:'Hering',contato:'fornecedores@hering.com.br',obs:'',criadoEm:'2024-01-01T08:00:00'},
+  {id:'dc3',nome:'Magazine Luiza',contato:'moda@magazineluiza.com.br',obs:'Entregas quinzenais',criadoEm:'2024-03-01T08:00:00'},
+  {id:'dc4',nome:'Riachuelo',contato:'producao@riachuelo.com.br',obs:'',criadoEm:'2024-06-01T08:00:00'},
+];
+const DEMO_LOTES=[
+  {id:'dl1',numeroOf:'001',produto:'Blusa Feminina Manga Curta',cliente:'Renner S.A.',prioridade:'Alta',qtdTotal:600,valorPeca:12.50,status:'Concluído',competenciaFaturamento:'2026-05',criadoEm:'2026-05-02T08:00:00',concluidoEm:'2026-05-28T17:00:00',prazo:'2026-05-30',obs:'Entrega urgente'},
+  {id:'dl2',numeroOf:'002',produto:'Calça Social Masculina',cliente:'Hering',prioridade:'Normal',qtdTotal:300,valorPeca:19.00,status:'Concluído',competenciaFaturamento:'2026-05',criadoEm:'2026-05-08T08:00:00',concluidoEm:'2026-05-29T17:00:00',prazo:'2026-05-31',obs:''},
+  {id:'dl3',numeroOf:'003',produto:'Vestido Casual Estampado',cliente:'Renner S.A.',prioridade:'Alta',qtdTotal:200,valorPeca:25.00,status:'Em andamento',competenciaFaturamento:'2026-06',criadoEm:'2026-06-02T08:00:00',prazo:'2026-06-30',obs:'Estampas exclusivas'},
+  {id:'dl4',numeroOf:'004',produto:'Camiseta Básica Unissex',cliente:'Magazine Luiza',prioridade:'Normal',qtdTotal:600,valorPeca:9.50,status:'Em andamento',competenciaFaturamento:'2026-06',criadoEm:'2026-06-03T08:00:00',prazo:'2026-06-28',obs:''},
+  {id:'dl5',numeroOf:'005',produto:'Short Jeans Feminino',cliente:'Riachuelo',prioridade:'Baixa',qtdTotal:250,valorPeca:14.00,status:'Aberto',competenciaFaturamento:'2026-06',criadoEm:'2026-06-15T08:00:00',prazo:'2026-07-15',obs:'Aguardando tecido'},
+];
+const DEMO_REGISTROS=[
+  // OF 001 — Maio 2026
+  {id:'dr01',funcionarioId:'df1',loteId:'dl1',etapa:'Ombrinho',qtd:120,obs:'',criadoEm:'2026-05-05T09:00:00'},
+  {id:'dr02',funcionarioId:'df2',loteId:'dl1',etapa:'Ombrinho',qtd:100,obs:'',criadoEm:'2026-05-05T09:30:00'},
+  {id:'dr03',funcionarioId:'df4',loteId:'dl1',etapa:'Gola',qtd:90,obs:'',criadoEm:'2026-05-08T10:00:00'},
+  {id:'dr04',funcionarioId:'df1',loteId:'dl1',etapa:'Pesponto',qtd:85,obs:'',criadoEm:'2026-05-10T09:00:00'},
+  {id:'dr05',funcionarioId:'df2',loteId:'dl1',etapa:'Manga',qtd:80,obs:'',criadoEm:'2026-05-12T11:00:00'},
+  {id:'dr06',funcionarioId:'df5',loteId:'dl1',etapa:'Lateral',qtd:75,obs:'',criadoEm:'2026-05-15T14:00:00'},
+  {id:'dr07',funcionarioId:'df4',loteId:'dl1',etapa:'Bainha',qtd:70,obs:'',criadoEm:'2026-05-19T09:00:00'},
+  {id:'dr08',funcionarioId:'df3',loteId:'dl1',etapa:'Revisão',qtd:80,obs:'100% aprovadas',criadoEm:'2026-05-22T15:00:00'},
+  // OF 002 — Maio 2026
+  {id:'dr09',funcionarioId:'df1',loteId:'dl2',etapa:'Ombrinho',qtd:60,obs:'',criadoEm:'2026-05-12T09:00:00'},
+  {id:'dr10',funcionarioId:'df2',loteId:'dl2',etapa:'Pesponto',qtd:55,obs:'',criadoEm:'2026-05-14T10:00:00'},
+  {id:'dr11',funcionarioId:'df4',loteId:'dl2',etapa:'Manga',qtd:50,obs:'',criadoEm:'2026-05-16T09:00:00'},
+  {id:'dr12',funcionarioId:'df5',loteId:'dl2',etapa:'Lateral',qtd:50,obs:'',criadoEm:'2026-05-19T14:00:00'},
+  {id:'dr13',funcionarioId:'df3',loteId:'dl2',etapa:'Revisão',qtd:55,obs:'',criadoEm:'2026-05-22T11:00:00'},
+  // OF 003 — Junho 2026
+  {id:'dr14',funcionarioId:'df2',loteId:'dl3',etapa:'Ombrinho',qtd:40,obs:'',criadoEm:'2026-06-03T09:00:00'},
+  {id:'dr15',funcionarioId:'df1',loteId:'dl3',etapa:'Gola',qtd:35,obs:'',criadoEm:'2026-06-05T10:00:00'},
+  {id:'dr16',funcionarioId:'df4',loteId:'dl3',etapa:'Manga',qtd:30,obs:'',criadoEm:'2026-06-10T09:00:00'},
+  {id:'dr17',funcionarioId:'df5',loteId:'dl3',etapa:'Pesponto',qtd:28,obs:'',criadoEm:'2026-06-12T14:00:00'},
+  {id:'dr18',funcionarioId:'df3',loteId:'dl3',etapa:'Revisão',qtd:22,obs:'',criadoEm:'2026-06-16T15:00:00'},
+  // OF 004 — Junho 2026
+  {id:'dr19',funcionarioId:'df1',loteId:'dl4',etapa:'Ombrinho',qtd:85,obs:'',criadoEm:'2026-06-04T09:00:00'},
+  {id:'dr20',funcionarioId:'df2',loteId:'dl4',etapa:'Ombrinho',qtd:75,obs:'',criadoEm:'2026-06-04T09:30:00'},
+  {id:'dr21',funcionarioId:'df4',loteId:'dl4',etapa:'Gola',qtd:65,obs:'',criadoEm:'2026-06-08T10:00:00'},
+  {id:'dr22',funcionarioId:'df5',loteId:'dl4',etapa:'Pesponto',qtd:55,obs:'',criadoEm:'2026-06-11T11:00:00'},
+  {id:'dr23',funcionarioId:'df1',loteId:'dl4',etapa:'Manga',qtd:45,obs:'',criadoEm:'2026-06-15T09:00:00'},
+  {id:'dr24',funcionarioId:'df2',loteId:'dl4',etapa:'Lateral',qtd:38,obs:'',criadoEm:'2026-06-18T14:00:00'},
+  {id:'dr25',funcionarioId:'df4',loteId:'dl4',etapa:'Bainha',qtd:32,obs:'',criadoEm:'2026-06-20T09:00:00'},
+  {id:'dr26',funcionarioId:'df3',loteId:'dl4',etapa:'Revisão',qtd:28,obs:'',criadoEm:'2026-06-22T15:00:00'},
+];
+const DEMO_GASTOS=[
+  // Maio 2026
+  {id:'dg01',descricao:'Aluguel do Galpão',categoria:'Aluguel',valor:2800,tipo:'fixo',competencia:'2026-05',criadoEm:'2026-05-01T08:00:00'},
+  {id:'dg02',descricao:'Energia Elétrica',categoria:'Energia',valor:480,tipo:'fixo',competencia:'2026-05',criadoEm:'2026-05-01T08:00:00'},
+  {id:'dg03',descricao:'Internet e Telefone',categoria:'Telecom',valor:180,tipo:'fixo',competencia:'2026-05',criadoEm:'2026-05-01T08:00:00'},
+  {id:'dg04',descricao:'Fios, linhas e aviamentos',categoria:'Materiais',valor:320,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-05T09:00:00'},
+  {id:'dg05',descricao:'Agulhas e peças de máquina',categoria:'Materiais',valor:140,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-10T10:00:00'},
+  {id:'dg06',descricao:'Material de escritório',categoria:'Administrativo',valor:85,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-15T14:00:00'},
+  {id:'dg07',descricao:'Manutenção de máquinas',categoria:'Manutenção',valor:250,tipo:'variavel',competencia:'2026-05',criadoEm:'2026-05-20T11:00:00'},
+  // Junho 2026
+  {id:'dg08',descricao:'Aluguel do Galpão',categoria:'Aluguel',valor:2800,tipo:'fixo',competencia:'2026-06',criadoEm:'2026-06-01T08:00:00'},
+  {id:'dg09',descricao:'Energia Elétrica',categoria:'Energia',valor:390,tipo:'fixo',competencia:'2026-06',criadoEm:'2026-06-01T08:00:00'},
+  {id:'dg10',descricao:'Internet e Telefone',categoria:'Telecom',valor:180,tipo:'fixo',competencia:'2026-06',criadoEm:'2026-06-01T08:00:00'},
+  {id:'dg11',descricao:'Fios, linhas e aviamentos',categoria:'Materiais',valor:280,tipo:'variavel',competencia:'2026-06',criadoEm:'2026-06-05T09:00:00'},
+  {id:'dg12',descricao:'Manutenção preventiva',categoria:'Manutenção',valor:380,tipo:'variavel',competencia:'2026-06',criadoEm:'2026-06-12T10:00:00'},
+  {id:'dg13',descricao:'Embalagens e etiquetas',categoria:'Materiais',valor:160,tipo:'variavel',competencia:'2026-06',criadoEm:'2026-06-18T14:00:00'},
+];
+
+window.doLoginDemo=function(){
+  __isDemoMode=true;
+  window.__isDemoMode=true;
+
+  // Configurações do demo
+  saveStoredConfig({
+    empresa:'Mello Style',empresaId:'mello-style-demo',
+    metaDia:220,metaMes:5000,metaFaturamento:40000,
+    metaLucro:10000,metaMargem:25,metaCusto:25000,tema:'escuro'
+  });
+  try{applyTheme('escuro');}catch(_e){}
+
+  // Carregar dados demo
+  funcionarios=[...DEMO_FUNCIONARIOS];
+  lotes=[...DEMO_LOTES];
+  registros=[...DEMO_REGISTROS];
+  gastos=[...DEMO_GASTOS];
+  clientes=[...DEMO_CLIENTES];
+  pontos=[];
+  controleProducaoHora=[];
+
+  // Abrir o app sem autenticação Firebase
+  const loginPage=document.getElementById('page-login');
+  const shell=document.getElementById('app-shell');
+  if(loginPage){loginPage.style.display='none';loginPage.classList.remove('active');}
+  if(shell){shell.style.display='';shell.classList.remove('hidden-shell');}
+
+  // Exibir badge
+  const badge=document.getElementById('demo-mode-badge');
+  if(badge)badge.style.display='flex';
+
+  try{populateSelects();}catch(_e){}
+  try{navigate('dashboard');}catch(_e){}
+  document.title='Mello Style — MODO DEMO';
+  setTimeout(()=>{
+    toast('🎯 Modo Demo ativo — dados fictícios para demonstração ao cliente');
+  },400);
+};
+
+window.sairDoDemo=function(){
+  __isDemoMode=false;
+  window.__isDemoMode=false;
+  const badge=document.getElementById('demo-mode-badge');
+  if(badge)badge.style.display='none';
+  funcionarios=[];registros=[];lotes=[];gastos=[];clientes=[];pontos=[];controleProducaoHora=[];
+  const loginPage=document.getElementById('page-login');
+  const shell=document.getElementById('app-shell');
+  if(shell){shell.style.display='none';shell.classList.add('hidden-shell');}
+  if(loginPage){loginPage.style.display='';loginPage.classList.add('active');}
+  document.title='Mello Style v91 — Login';
+  toast('Modo Demo encerrado. Faça login para continuar.');
+};
+
 </script>
 <style>
 
