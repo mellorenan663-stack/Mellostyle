@@ -516,15 +516,21 @@ window.navigate=navigate;
     var btn = document.getElementById('layout-toggle-btn');
     var icon = document.getElementById('lt-icon');
     var lbl = document.getElementById('lt-label');
+    var vp = document.querySelector('meta[name="viewport"]');
+    var telaEstreita = !!(window.screen && window.screen.width && window.screen.width < 1100);
     if(mobileActive){
       document.body.classList.add('mobile-view');
       document.body.classList.remove('desktop-forced');
+      if(vp) vp.setAttribute('content','width=device-width,initial-scale=1.0');
       if(icon) icon.textContent = '🖥';
       if(lbl) lbl.textContent = 'Modo PC';
       if(btn) btn.title = 'Alternar para visualização PC';
     } else {
       document.body.classList.remove('mobile-view');
       document.body.classList.add('desktop-forced');
+      // Celular em "Modo PC": renderiza com largura de desktop (1280) e encaixa na
+      // tela, mostrando o layout de PC de verdade sem espremer. Em telas largas, mantém o real.
+      if(vp) vp.setAttribute('content', telaEstreita ? 'width=1280' : 'width=device-width,initial-scale=1.0');
       if(icon) icon.textContent = '📱';
       if(lbl) lbl.textContent = 'Modo Celular';
       if(btn) btn.title = 'Alternar para visualização celular';
@@ -13016,6 +13022,8 @@ label{display:block;margin-bottom:6px;font-weight:800;color:var(--muted,var(--t3
 .ff{min-width:0;}
 .ff[style*="grid-column:span 2"]{grid-column:span 6!important;}
 .ff[style*="grid-column:1/-1"]{grid-column:1/-1!important;}
+/* Campos sem span explícito ocupam ~1/3 (evita rótulos sobrepostos no grid de 12 colunas) */
+.ff:not([style*="grid-column"]){grid-column:span 4;}
 
 /* tabelas */
 .table-wrap,.tbl-wrap,.mello-table-wrap-final{
