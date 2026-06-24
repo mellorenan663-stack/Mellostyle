@@ -12,6 +12,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,browserLocalPersistence,inMemoryPersistence,setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore,collection,addDoc,getDocs,doc,getDoc,setDoc,updateDoc,deleteDoc,query,orderBy,where,Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+/* ╔══════════════════════════════════════════════════════════════════╗
+   ║  CONFIGURAÇÃO DO FIREBASE — JV Confecção                          ║
+   ║  >>> SUBSTITUA o objeto abaixo pela config do projeto Firebase    ║
+   ║      DO CLIENTE (console.firebase.google.com → Config do projeto).║
+   ║  Enquanto não trocar, os dados vão para o projeto compartilhado   ║
+   ║  "producao-saas" (NÃO usar em produção do cliente).               ║
+   ║  Passo a passo no arquivo SETUP-CLIENTE-JV.md.                    ║
+   ╚══════════════════════════════════════════════════════════════════╝ */
 const firebaseConfig={apiKey:"AIzaSyBwoI6IOPgWul1uxFwJXJTQ4cGyOS9F_Fc",authDomain:"producao-saas.firebaseapp.com",projectId:"producao-saas",storageBucket:"producao-saas.firebasestorage.app",messagingSenderId:"330333904905",appId:"1:330333904905:web:6d5e2e0ec6f62d224458d8"};
 const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
@@ -11720,18 +11728,7 @@ input,select,textarea,button{font-size:16px;}
         </div>
       </div>
 
-      <!-- Imposto a reservar (7%) — controle no topo; some junto com o toggle financeiro -->
-      <div class="imposto-reserva" id="dash-imposto-wrap" style="margin-bottom:18px;">
-        <div class="ir-icon">🧾</div>
-        <div class="ir-main">
-          <div class="ir-label">Imposto a reservar (7%)</div>
-          <div class="ir-hint">7% sobre o faturamento de <span id="imposto-base-label">—</span> · valor de controle, não abate do lucro</div>
-        </div>
-        <div class="ir-vals">
-          <div class="ir-val"><span class="ir-vl">A reservar</span><span class="ir-vv" id="dash-imposto-val">R$ 0,00</span></div>
-          <div class="ir-val"><span class="ir-vl">Faturamento líquido</span><span class="ir-vv ir-liq" id="dash-imposto-liq">R$ 0,00</span></div>
-        </div>
-      </div>
+      <!-- (removido) Banner "Imposto a reservar" — duplicava o faturamento líquido -->
 
       <!-- ═══ ALERTAS ═══ -->
       <div id="dash-alertas"></div>
