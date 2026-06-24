@@ -2867,28 +2867,6 @@ function renderDashboard(){
             <div class="exec-side-hint">${lotesUrgentes.length} urgentes • ${lotesParados.length} paradas</div>
           </div>
         </div>
-      </div>
-      <div class="exec-mini-grid" style="margin-top:14px;">
-        <div class="exec-mini ${pecasDelta>=0?'good':'warn'}">
-          <div class="exec-mini-l">Produção mensal</div>
-          <div class="exec-mini-v">${pecasMes.toLocaleString("pt-BR")}</div>
-          <div class="exec-mini-s">${pecasDelta>=0?'+':''}${pecasDelta}% vs mês anterior</div>
-        </div>
-        <div class="exec-mini ${fatDelta>=0?'good':'bad'}">
-          <div class="exec-mini-l">Faturamento mensal</div>
-          <div class="exec-mini-v">${fmtMoney(fatMes)}</div>
-          <div class="exec-mini-s">${fatDelta>=0?'+':''}${fatDelta}% vs mês anterior</div>
-        </div>
-        <div class="exec-mini ${lucroMes>=0?'good':'bad'}">
-          <div class="exec-mini-l">Lucro líquido</div>
-          <div class="exec-mini-v">${fmtMoney(lucroMes)}</div>
-          <div class="exec-mini-s">${lucroDelta>=0?'+':''}${lucroDelta}% vs mês anterior</div>
-        </div>
-        <div class="exec-mini ${margemMes>=15?'good':margemMes>=5?'warn':'bad'}">
-          <div class="exec-mini-l">Margem</div>
-          <div class="exec-mini-v">${margemMes}%</div>
-          <div class="exec-mini-s">Custo total ${fmtMoney(custoMes)}</div>
-        </div>
       </div>`;
   }
 
