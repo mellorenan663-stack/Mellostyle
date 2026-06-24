@@ -675,6 +675,13 @@ function abrirAppAposAuth(user,{showToast=false}={}){
     }
   });
 }
+/* ── ACESSO DIRETO (sem login) — conta compartilhada da JV Confecção ──
+   Todos entram nos MESMOS dados, em qualquer dispositivo, sem digitar nada.
+   A conta é criada automaticamente no primeiro clique em "Entrar".
+   Para voltar ao login individual, basta restaurar o formulário de e-mail/senha. */
+const ACESSO_EMAIL="acesso@jvconfeccao.app";
+const ACESSO_SENHA="jvconfeccao-acesso-2026";
+
 window.doLogin=async function(event){
   try{
     if(event&&typeof event.preventDefault==="function") event.preventDefault();
@@ -684,26 +691,16 @@ window.doLogin=async function(event){
 
   if(__loginBusy) return false;
 
-  const email=(document.getElementById("login-email")?.value||"").trim();
-  const senha=document.getElementById("login-pass")?.value||"";
-
-  if(!email||!senha){
-    setLoginStatus("Preencha email e senha.","err");
-    if(typeof toast==="function") toast("Preencha email e senha.","err");
-    resetLoginButton();
-    return false;
-  }
-
   __loginBusy=true;
   setLoginLoading();
-  setLoginStatus("Autenticando no Firebase...","ok");
+  setLoginStatus("Entrando...","ok");
 
   if(__loginWatchdogTimer) clearTimeout(__loginWatchdogTimer);
   __loginWatchdogTimer=setTimeout(()=>{
     if(__loginBusy){
       __loginBusy=false;
       resetLoginButton();
-      const msg="Firebase não respondeu. Verifique internet, domínio autorizado e Authentication.";
+      const msg="Firebase não respondeu. Verifique a internet, o domínio autorizado e o Authentication.";
       setLoginStatus(msg,"err");
       if(typeof toast==="function") toast(msg,"err");
     }
@@ -711,15 +708,25 @@ window.doLogin=async function(event){
 
   try{
     await safeSetPersistence();
-    const cred=await loginWithTimeout(email,senha,20000);
-    setLoginStatus("Login realizado. Abrindo sistema...","ok");
+    let cred;
+    try{
+      cred=await loginWithTimeout(ACESSO_EMAIL,ACESSO_SENHA,20000);
+    }catch(err){
+      const code=(err&&err.code)||"";
+      // Primeiro acesso: cria automaticamente a conta compartilhada
+      if(code==="auth/user-not-found"||code==="auth/invalid-credential"||code==="auth/invalid-login-credentials"){
+        cred=await createUserWithEmailAndPassword(auth,ACESSO_EMAIL,ACESSO_SENHA);
+      }else{
+        throw err;
+      }
+    }
+    setLoginStatus("Abrindo sistema...","ok");
     abrirAppAposAuth(cred.user,{showToast:true});
     return true;
   }catch(err){
-    console.error("LOGIN_ERROR:",err);
+    console.error("ACESSO_ERROR:",err);
 
     if(auth.currentUser&&auth.currentUser.uid){
-      setLoginStatus("Login realizado. Abrindo sistema...","ok");
       abrirAppAposAuth(auth.currentUser,{showToast:true});
       return true;
     }
@@ -11545,19 +11552,11 @@ input,select,textarea,button{font-size:16px;}
     </div>
     <div class="auth-card"><div class="auth-badge"><span class="ab-dot"></span> Plataforma premium</div>
       <div id="form-login">
-        <h2>Entrar na plataforma</h2>
-        <div class="af"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-        <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+        <h2>Bem-vindo</h2>
+        <p style="color:var(--t3);font-size:13px;line-height:1.45;margin:-2px 0 18px;">Acesse o painel de produção da JV Confecção.</p>
         <div id="login-status" class="login-status" aria-live="polite"></div>
         <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
       </div>
-      <div id="form-register" class="hidden">
-        <h2>Criar conta</h2>
-        <div class="af"><label>E-mail</label><input id="reg-email" type="email" placeholder="seu@email.com"/></div>
-        <div class="af"><label>Senha</label><input id="reg-pass" type="password" placeholder="mínimo 6 caracteres"/></div>
-        <button type="button" class="btn-auth" onclick="doRegister(event)">Criar conta</button>
-      </div>
-      <div class="auth-tog" id="auth-lbl">Não tem conta? <a href="javascript:void(0)" onclick="toggleAuthMode()">Cadastre-se</a></div>
     </div>
   </div>
 </div>
