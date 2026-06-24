@@ -12,15 +12,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,browserLocalPersistence,inMemoryPersistence,setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore,collection,addDoc,getDocs,doc,getDoc,setDoc,updateDoc,deleteDoc,query,orderBy,where,Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-/* ╔══════════════════════════════════════════════════════════════════╗
-   ║  CONFIGURAÇÃO DO FIREBASE — JV Confecção                          ║
-   ║  >>> SUBSTITUA o objeto abaixo pela config do projeto Firebase    ║
-   ║      DO CLIENTE (console.firebase.google.com → Config do projeto).║
-   ║  Enquanto não trocar, os dados vão para o projeto compartilhado   ║
-   ║  "producao-saas" (NÃO usar em produção do cliente).               ║
-   ║  Passo a passo no arquivo SETUP-CLIENTE-JV.md.                    ║
-   ╚══════════════════════════════════════════════════════════════════╝ */
-const firebaseConfig={apiKey:"AIzaSyBwoI6IOPgWul1uxFwJXJTQ4cGyOS9F_Fc",authDomain:"producao-saas.firebaseapp.com",projectId:"producao-saas",storageBucket:"producao-saas.firebasestorage.app",messagingSenderId:"330333904905",appId:"1:330333904905:web:6d5e2e0ec6f62d224458d8"};
+/* ── CONFIGURAÇÃO DO FIREBASE — JV Confecção (projeto próprio: jv-confecao) ── */
+const firebaseConfig={apiKey:"AIzaSyCHcBrAnUFiIh8I0-8wIjqPJnAQc3f3rXM",authDomain:"jv-confecao.firebaseapp.com",projectId:"jv-confecao",storageBucket:"jv-confecao.firebasestorage.app",messagingSenderId:"1089479881122",appId:"1:1089479881122:web:10018e26e1f938d363c2fb",measurementId:"G-RC1SWE9Y6G"};
 const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
