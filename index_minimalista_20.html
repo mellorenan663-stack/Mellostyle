@@ -496,11 +496,11 @@ function navigate(page){
   $("page-"+page)?.classList.add("active");
   $("nav-"+page)?.classList.add("active");
   currentPage=page;
-  const pageNames={dashboard:"Dashboard",funcionarios:"Funcionários",producao:"Produção",lotes:"Lotes / OF",historico:"Histórico",gastos:"Gastos",relatorio:"Relatório",backup:"Backup",bancohoras:"Banco de Horas",controlehora:"Controle por Hora","fat-cliente":"Faturamento por Cliente"};
+  const pageNames={dashboard:"Dashboard",funcionarios:"Funcionários",producao:"Produção",lotes:"Lotes / OF",historico:"Histórico",gastos:"Gastos",relatorio:"Relatório",backup:"Backup",bancohoras:"Banco de Horas",controlehora:"Controle por Hora","fat-cliente":"Faturamento por Cliente",ranking:"Ranking Funcionário"};
   if(pageNames[page]) document.title="JV Confecção — "+pageNames[page];
   const map={dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,
     lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,
-    relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,"fat-cliente":renderFatCliente};
+    relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,"fat-cliente":renderFatCliente,ranking:(typeof renderRanking==="function"?renderRanking:null)};
   map[page]?.();
   if(window.innerWidth<=900){ try{ window.closeNav?.(); }catch(e){} }
 }
@@ -961,6 +961,7 @@ async function loadData(){
       lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,
       relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,
       "fat-cliente":renderFatCliente,
+      ranking:typeof renderRanking==="function"?renderRanking:null,
       clientes:typeof renderClientes==="function"?renderClientes:null,
       lixeira:typeof renderLixeira==="function"?renderLixeira:null,
       auditoria:typeof renderAuditoria==="function"?renderAuditoria:null};
@@ -1506,16 +1507,24 @@ function renderResumoProdutividadeHora(lista){
 }
 function renderTabelaProdutividadeHora(lista){
   const tb=$("cph-tbody");if(!tb)return;
-  if(!lista.length){tb.innerHTML='<tr><td colspan="9" class="td-empty">Nenhuma medição registrada.</td></tr>';return;}
+  if(!lista.length){tb.innerHTML='<tr><td colspan="10" class="td-empty">Nenhuma medição registrada.</td></tr>';return;}
+  const medEtapa={}; cphAgruparMedia(lista,"etapa").forEach(e=>{medEtapa[e.nome]=e.media;});
   tb.innerHTML=lista.map(r=>{
     const d=r.data?new Date(r.data+"T12:00:00").toLocaleDateString("pt-BR"):"—";
     const lote=r.loteNumeroOf?`OF ${r.loteNumeroOf} <div class="td-mini">${r.loteProduto||""}</div>`:"Avulso";
+    const pph=toNumber(r.pecasPorHora,0);
+    const mEt=medEtapa[r.etapa||"—"]||0;
+    const pct=mEt>0?Math.round((pph/mEt-1)*100):null;
+    const pctTd=pct===null
+      ?`<td class="td-mono" style="color:var(--t4)">—</td>`
+      :`<td class="td-mono" style="font-weight:800;color:${pct>=0?"var(--green)":"var(--red)"}">${pct>=0?"+":""}${pct}%</td>`;
     return `<tr>
       <td class="td-mono sm">${d}</td><td><div class="fn-nome" style="font-size:12px">${r.funcionarioNome||"—"}</div></td>
       <td><span class="chip ce sm">${r.etapa||"—"}</span></td><td>${lote}</td>
       <td class="td-mono hi">${toNumber(r.qtdPecas,0).toLocaleString("pt-BR")}</td>
       <td class="td-mono">${formatarTempoSegundos(r.tempoSegundos||0)}</td>
-      <td class="td-mono" style="font-weight:800;color:var(--accent-lt)">${Math.round(toNumber(r.pecasPorHora,0)).toLocaleString("pt-BR")} pçs/h</td>
+      <td class="td-mono" style="font-weight:800;color:var(--accent-lt)">${Math.round(pph).toLocaleString("pt-BR")} pçs/h</td>
+      ${pctTd}
       <td class="td-obs">${r.observacao||"—"}</td>
       <td><div class="td-actions"><button class="btn-edit" onclick="editarControleProducaoHora('${r.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarControleProducaoHora('${r.id}')">✕</button></div></td>
     </tr>`;
@@ -1555,6 +1564,28 @@ window.renderResumoProdutividadeHora=renderResumoProdutividadeHora;
 window.renderTabelaProdutividadeHora=renderTabelaProdutividadeHora;
 window.filtrarProdutividadeHora=filtrarProdutividadeHora;
 window.toggleControleHoraEtapaOutra=toggleControleHoraEtapaOutra;
+function _mesDeRegistro(r){
+  const d=safeDate(r.data)||safeDate(r.criadoEm)||safeDate(r.createdAt);
+  if(!d) return "";
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+function renderRanking(){
+  const esc=s=>String(s==null?"":s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+  const inp=$("rank-mes");
+  let mes=inp&&inp.value?inp.value:monthKeyLocal();
+  if(inp&&!inp.value) inp.value=mes;
+  const map={};
+  const add=(key,nome,campo,qtd)=>{ key=key||nome||"—"; if(!map[key]) map[key]={nome:nome||key,producao:0,hora:0}; map[key][campo]+=qtd; };
+  (Array.isArray(registros)?registros:[]).forEach(r=>{ if(_mesDeRegistro(r)===mes) add(r.funcionarioId,r.funcionarioNome,"producao",toNumber(r.qtd||r.qtdPecas||r.pecas||0,0)); });
+  (Array.isArray(controleProducaoHora)?controleProducaoHora:[]).forEach(r=>{ if(String(r.data||"").slice(0,7)===mes) add(r.funcionarioId,r.funcionarioNome,"hora",toNumber(r.qtdPecas||0,0)); });
+  const rows=Object.values(map).map(x=>({...x,total:x.producao+x.hora})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  const host=$("rank-host"); if(!host) return;
+  if(!rows.length){ host.innerHTML='<div class="empty-state"><div class="ei">🏆</div><div>Sem produção registrada neste mês.</div></div>'; return; }
+  const max=rows[0].total||1;
+  const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":('<span class="rk-pos">'+(i+1)+'º</span>');
+  host.innerHTML=rows.map((r,i)=>'<div class="rk-card"><div class="rk-medal">'+medal(i)+'</div><div class="rk-info"><div class="rk-nome">'+esc(r.nome)+'</div><div class="rk-bar"><div class="rk-fill" style="width:'+Math.round(r.total/max*100)+'%"></div></div><div class="rk-break">Produção '+r.producao.toLocaleString("pt-BR")+' · Por hora '+r.hora.toLocaleString("pt-BR")+'</div></div><div class="rk-total">'+r.total.toLocaleString("pt-BR")+'<span class="rk-u">pçs</span></div></div>').join("");
+}
+window.renderRanking=renderRanking;
 
 /* ══════════════════════════════════════════════════════════════
    LOTES
@@ -4161,10 +4192,10 @@ function getCollectionSnapshot(collectionName,id){
 function hasPageAccess(page){
   const perfil=(getConfig().perfil||'admin').toLowerCase();
   const allowed={
-    admin:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
-    gerente:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
-    financeiro:['dashboard','controlehora','gastos','historico','relatorio','backup','fat-cliente','clientes','auditoria'],
-    operador:['dashboard','lotes','funcionarios','producao','controlehora','historico','bancohoras','fat-cliente','clientes']
+    admin:['dashboard','ranking','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
+    gerente:['dashboard','ranking','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
+    financeiro:['dashboard','ranking','controlehora','gastos','historico','relatorio','backup','fat-cliente','clientes','auditoria'],
+    operador:['dashboard','ranking','lotes','funcionarios','producao','controlehora','historico','bancohoras','fat-cliente','clientes']
   };
   return (allowed[perfil]||allowed.admin).includes(page);
 }
@@ -4366,6 +4397,7 @@ function renderAuditoria(){
       dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,lotes:renderLotes,
       historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,backup:renderBackup,
       bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,'fat-cliente':typeof renderFatCliente==='function'?renderFatCliente:null,
+      ranking:typeof renderRanking==='function'?renderRanking:null,
       clientes:typeof renderClientes==='function'?renderClientes:null,
       lixeira:typeof renderLixeira==='function'?renderLixeira:null,auditoria:typeof renderAuditoria==='function'?renderAuditoria:null
     };
@@ -11624,6 +11656,7 @@ input,select,textarea,button{font-size:16px;}
       <button class="nav-btn"        id="nav-lotes" data-page="lotes" onclick="navigate('lotes')">       <span class="nb-icon">📦</span> Lotes (OF)</button>
       <div class="nav-sec">Operacional</div>
       <button class="nav-btn"        id="nav-funcionarios" data-page="funcionarios" onclick="navigate('funcionarios')"><span class="nb-icon">👥</span> Funcionários</button>
+      <button class="nav-btn"        id="nav-ranking" data-page="ranking" onclick="navigate('ranking')"><span class="nb-icon">🏆</span> Ranking Funcionário</button>
       <button class="nav-btn"        id="nav-producao" data-page="producao" onclick="navigate('producao')">    <span class="nb-icon">⚡</span> Produção</button>
       <button class="nav-btn"        id="nav-controlehora" data-page="controlehora" onclick="navigate('controlehora')"> <span class="nb-icon">⏱</span> Controle por Hora</button>
       <button class="nav-btn"        id="nav-gastos" data-page="gastos" onclick="navigate('gastos')">      <span class="nb-icon">💸</span> Gastos</button>
@@ -12317,7 +12350,29 @@ input,select,textarea,button{font-size:16px;}
     </div>
 
     <!-- CONTROLE DE PRODUÇÃO POR HORA -->
-    <div class="page" id="page-controlehora">
+    <div class="page" id="page-ranking">
+  <style>
+  #page-ranking .rk-card{display:flex;align-items:center;gap:14px;background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;}
+  #page-ranking .rk-medal{font-size:26px;width:42px;text-align:center;flex-shrink:0;font-family:var(--fm);font-weight:700;}
+  #page-ranking .rk-pos{font-size:15px;color:var(--t3);}
+  #page-ranking .rk-info{flex:1;min-width:0;}
+  #page-ranking .rk-nome{font-size:15px;font-weight:700;color:var(--t);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #page-ranking .rk-bar{height:7px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:6px;}
+  #page-ranking .rk-fill{height:100%;background:var(--grad-prog);border-radius:4px;transition:width .5s;}
+  #page-ranking .rk-break{font-size:11.5px;color:var(--t4);}
+  #page-ranking .rk-total{font-family:var(--fm);font-size:22px;font-weight:700;color:var(--accent-lt);flex-shrink:0;text-align:right;letter-spacing:-.5px;}
+  #page-ranking .rk-total .rk-u{font-size:11px;color:var(--t4);font-family:var(--fh);margin-left:3px;font-weight:600;}
+  #page-ranking .rank-mes-row{display:flex;align-items:center;gap:10px;margin:6px 0 16px;}
+  #page-ranking .rank-mes-row input{height:42px;background:var(--bg3);border:1px solid var(--bd);border-radius:11px;color:var(--t);padding:0 12px;font-size:14px;}
+  </style>
+  <div class="phd"><div class="ptitle">Ranking Funcionário</div><div class="psub">Peças por funcionária no mês — soma da Produção + Controle por Hora</div></div>
+  <div class="rank-mes-row">
+    <span style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px">Mês</span>
+    <input type="month" id="rank-mes" onchange="renderRanking()">
+  </div>
+  <div id="rank-host"></div>
+</div>
+<div class="page" id="page-controlehora">
       <div class="phd" style="margin-bottom:22px;">
         <div class="ptitle">Controle de Produção por Hora</div>
         <div class="psub">Cronômetro para medir quantas peças cada funcionária faz por função/etapa. Não altera faturamento nem progresso de lote.</div>
@@ -12394,7 +12449,7 @@ input,select,textarea,button{font-size:16px;}
       <div class="card" style="margin-top:18px">
         <div class="chd">Medições registradas</div>
         <div class="tbl-wrap"><table>
-          <thead><tr><th>Data</th><th>Funcionária</th><th>Função</th><th>OF/Lote</th><th>Peças</th><th>Tempo</th><th>Peças/hora</th><th>Obs</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Funcionária</th><th>Função</th><th>OF/Lote</th><th>Peças</th><th>Tempo</th><th>Peças/hora</th><th>vs função</th><th>Obs</th><th></th></tr></thead>
           <tbody id="cph-tbody"><tr><td colspan="9" class="td-empty">Nenhuma medição registrada.</td></tr></tbody>
         </table></div>
       </div>
