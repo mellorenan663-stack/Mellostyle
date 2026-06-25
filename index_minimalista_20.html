@@ -1607,35 +1607,50 @@ function _rkPecasSetor(l,fCor,fNome,acc){
     if(nome) acc(nome,Number(l.qtdTotal||0));
   }
 }
+let rankModo='total';
+function setRankModo(m){ rankModo=(m==='hora'?'hora':'total'); renderRanking(); }
+window.setRankModo=setRankModo;
 function renderRanking(){
   const esc=s=>String(s==null?"":s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
   const inp=$("rank-mes");
   let mes=inp&&inp.value?inp.value:monthKeyLocal();
   if(inp&&!inp.value) inp.value=mes;
+  document.querySelectorAll('.rk-tab').forEach(b=>b.classList.toggle('active',b.dataset.modo===rankModo));
   const map={};
   const nomeDe=(id,nome)=>{ nome=(nome||"").trim(); if(nome) return nome; const f=(funcionarios||[]).find(x=>x.id===id); return (f&&f.nome)||""; };
-  const add=(nome,campo,qtd)=>{ nome=(nome||"").trim()||"—"; const k=nome.toLowerCase(); if(!map[k]) map[k]={nome:nome,producao:0,hora:0,setores:0}; map[k][campo]+=qtd; };
+  const ent=nome=>{ nome=(nome||"").trim()||"—"; const k=nome.toLowerCase(); if(!map[k]) map[k]={nome:nome,producao:0,hora:0,revisao:0,arremate:0,manga:0,hPecas:0,hHoras:0,hMed:0}; return map[k]; };
+  const add=(nome,campo,qtd)=>{ ent(nome)[campo]+=qtd; };
   (Array.isArray(registros)?registros:[]).forEach(r=>{ if(_mesDeRegistro(r)===mes) add(nomeDe(r.funcionarioId,r.funcionarioNome),"producao",toNumber(r.qtd||r.qtdPecas||r.pecas||0,0)); });
-  (Array.isArray(controleProducaoHora)?controleProducaoHora:[]).forEach(r=>{ if(String(r.data||"").slice(0,7)===mes) add(nomeDe(r.funcionarioId,r.funcionarioNome),"hora",toNumber(r.qtdPecas||0,0)); });
+  (Array.isArray(controleProducaoHora)?controleProducaoHora:[]).forEach(r=>{ if(String(r.data||"").slice(0,7)!==mes) return; const e=ent(nomeDe(r.funcionarioId,r.funcionarioNome)); const q=toNumber(r.qtdPecas||0,0), h=toNumber(r.tempoHoras||0,0); e.hora+=q; e.hPecas+=q; e.hHoras+=h; e.hMed++; });
   // app de setores (Revisão / Arremate lateral / Manga) — produção gravada nos lotes
-  const SET=[["revisoesPorCor","revisadoPorNome","revisadoEm"],["arremateLateralPorCor","arremateLateralPorNome","arremateLateralEm"],["mangaPorCor","mangaPorNome","mangaEm"]];
+  const SET=[["revisoesPorCor","revisadoPorNome","revisadoEm","revisao"],["arremateLateralPorCor","arremateLateralPorNome","arremateLateralEm","arremate"],["mangaPorCor","mangaPorNome","mangaEm","manga"]];
   (Array.isArray(lotes)?lotes:[]).forEach(l=>{
     SET.forEach(fs=>{
-      const fCor=fs[0],fNome=fs[1],fEm=fs[2];
-      if(!l[fCor] && !l[fNome]) return;
-      if(_mesDeSetor(l[fEm],l)!==mes) return;
-      _rkPecasSetor(l,fCor,fNome,(nome,q)=>add(nome,"setores",q));
+      if(!l[fs[0]] && !l[fs[1]]) return;
+      if(_mesDeSetor(l[fs[2]],l)!==mes) return;
+      _rkPecasSetor(l,fs[0],fs[1],(nome,q)=>add(nome,fs[3],q));
     });
   });
-  const rows=Object.values(map).map(x=>({...x,total:x.producao+x.hora+x.setores})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  let rows=Object.values(map).map(x=>({...x,total:x.producao+x.hora+x.revisao+x.arremate+x.manga,media:x.hHoras>0?x.hPecas/x.hHoras:0}));
   const host=$("rank-host"); if(!host) return;
-  if(!rows.length){ host.innerHTML='<div class="empty-state"><div class="ei">🏆</div><div>Sem produção registrada neste mês.</div></div>'; return; }
-  const max=rows[0].total||1;
+  const porHora=rankModo==='hora';
+  rows = porHora ? rows.filter(x=>x.hHoras>0).sort((a,b)=>b.media-a.media) : rows.filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  if(!rows.length){ host.innerHTML='<div class="empty-state"><div class="ei">🏆</div><div>'+(porHora?'Sem medições de peças/hora neste mês. Use a aba Controle por Hora.':'Sem produção registrada neste mês.')+'</div></div>'; return; }
+  const max=(porHora?rows[0].media:rows[0].total)||1;
   const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":('<span class="rk-pos">'+(i+1)+'º</span>');
   const part=(lbl,v)=>v>0?(lbl+' '+v.toLocaleString("pt-BR")):'';
   host.innerHTML=rows.map((r,i)=>{
-    const brk=[part('Produção',r.producao),part('Por hora',r.hora),part('Setores',r.setores)].filter(Boolean).join(' · ')||'—';
-    return '<div class="rk-card"><div class="rk-medal">'+medal(i)+'</div><div class="rk-info"><div class="rk-nome">'+esc(r.nome)+'</div><div class="rk-bar"><div class="rk-fill" style="width:'+Math.round(r.total/max*100)+'%"></div></div><div class="rk-break">'+brk+'</div></div><div class="rk-total">'+r.total.toLocaleString("pt-BR")+'<span class="rk-u">pçs</span></div></div>';
+    let big,unit,brk,barv;
+    if(porHora){
+      big=Math.round(r.media).toLocaleString("pt-BR"); unit='pçs/h';
+      brk=r.hPecas.toLocaleString("pt-BR")+' pçs em '+r.hHoras.toLocaleString("pt-BR",{maximumFractionDigits:1})+'h · '+r.hMed+(r.hMed===1?' medição':' medições');
+      barv=r.media/max*100;
+    }else{
+      big=r.total.toLocaleString("pt-BR"); unit='pçs';
+      brk=[part('Produção',r.producao),part('Por hora',r.hora),part('Revisão',r.revisao),part('Arremate',r.arremate),part('Manga',r.manga)].filter(Boolean).join(' · ')||'—';
+      barv=r.total/max*100;
+    }
+    return '<div class="rk-card"><div class="rk-medal">'+medal(i)+'</div><div class="rk-info"><div class="rk-nome">'+esc(r.nome)+'</div><div class="rk-bar"><div class="rk-fill" style="width:'+Math.round(barv)+'%"></div></div><div class="rk-break">'+brk+'</div></div><div class="rk-total">'+big+'<span class="rk-u">'+unit+'</span></div></div>';
   }).join("");
 }
 window.renderRanking=renderRanking;
@@ -12417,11 +12432,18 @@ input,select,textarea,button{font-size:16px;}
   #page-ranking .rk-total .rk-u{font-size:11px;color:var(--t4);font-family:var(--fh);margin-left:3px;font-weight:600;}
   #page-ranking .rank-mes-row{display:flex;align-items:center;gap:10px;margin:6px 0 16px;}
   #page-ranking .rank-mes-row input{height:42px;background:var(--bg3);border:1px solid var(--bd);border-radius:11px;color:var(--t);padding:0 12px;font-size:14px;}
+  #page-ranking .rk-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  #page-ranking .rk-tab{padding:9px 16px;border-radius:11px;background:var(--bg3);border:1px solid var(--bd);color:var(--t3);font-size:13px;font-weight:700;cursor:pointer;}
+  #page-ranking .rk-tab.active{background:var(--accent-soft);color:var(--accent-lt);border-color:var(--accent-line);}
   </style>
   <div class="phd"><div class="ptitle">Ranking Funcionário</div><div class="psub">Peças por funcionária no mês — Produção + Controle por Hora + Setores (Revisão/Arremate/Manga)</div></div>
   <div class="rank-mes-row">
     <span style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px">Mês</span>
     <input type="month" id="rank-mes" onchange="renderRanking()">
+  </div>
+  <div class="rk-tabs">
+    <button class="rk-tab active" data-modo="total" type="button" onclick="setRankModo('total')">Total de peças</button>
+    <button class="rk-tab" data-modo="hora" type="button" onclick="setRankModo('hora')">Por peças/hora</button>
   </div>
   <div id="rank-host"></div>
 </div>
