@@ -1,0 +1,19 @@
+{
+  "name": "financeai-whatsapp-backend",
+  "version": "1.0.0",
+  "description": "Webhook que recebe mensagens do WhatsApp (Evolution API) e grava lançamentos no Firebase para o FinanceAI",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^12.1.0",
+    "axios": "^1.7.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
