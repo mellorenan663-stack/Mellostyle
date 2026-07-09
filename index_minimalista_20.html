@@ -1389,6 +1389,12 @@ function renderPontoStatusHoje(){
   const cont=$("ponto-status-hoje");
   if(!cont) return;
   const funcId=$("ponto-funcionario")?.value||"";
+  const info=$("ponto-facial-info");
+  if(info){
+    const f=funcionarios.find(x=>x.id===funcId);
+    info.textContent=f?(temRostoCadastrado(f)?"✓ Rosto cadastrado — pode usar o ponto facial":"Rosto ainda não cadastrado — clique em “Cadastrar rosto” para habilitar o ponto facial"):"";
+    info.style.color=f&&temRostoCadastrado(f)?"var(--green)":"var(--t3)";
+  }
   if(!funcId){
     cont.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><div class="ei">🕐</div><p>Selecione um funcionário para bater o ponto.</p></div>';
     return;
@@ -1402,6 +1408,7 @@ function renderPontoStatusHoje(){
         <div style="font-size:11px;color:var(--t3);margin-bottom:4px;">${t.label}</div>
         <div class="td-mono" style="font-size:20px;font-weight:700;color:var(--green);">${rec.hora}</div>
         <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;">
+          ${rec.foto?`<button class="btn-edit" onclick="verFotoBatida('${rec.id}')" title="Ver foto">📷</button>`:""}
           <button class="btn-edit" onclick="editarBatidaPonto('${rec.id}')" title="Corrigir">✎</button>
           <button class="btn-x" onclick="deletarBatidaPonto('${rec.id}')" title="Remover">✕</button>
         </div>
@@ -1438,7 +1445,9 @@ function renderPontoTabelaMes(){
 }
 
 function celulaBatida(rec){
-  return rec?`<span class="td-mono">${rec.hora}</span> <button class="btn-edit" style="padding:1px 5px;font-size:10px;" onclick="editarBatidaPonto('${rec.id}')" title="Editar">✎</button>`:'<span style="color:var(--t3)">—</span>';
+  if(!rec) return '<span style="color:var(--t3)">—</span>';
+  const fotoBtn=rec.foto?` <button class="btn-edit" style="padding:1px 5px;font-size:10px;" onclick="verFotoBatida('${rec.id}')" title="Ver foto">📷</button>`:"";
+  return `<span class="td-mono">${rec.hora}</span>${fotoBtn} <button class="btn-edit" style="padding:1px 5px;font-size:10px;" onclick="editarBatidaPonto('${rec.id}')" title="Editar">✎</button>`;
 }
 function renderLinhaBatidas(g,mostrarData){
   const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
@@ -1523,6 +1532,189 @@ window.exportarPontoExcel=function(){
   a.href=url;a.download=`ponto-${mes}.csv`;
   a.click();URL.revokeObjectURL(url);toast("Planilha de ponto exportada para Excel!");
 };
+
+/* ── PONTO FACIAL — reconhecimento facial com face-api.js ────
+   A biblioteca e os modelos são carregados sob demanda (só quando
+   o usuário abre a câmera), com fontes alternativas de CDN porque
+   alguns provedores/redes bloqueiam um ou outro. */
+const PF_SCRIPT_URLS=[
+  "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js",
+  "https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js",
+  "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/dist/face-api.min.js"
+];
+const PF_MODEL_URLS=[
+  "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights",
+  "https://unpkg.com/face-api.js@0.22.2/weights",
+  "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights"
+];
+let pfStream=null,pfTimer=null,pfModo="reconhecer",pfEnrollFunc=null,pfBusy=false,pfAtivo=false,pfAmostras=[];
+let __faceApiPromise=null;
+async function pfCarregarScript(){
+  if(window.faceapi) return;
+  let lastErr=null;
+  for(const url of PF_SCRIPT_URLS){
+    try{
+      // fetch + blob evita bloqueio de MIME (raw.githubusercontent serve text/plain)
+      const resp=await fetch(url);
+      if(!resp.ok) throw new Error("HTTP "+resp.status);
+      const code=await resp.text();
+      const blobUrl=URL.createObjectURL(new Blob([code],{type:"text/javascript"}));
+      await new Promise((res,rej)=>{
+        const s=document.createElement("script");
+        s.src=blobUrl;s.onload=res;s.onerror=()=>rej(new Error("Falha ao executar script"));
+        document.head.appendChild(s);
+      });
+      URL.revokeObjectURL(blobUrl);
+      if(window.faceapi) return;
+      throw new Error("faceapi não inicializou");
+    }catch(e){ lastErr=e; console.warn("PF_SCRIPT_FALLBACK",url,e?.message||e); }
+  }
+  throw lastErr||new Error("Não foi possível carregar a biblioteca facial");
+}
+async function pfCarregarModelos(){
+  let lastErr=null;
+  for(const base of PF_MODEL_URLS){
+    try{
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(base),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(base),
+        faceapi.nets.faceRecognitionNet.loadFromUri(base)
+      ]);
+      return;
+    }catch(e){ lastErr=e; console.warn("PF_MODEL_FALLBACK",base,e?.message||e); }
+  }
+  throw lastErr||new Error("Não foi possível baixar os modelos faciais");
+}
+function carregarFaceApi(){
+  if(__faceApiPromise) return __faceApiPromise;
+  __faceApiPromise=(async()=>{ await pfCarregarScript(); await pfCarregarModelos(); })();
+  __faceApiPromise.catch(()=>{ __faceApiPromise=null; });
+  return __faceApiPromise;
+}
+function setPfStatus(msg,tipo){
+  const el=$("pf-status");if(!el)return;
+  el.textContent=msg;
+  el.style.color=tipo==="ok"?"var(--green)":tipo==="err"?"var(--red)":tipo==="warn"?"#fbbf24":"var(--t2)";
+}
+function pfSnapshot(video){
+  const c=document.createElement("canvas");
+  const w=240,h=Math.round((video.videoHeight/video.videoWidth)*w)||180;
+  c.width=w;c.height=h;
+  c.getContext("2d").drawImage(video,0,0,w,h);
+  return c.toDataURL("image/jpeg",0.7);
+}
+function temRostoCadastrado(f){return Array.isArray(f?.faceDescriptor)&&f.faceDescriptor.length===128;}
+function melhorMatchFacial(desc){
+  let best=null,bestDist=0.5;
+  funcionarios.forEach(f=>{
+    if(!temRostoCadastrado(f)) return;
+    const d=faceapi.euclideanDistance(desc,new Float32Array(f.faceDescriptor));
+    if(d<bestDist){bestDist=d;best=f;}
+  });
+  return best?{f:best,dist:bestDist}:null;
+}
+function proximoTipoPonto(funcId){
+  const data=hojeISO();
+  const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
+  return TIPOS_PONTO.find(t=>!regs.some(r=>r.tipo===t.id))?.id||null;
+}
+async function pfLoop(){
+  if(!pfAtivo) return;
+  const video=$("pf-video");
+  if(!video||video.readyState<2||pfBusy){pfTimer=setTimeout(pfLoop,300);return;}
+  pfBusy=true;
+  try{
+    const det=await faceapi.detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.4})).withFaceLandmarks(true).withFaceDescriptor();
+    if(!pfAtivo){pfBusy=false;return;}
+    if(!det){
+      setPfStatus("Posicione o rosto de frente para a câmera...");
+    }else if(pfModo==="cadastrar"){
+      pfAmostras.push(det.descriptor);
+      setPfStatus(`Capturando rosto de ${pfEnrollFunc?.nome||"funcionário"}... ${pfAmostras.length}/3`);
+      if(pfAmostras.length>=3){
+        pfAtivo=false;
+        const media=new Array(128).fill(0);
+        pfAmostras.forEach(d=>{for(let i=0;i<128;i++)media[i]+=d[i]/pfAmostras.length;});
+        await updateDoc(doc(db,"funcionarios",pfEnrollFunc.id),withOwner({faceDescriptor:media}));
+        setPfStatus(`✓ Rosto de ${pfEnrollFunc.nome} cadastrado com sucesso!`,"ok");
+        toast(`Rosto de ${pfEnrollFunc.nome} cadastrado!`);
+        setTimeout(()=>{fecharPontoFacial();},1500);
+        loadData();
+        pfBusy=false;return;
+      }
+    }else{
+      const match=melhorMatchFacial(det.descriptor);
+      if(!match){
+        setPfStatus("Rosto não reconhecido. Cadastre o rosto do funcionário primeiro.","warn");
+      }else{
+        const tipo=proximoTipoPonto(match.f.id);
+        if(!tipo){
+          setPfStatus(`${match.f.nome}: todas as batidas de hoje já foram registradas.`,"warn");
+        }else{
+          pfAtivo=false;
+          const foto=pfSnapshot(video);
+          const hora=horaAgora();
+          await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:match.f.id,funcionarioNome:match.f.nome,data:hojeISO(),tipo,hora,foto,origem:"facial",criadoEm:Timestamp.now()}));
+          try{ if(typeof addAuditoria==="function") addAuditoria("criou","ponto-batida",`${match.f.nome} (facial)`); }catch(_e){}
+          setPfStatus(`✓ ${match.f.nome} — ${tipoPontoLabel(tipo)} registrada às ${hora}!`,"ok");
+          toast(`${match.f.nome}: ${tipoPontoLabel(tipo)} registrada às ${hora}!`);
+          setTimeout(()=>{fecharPontoFacial();},1800);
+          loadData();
+          pfBusy=false;return;
+        }
+      }
+    }
+  }catch(e){
+    console.error("PF_LOOP_ERROR",e);
+    setPfStatus("Erro na análise facial: "+(e?.message||e),"err");
+  }
+  pfBusy=false;
+  if(pfAtivo) pfTimer=setTimeout(pfLoop,600);
+}
+async function abrirCameraFacial(modo){
+  pfModo=modo;pfAmostras=[];
+  const modal=$("modal-ponto-facial");if(!modal)return;
+  const titulo=$("pf-title");
+  if(titulo) titulo.textContent=modo==="cadastrar"?`📷 Cadastrar Rosto — ${pfEnrollFunc?.nome||""}`:"📷 Ponto com Reconhecimento Facial";
+  modal.classList.add("open");document.body.style.overflow="hidden";
+  setPfStatus("Carregando modelo de reconhecimento facial... (pode demorar na primeira vez)");
+  try{ await carregarFaceApi(); }
+  catch(e){ console.error("PF_LOAD_ERROR",e); setPfStatus("Não foi possível carregar o modelo facial. Verifique a conexão com a internet.","err"); return; }
+  setPfStatus("Iniciando câmera...");
+  try{
+    pfStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640}},audio:false});
+    const video=$("pf-video");
+    video.srcObject=pfStream;
+    await video.play().catch(()=>{});
+  }catch(e){ console.error("PF_CAMERA_ERROR",e); setPfStatus("Câmera indisponível: "+(e?.message||e),"err"); return; }
+  pfAtivo=true;pfBusy=false;
+  pfTimer=setTimeout(pfLoop,400);
+}
+window.abrirPontoFacial=()=>{abrirCameraFacial("reconhecer");};
+window.cadastrarRostoSelecionado=()=>{
+  const funcId=$("ponto-funcionario")?.value;
+  if(!funcId){toast("Selecione o funcionário para cadastrar o rosto","err");return;}
+  const f=funcionarios.find(x=>x.id===funcId);
+  if(!f){toast("Funcionário não encontrado","err");return;}
+  pfEnrollFunc=f;
+  abrirCameraFacial("cadastrar");
+};
+window.fecharPontoFacial=()=>{
+  pfAtivo=false;
+  if(pfTimer){clearTimeout(pfTimer);pfTimer=null;}
+  if(pfStream){try{pfStream.getTracks().forEach(t=>t.stop());}catch(_e){} pfStream=null;}
+  const v=$("pf-video");if(v)v.srcObject=null;
+  $("modal-ponto-facial")?.classList.remove("open");document.body.style.overflow="";
+};
+window.verFotoBatida=id=>{
+  const b=batidasPonto.find(x=>x.id===id);
+  if(!b||!b.foto){toast("Esta batida não tem foto","warn");return;}
+  $("foto-batida-img").src=b.foto;
+  const [y,mo,d]=String(b.data||"").split("-");
+  $("foto-batida-info").textContent=`${b.funcionarioNome} — ${tipoPontoLabel(b.tipo)} às ${b.hora} em ${d}/${mo}/${y}${b.origem==="facial"?" • reconhecimento facial":""}`;
+  $("modal-foto-batida").classList.add("open");document.body.style.overflow="hidden";
+};
+window.fecharFotoBatida=()=>{$("modal-foto-batida")?.classList.remove("open");document.body.style.overflow="";};
 
 /* ══════════════════════════════════════════════════════════════
    CONTROLE DE PRODUÇÃO POR HORA
@@ -4188,7 +4380,9 @@ function renderBackup(){
     <div class="bk-stat accent"><span class="bk-n">${total}</span><span class="bk-l">📋 Total docs</span></div>`;
 }
 window.baixarBackupJSON=()=>{
-  const data={geradoEm:new Date().toISOString(),sistema:"Mello Style v91",config:getConfig(),funcionarios,lotes,gastos,pontos,batidasPonto,
+  // fotos das batidas ficam fora do backup para o arquivo não ficar gigante
+  const data={geradoEm:new Date().toISOString(),sistema:"Mello Style v91",config:getConfig(),funcionarios,lotes,gastos,pontos,
+    batidasPonto:batidasPonto.map(({foto,...b})=>b),
     registros:registros.map(r=>({...r,criadoEm:r.criadoEm?.toDate?r.criadoEm.toDate().toISOString():r.criadoEm}))};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob);const a=document.createElement("a");
@@ -4828,6 +5022,7 @@ applyTheme(getConfig().tema);
     'salvarGasto','editarGasto','salvarEdicaoGasto','deletarGasto','salvarGastoDrawer','deletarGastoDrawer',
     'salvarPonto','editarPonto','salvarEdicaoPonto','deletarPonto',
     'baterPonto','deletarBatidaPonto','editarBatidaPonto','fecharModalEditarBatidaPonto','salvarEdicaoBatidaPonto','excluirBatidaDoModal','exportarPontoExcel','renderPontoBater','renderPontoStatusHoje',
+    'abrirPontoFacial','fecharPontoFacial','cadastrarRostoSelecionado','verFotoBatida','fecharFotoBatida',
     'renderDashboard','renderFuncionarios','renderLotes','renderProducao','renderHistorico','renderGastos','renderBancoHoras','renderRelatorio','renderBackup','renderControleProducaoHora',
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes','toggleFinanceiro',
@@ -12582,8 +12777,13 @@ input,select,textarea,button{font-size:16px;}
 
       <div class="card" style="margin-bottom:16px">
         <div class="chd">Registrar Batida</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+          <button type="button" class="btn-save" onclick="abrirPontoFacial()">📷 Bater ponto com reconhecimento facial</button>
+          <button type="button" class="btn-outline" onclick="cadastrarRostoSelecionado()">＋ Cadastrar rosto</button>
+          <span id="ponto-facial-info" style="font-size:11px;color:var(--t3);"></span>
+        </div>
         <div class="fg">
-          <div class="ff" style="grid-column:span 2"><label>Funcionário *</label><select id="ponto-funcionario" onchange="renderPontoStatusHoje()"><option value="">— Selecione —</option></select></div>
+          <div class="ff" style="grid-column:span 2"><label>Funcionário (para batida manual ou cadastro de rosto)</label><select id="ponto-funcionario" onchange="renderPontoStatusHoje()"><option value="">— Selecione —</option></select></div>
         </div>
         <div id="ponto-status-hoje" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:6px;">
           <div class="empty-state" style="grid-column:1/-1;"><div class="ei">🕐</div><p>Selecione um funcionário para bater o ponto.</p></div>
@@ -12610,6 +12810,28 @@ input,select,textarea,button{font-size:16px;}
           <thead><tr><th>Data</th><th>Funcionário</th><th>Entrada</th><th>Saída Almoço</th><th>Volta Almoço</th><th>Saída</th><th>Horas</th></tr></thead>
           <tbody id="ponto-tbody-mes"><tr><td colspan="7" class="td-empty">Nenhum registro neste mês.</td></tr></tbody>
         </table></div>
+      </div>
+    </div>
+
+    <div id="modal-ponto-facial" class="modal-overlay" onclick="if(event.target===this)fecharPontoFacial()">
+      <div class="modal-box md">
+        <div class="modal-hd"><div class="modal-title" id="pf-title">📷 Ponto com Reconhecimento Facial</div><button class="modal-close" onclick="fecharPontoFacial()">✕</button></div>
+        <div class="modal-body">
+          <div id="pf-status" style="text-align:center;padding:12px;border-radius:10px;background:var(--bg2);border:1px solid var(--bd);margin-bottom:12px;font-size:13px;">Iniciando...</div>
+          <video id="pf-video" autoplay muted playsinline style="width:100%;border-radius:12px;background:#000;transform:scaleX(-1);min-height:200px;"></video>
+        </div>
+        <div class="modal-footer"><button class="btn-outline" onclick="fecharPontoFacial()">Fechar</button></div>
+      </div>
+    </div>
+
+    <div id="modal-foto-batida" class="modal-overlay" onclick="if(event.target===this)fecharFotoBatida()">
+      <div class="modal-box md">
+        <div class="modal-hd"><div class="modal-title">📷 Foto da Batida</div><button class="modal-close" onclick="fecharFotoBatida()">✕</button></div>
+        <div class="modal-body" style="text-align:center;">
+          <img id="foto-batida-img" alt="Foto da batida de ponto" style="max-width:100%;border-radius:12px;"/>
+          <div id="foto-batida-info" style="margin-top:10px;color:var(--t3);font-size:12px;"></div>
+        </div>
+        <div class="modal-footer"><button class="btn-outline" onclick="fecharFotoBatida()">Fechar</button></div>
       </div>
     </div>
 
