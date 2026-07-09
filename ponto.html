@@ -121,18 +121,25 @@ td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:no
       <div id="relogio-data"></div>
     </div>
 
+    <div class="card" style="text-align:center;">
+      <div class="chd">Bater Ponto</div>
+      <button class="btn btn-primary" style="width:auto;font-size:17px;padding:18px 34px;" onclick="abrirPontoFacial()">📷 Bater Ponto</button>
+      <div style="font-size:12px;color:var(--t3);margin-top:12px;">
+        Só olhar para a câmera: o sistema reconhece quem é e sabe pelo horário se é entrada, almoço ou saída.
+      </div>
+    </div>
+
     <div class="card">
-      <div class="chd">Registrar Batida</div>
+      <div class="chd">Batida Manual &amp; Cadastro de Rosto</div>
+      <div class="ff"><label>Funcionário</label>
+        <select id="ponto-funcionario" onchange="renderStatusHoje()"><option value="">— Selecione —</option></select>
+      </div>
       <div class="facial-row">
-        <button class="btn btn-primary" style="width:auto;" onclick="abrirPontoFacial()">📷 Bater ponto com reconhecimento facial</button>
         <button class="btn btn-outline" onclick="cadastrarRostoSelecionado()">＋ Cadastrar rosto</button>
         <span id="facial-info"></span>
       </div>
-      <div class="ff"><label>Funcionário (para batida manual ou cadastro de rosto)</label>
-        <select id="ponto-funcionario" onchange="renderStatusHoje()"><option value="">— Selecione —</option></select>
-      </div>
       <div class="punch-grid" id="ponto-status-hoje">
-        <div class="empty" style="grid-column:1/-1;">Selecione um funcionário para bater o ponto.</div>
+        <div class="empty" style="grid-column:1/-1;">Selecione um funcionário para batida manual ou cadastro de rosto.</div>
       </div>
     </div>
 
@@ -155,7 +162,8 @@ td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:no
         <tbody id="ponto-tbody-mes"><tr><td colspan="7" class="empty">Nenhum registro neste mês.</td></tr></tbody>
       </table></div>
       <div style="font-size:11px;color:var(--t3);margin-top:12px;">
-        Ao completar o dia (entrada + saída), faltas e horas extras são lançadas automaticamente no Banco de Horas do sistema principal (tolerância de 10 min).
+        O tipo da batida é deduzido pelo horário: 1ª batida = entrada · saída entre 10:30–14:00 = almoço · volta em até 3h · o resto = saída.
+        Ao completar o dia, faltas e horas extras são lançadas automaticamente no Banco de Horas do sistema principal (tolerância de 10 min).
       </div>
     </div>
   </div>
@@ -401,12 +409,12 @@ function renderStatusHoje(){
     info.style.color=f&&temRostoCadastrado(f)?"var(--green)":"var(--t3)";
   }
   if(!funcId){
-    cont.innerHTML='<div class="empty" style="grid-column:1/-1;">Selecione um funcionário para bater o ponto.</div>';
+    cont.innerHTML='<div class="empty" style="grid-column:1/-1;">Selecione um funcionário para batida manual ou cadastro de rosto.</div>';
     return;
   }
   const data=hojeISO();
   const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
-  cont.innerHTML=TIPOS_PONTO.map(t=>{
+  let html=TIPOS_PONTO.map(t=>{
     const rec=regs.find(r=>r.tipo===t.id);
     if(rec){
       return `<div class="punch-done">
@@ -419,8 +427,18 @@ function renderStatusHoje(){
         </div>
       </div>`;
     }
-    return `<button type="button" class="punch-btn" onclick="baterPonto('${t.id}')">${t.label}</button>`;
+    return `<div class="punch-done" style="opacity:.45;">
+      <div class="pd-label">${t.label}</div>
+      <div class="pd-hora" style="color:var(--t3);">—</div>
+    </div>`;
   }).join("");
+  const prox=inferirTipoBatida(funcId);
+  if(prox){
+    html+=`<button type="button" class="punch-btn" style="grid-column:1/-1;" onclick="baterPonto()">🕐 Registrar ${tipoPontoLabel(prox)} agora</button>`;
+  }else{
+    html+='<div class="empty" style="grid-column:1/-1;padding:12px;">✓ Dia encerrado — todas as batidas necessárias foram registradas.</div>';
+  }
+  cont.innerHTML=html;
 }
 window.renderStatusHoje=renderStatusHoje;
 function calcSaldoDiaPonto(funcId,data){
@@ -516,11 +534,15 @@ async function aposBatidaPonto(funcId,data){
 }
 
 /* ── AÇÕES ───────────────────────────────────────────────────── */
-window.baterPonto=async function(tipo){
+window.baterPonto=async function(){
   const funcId=$("ponto-funcionario")?.value;
   if(!funcId){toast("Selecione um funcionário","err");return;}
   const f=funcionarios.find(x=>x.id===funcId);
   if(!f){toast("Funcionário não encontrado","err");return;}
+  const tipo=inferirTipoBatida(funcId);
+  if(!tipo){toast("O dia já foi encerrado (saída registrada). Corrija pelas batidas se precisar.","warn");return;}
+  const desdeUltima=minutosDesdeUltimaBatida(funcId);
+  if(desdeUltima<INTERVALO_MIN_BATIDAS){toast(`Batida registrada há ${Math.max(1,Math.round(desdeUltima))} min. Aguarde ${INTERVALO_MIN_BATIDAS} min entre batidas ou corrija manualmente.`,"warn");return;}
   const data=hojeISO();
   const jaExiste=batidasPonto.find(b=>b.funcionarioId===funcId&&b.data===data&&b.tipo===tipo);
   if(jaExiste){toast("Este funcionário já registrou esta batida hoje.","err");return;}
@@ -666,10 +688,42 @@ function melhorMatchFacial(desc){
   });
   return best?{f:best,dist:bestDist}:null;
 }
-function proximoTipoPonto(funcId){
+/* Deduz o tipo da batida pelo horário e pelo que já foi batido:
+   - primeira batida do dia é sempre Entrada;
+   - Saída Almoço só entre 10:30 e 14:00 (fora disso, sair = Saída);
+   - Volta Almoço até 3h depois da saída para o almoço;
+   - o resto é Saída. Quem não pausa para almoçar nunca ganha
+     "Saída Almoço" errada no fim do dia. */
+const JANELA_ALMOCO_INICIO=630;   // 10:30
+const JANELA_ALMOCO_FIM=840;     // 14:00
+const VOLTA_ALMOCO_MAX_MIN=180;  // até 3h de almoço
+const INTERVALO_MIN_BATIDAS=15;  // minutos entre batidas da mesma pessoa
+function inferirTipoBatida(funcId){
   const data=hojeISO();
   const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
-  return TIPOS_PONTO.find(t=>!regs.some(r=>r.tipo===t.id))?.id||null;
+  const get=t=>regs.find(r=>r.tipo===t);
+  if(get("saida")) return null;
+  const agora=minutosDeHora(horaAgora());
+  if(!get("entrada")) return "entrada";
+  if(!get("saida_almoco")){
+    if(agora>=JANELA_ALMOCO_INICIO&&agora<JANELA_ALMOCO_FIM) return "saida_almoco";
+    return "saida";
+  }
+  if(!get("volta_almoco")){
+    const sa=minutosDeHora(get("saida_almoco").hora);
+    if(sa!=null&&agora-sa<=VOLTA_ALMOCO_MAX_MIN) return "volta_almoco";
+    return "saida";
+  }
+  return "saida";
+}
+window.inferirTipoBatida=inferirTipoBatida;
+function minutosDesdeUltimaBatida(funcId){
+  const data=hojeISO();
+  const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
+  if(!regs.length) return Infinity;
+  const agora=minutosDeHora(horaAgora());
+  const ultima=Math.max(...regs.map(b=>minutosDeHora(b.hora)??-1));
+  return agora-ultima;
 }
 async function pfLoop(){
   if(!pfAtivo) return;
@@ -700,9 +754,12 @@ async function pfLoop(){
       if(!match){
         setPfStatus("Rosto não reconhecido. Cadastre o rosto do funcionário primeiro.","warn");
       }else{
-        const tipo=proximoTipoPonto(match.f.id);
+        const tipo=inferirTipoBatida(match.f.id);
+        const desdeUltima=minutosDesdeUltimaBatida(match.f.id);
         if(!tipo){
-          setPfStatus(`${match.f.nome}: todas as batidas de hoje já foram registradas.`,"warn");
+          setPfStatus(`${match.f.nome}: o dia já foi encerrado (saída registrada).`,"warn");
+        }else if(desdeUltima<INTERVALO_MIN_BATIDAS){
+          setPfStatus(`${match.f.nome}: batida registrada há ${Math.max(1,Math.round(desdeUltima))} min. Aguarde ou corrija manualmente.`,"warn");
         }else{
           pfAtivo=false;
           const foto=pfSnapshot(video);
