@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Mello Style — Ponto Eletrônico</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0B0D12;--bg2:#12151D;--bg3:#181C26;--bd:rgba(255,255,255,.09);
+  --t1:#F4F4F5;--t2:#C7CAD1;--t3:#8B90A0;
+  --accent:#BFC3CA;--accent-dim:rgba(191,195,202,.12);
+  --green:#4ADE80;--red:#F87171;--warn:#FBBF24;
+  --r:16px;--r2:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--t1);font-family:'DM Sans',sans-serif;min-height:100vh;}
+button{font-family:inherit;}
+.wrap{max-width:960px;margin:0 auto;padding:20px 16px 60px;}
+.hidden{display:none !important;}
+
+/* ── LOGIN ── */
+#page-login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-box{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:34px 30px;width:100%;max-width:380px;}
+.login-logo{font-size:22px;font-weight:800;letter-spacing:.5px;margin-bottom:4px;}
+.login-sub{color:var(--t3);font-size:13px;margin-bottom:24px;}
+.ff{margin-bottom:14px;}
+.ff label{display:block;font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+.ff input,.ff select{width:100%;background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r2);color:var(--t1);padding:11px 13px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s;}
+.ff input:focus,.ff select:focus{border-color:var(--accent);}
+.btn{border:none;border-radius:var(--r2);padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s,transform .1s;}
+.btn:active{transform:scale(.98);}
+.btn-primary{background:linear-gradient(135deg,#BFC3CA,#8F949C);color:#0B0D12;width:100%;}
+.btn-outline{background:none;border:1px solid var(--bd);color:var(--t2);}
+.btn-ghost{background:none;border:1px solid var(--bd);color:var(--t3);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;}
+.btn-ghost:hover{color:var(--t1);}
+#login-status{font-size:12px;margin-top:12px;min-height:16px;color:var(--red);}
+
+/* ── HEADER ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--bd);margin-bottom:22px;flex-wrap:wrap;}
+.brand{font-size:17px;font-weight:800;letter-spacing:.4px;}
+.brand span{color:var(--t3);font-weight:500;}
+.top-right{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--t3);flex-wrap:wrap;}
+
+/* ── CARDS ── */
+.card{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:22px;margin-bottom:16px;}
+.chd{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:16px;}
+.clock-card{text-align:center;padding:30px 20px;}
+#relogio-hora{font-family:'DM Mono',monospace;font-size:56px;font-weight:600;letter-spacing:2px;line-height:1;}
+#relogio-data{color:var(--t3);font-size:14px;margin-top:10px;text-transform:capitalize;}
+
+/* ── PUNCH GRID ── */
+.punch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px;}
+.punch-btn{background:linear-gradient(135deg,#BFC3CA,#8F949C);color:#0B0D12;border:none;border-radius:var(--r2);padding:20px 10px;font-size:15px;font-weight:700;cursor:pointer;}
+.punch-done{background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r2);padding:14px;text-align:center;}
+.punch-done .pd-label{font-size:11px;color:var(--t3);margin-bottom:4px;}
+.punch-done .pd-hora{font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--green);}
+.punch-done .pd-actions{margin-top:8px;display:flex;gap:6px;justify-content:center;}
+.facial-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+#facial-info{font-size:11px;color:var(--t3);}
+.empty{color:var(--t3);text-align:center;padding:22px 10px;font-size:13px;}
+
+/* ── TABLES ── */
+.tbl-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);text-align:left;padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;}
+.mono{font-family:'DM Mono',monospace;}
+.mini-btn{background:none;border:1px solid var(--bd);color:var(--t2);border-radius:6px;padding:2px 6px;font-size:10px;cursor:pointer;}
+.mini-btn.x{color:var(--red);border-color:rgba(248,113,113,.3);}
+
+/* ── MODALS ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:16px;}
+.modal-overlay.open{display:flex;}
+.modal-box{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);width:100%;max-width:520px;max-height:92vh;overflow-y:auto;}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--bd);}
+.modal-title{font-size:15px;font-weight:700;}
+.modal-close{background:none;border:1px solid var(--bd);color:var(--t2);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:13px;}
+.modal-body{padding:20px;}
+.modal-footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--bd);}
+#pf-status{text-align:center;padding:12px;border-radius:10px;background:var(--bg3);border:1px solid var(--bd);margin-bottom:12px;font-size:13px;color:var(--t2);}
+#pf-video{width:100%;border-radius:12px;background:#000;transform:scaleX(-1);min-height:200px;}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg3);border:1px solid var(--bd);border-radius:12px;padding:12px 18px;font-size:13px;display:flex;gap:8px;align-items:center;opacity:0;transition:all .3s;z-index:99;max-width:92vw;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast-ok .t-icon{color:var(--green);}
+.toast-err .t-icon{color:var(--red);}
+.toast-warn .t-icon{color:var(--warn);}
+
+.month-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;}
+@media(max-width:600px){#relogio-hora{font-size:40px;}.card{padding:16px;}}
+</style>
+</head>
+<body>
+
+<div id="page-login">
+  <div class="login-box">
+    <div class="login-logo">MELLO STYLE</div>
+    <div class="login-sub">Ponto Eletrônico — entre com a mesma conta do sistema</div>
+    <div class="ff"><label>E-mail</label><input id="login-email" type="email" autocomplete="username" placeholder="email@exemplo.com"/></div>
+    <div class="ff"><label>Senha</label><input id="login-senha" type="password" autocomplete="current-password" placeholder="••••••••"/></div>
+    <button class="btn btn-primary" id="btn-login" onclick="doLogin()">Entrar</button>
+    <div id="login-status"></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">MELLO STYLE <span>· Ponto Eletrônico</span></div>
+      <div class="top-right">
+        <span id="user-email"></span>
+        <button class="btn-ghost" onclick="recarregar()">↻ Atualizar</button>
+        <button class="btn-ghost" onclick="doLogout()">Sair</button>
+      </div>
+    </div>
+
+    <div class="card clock-card">
+      <div id="relogio-hora">--:--:--</div>
+      <div id="relogio-data"></div>
+    </div>
+
+    <div class="card">
+      <div class="chd">Registrar Batida</div>
+      <div class="facial-row">
+        <button class="btn btn-primary" style="width:auto;" onclick="abrirPontoFacial()">📷 Bater ponto com reconhecimento facial</button>
+        <button class="btn btn-outline" onclick="cadastrarRostoSelecionado()">＋ Cadastrar rosto</button>
+        <span id="facial-info"></span>
+      </div>
+      <div class="ff"><label>Funcionário (para batida manual ou cadastro de rosto)</label>
+        <select id="ponto-funcionario" onchange="renderStatusHoje()"><option value="">— Selecione —</option></select>
+      </div>
+      <div class="punch-grid" id="ponto-status-hoje">
+        <div class="empty" style="grid-column:1/-1;">Selecione um funcionário para bater o ponto.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chd">Registros de Hoje</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Funcionário</th><th>Entrada</th><th>Saída Almoço</th><th>Volta Almoço</th><th>Saída</th><th>Horas</th></tr></thead>
+        <tbody id="ponto-tbody-hoje"><tr><td colspan="6" class="empty">Nenhuma batida hoje.</td></tr></tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <div class="chd">Relatório Mensal</div>
+      <div class="month-row">
+        <div class="ff" style="margin:0;max-width:220px;"><label>Mês de referência</label><input id="ponto-mes" type="month" onchange="renderTabelaMes()"/></div>
+        <button class="btn btn-outline" onclick="exportarPontoExcel()">⬇ Exportar para Excel</button>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Data</th><th>Funcionário</th><th>Entrada</th><th>Saída Almoço</th><th>Volta Almoço</th><th>Saída</th><th>Horas</th></tr></thead>
+        <tbody id="ponto-tbody-mes"><tr><td colspan="7" class="empty">Nenhum registro neste mês.</td></tr></tbody>
+      </table></div>
+      <div style="font-size:11px;color:var(--t3);margin-top:12px;">
+        Ao completar o dia (entrada + saída), faltas e horas extras são lançadas automaticamente no Banco de Horas do sistema principal (tolerância de 10 min).
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-ponto-facial" class="modal-overlay" onclick="if(event.target===this)fecharPontoFacial()">
+  <div class="modal-box">
+    <div class="modal-hd"><div class="modal-title" id="pf-title">📷 Ponto com Reconhecimento Facial</div><button class="modal-close" onclick="fecharPontoFacial()">✕</button></div>
+    <div class="modal-body">
+      <div id="pf-status">Iniciando...</div>
+      <video id="pf-video" autoplay muted playsinline></video>
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="fecharPontoFacial()">Fechar</button></div>
+  </div>
+</div>
+
+<div id="modal-foto-batida" class="modal-overlay" onclick="if(event.target===this)fecharFotoBatida()">
+  <div class="modal-box">
+    <div class="modal-hd"><div class="modal-title">📷 Foto da Batida</div><button class="modal-close" onclick="fecharFotoBatida()">✕</button></div>
+    <div class="modal-body" style="text-align:center;">
+      <img id="foto-batida-img" alt="Foto da batida" style="max-width:100%;border-radius:12px;"/>
+      <div id="foto-batida-info" style="margin-top:10px;color:var(--t3);font-size:12px;"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="fecharFotoBatida()">Fechar</button></div>
+  </div>
+</div>
+
+<div id="modal-editar-batida" class="modal-overlay" onclick="if(event.target===this)fecharModalEditarBatida()">
+  <div class="modal-box">
+    <div class="modal-hd"><div class="modal-title">✎ Corrigir Batida</div><button class="modal-close" onclick="fecharModalEditarBatida()">✕</button></div>
+    <input type="hidden" id="edit-batida-id"/>
+    <div class="modal-body">
+      <div class="ff"><label>Tipo</label><select id="edit-batida-tipo">
+        <option value="entrada">Entrada</option><option value="saida_almoco">Saída Almoço</option>
+        <option value="volta_almoco">Volta Almoço</option><option value="saida">Saída</option>
+      </select></div>
+      <div class="ff"><label>Hora</label><input id="edit-batida-hora" type="time"/></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" style="color:var(--red);border-color:rgba(248,113,113,.3);" onclick="excluirBatidaDoModal()">Excluir</button>
+      <button class="btn btn-outline" onclick="fecharModalEditarBatida()">Cancelar</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="salvarEdicaoBatida()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,browserLocalPersistence,setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore,collection,addDoc,getDocs,doc,updateDoc,deleteDoc,query,where,Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig={apiKey:"AIzaSyBwoI6IOPgWul1uxFwJXJTQ4cGyOS9F_Fc",authDomain:"producao-saas.firebaseapp.com",projectId:"producao-saas",storageBucket:"producao-saas.firebasestorage.app",messagingSenderId:"330333904905",appId:"1:330333904905:web:6d5e2e0ec6f62d224458d8"};
+const app=initializeApp(firebaseConfig);
+const auth=getAuth(app);
+const db=getFirestore(app);
+
+/* ── HELPERS ─────────────────────────────────────────────────── */
+const $=id=>document.getElementById(id);
+function toast(msg,type="ok"){
+  const t=document.createElement("div");
+  t.className=`toast toast-${type}`;
+  const icon=type==="err"?"✕":type==="warn"?"⚠":"✓";
+  t.innerHTML=`<span class="t-icon">${icon}</span><span></span>`;
+  t.querySelector("span:last-child").textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.classList.add("show"),10);
+  setTimeout(()=>{t.classList.remove("show");setTimeout(()=>t.remove(),400);},3600);
+}
+function safeText(v){return String(v??"").trim();}
+function normalize(v){return safeText(v).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
+function fmtHorasCompact(min){const sinal=min<0?"-":"";const total=Math.abs(min||0);const h=Math.floor(total/60),m=total%60;return `${sinal}${h}:${String(m).padStart(2,"0")}`;}
+function hojeISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+function horaAgora(){return new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});}
+function monthKeyLocal(date=new Date()){const d=date instanceof Date&&!Number.isNaN(date.getTime())?date:new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
+function firebaseErrorMessage(err){
+  const code=String(err?.code||"");
+  const msg=String(err?.message||"");
+  if(code.includes("session-expired")||code.includes("unauthenticated")) return "Sessão expirada. Faça login novamente.";
+  if(code.includes("permission-denied")) return "Sem permissão no Firebase. Verifique as regras do Firestore.";
+  if(code.includes("unavailable")||code.includes("network-request-failed")) return "Falha de conexão. Verifique a internet.";
+  if(code.includes("invalid-credential")||code.includes("wrong-password")||code.includes("user-not-found")) return "E-mail ou senha incorretos.";
+  return msg||"Erro ao salvar.";
+}
+function requireAuthUser(){
+  const user=auth.currentUser;
+  if(!user?.uid){const err=new Error("Sessão expirada. Faça login novamente.");err.code="auth/session-expired";throw err;}
+  return user;
+}
+function cleanFirestoreValue(v){
+  if(v===undefined) return null;
+  if(typeof v==="number") return Number.isFinite(v)?v:0;
+  if(Array.isArray(v)) return v.map(cleanFirestoreValue);
+  if(v&&typeof v==="object"&&typeof v.toDate!=="function"&&!(v instanceof Date)){
+    return Object.fromEntries(Object.entries(v).map(([k,val])=>[k,cleanFirestoreValue(val)]));
+  }
+  return v;
+}
+/* Mesmos campos de dono usados pelo sistema principal, para os dados
+   aparecerem nos dois lugares. */
+function withOwner(data){
+  const user=requireAuthUser();
+  const uid=user.uid;
+  const now=Timestamp.now();
+  const clean=cleanFirestoreValue(data||{});
+  const payload={...clean,ownerId:uid,uid,userId:uid,createdBy:clean?.createdBy||uid,empresaId:"mello-style",perfilCriador:"ponto",updatedAt:now,updatedEm:now};
+  if(Object.prototype.hasOwnProperty.call(clean,"criadoEm")||Object.prototype.hasOwnProperty.call(clean,"createdAt")){
+    payload.criadoEm=clean.criadoEm||clean.createdAt||now;
+    payload.createdAt=clean.createdAt||clean.criadoEm||now;
+  }
+  return payload;
+}
+function canAccessDoc(item){
+  const uid=auth.currentUser?.uid;
+  if(!uid) return true;
+  return !item?.ownerId||item.ownerId===uid||item.uid===uid||item.userId===uid||item.createdBy===uid;
+}
+
+/* ── JORNADAS (mesmas regras do sistema principal) ───────────── */
+function isKetelen(nome=""){return normalize(nome).includes("ketelen");}
+function getEscalaPadraoFuncionario(f){
+  if(isKetelen(f?.nome||"")) return {tipo:"ketelen_7h"};
+  return {tipo:"geral_9h45_sex_6h"};
+}
+function getJornadaMinForDate(f,dataStr=""){
+  const escala=f?.escalaPadrao||getEscalaPadraoFuncionario(f).tipo;
+  if(escala==="ketelen_7h") return 420;
+  if(escala==="geral_9h45_sex_6h"){
+    if(dataStr){
+      const d=new Date(`${dataStr}T12:00:00`);
+      if(!Number.isNaN(d.getTime())&&d.getDay()===5) return 360;
+    }
+    return 570;
+  }
+  return f?.jornadaMin||480;
+}
+
+/* ── PONTO: CÁLCULOS ─────────────────────────────────────────── */
+const TIPOS_PONTO=[{id:"entrada",label:"Entrada"},{id:"saida_almoco",label:"Saída Almoço"},{id:"volta_almoco",label:"Volta Almoço"},{id:"saida",label:"Saída"}];
+function tipoPontoLabel(id){return TIPOS_PONTO.find(t=>t.id===id)?.label||id;}
+function minutosDeHora(hhmm){
+  if(!hhmm) return null;
+  const [h,m]=String(hhmm).split(":").map(Number);
+  if(Number.isNaN(h)||Number.isNaN(m)) return null;
+  return h*60+m;
+}
+function calcularMinutosTrabalhados(porTipoHoras){
+  const entrada=minutosDeHora(porTipoHoras.entrada);
+  const saidaAlmoco=minutosDeHora(porTipoHoras.saida_almoco);
+  const voltaAlmoco=minutosDeHora(porTipoHoras.volta_almoco);
+  const saida=minutosDeHora(porTipoHoras.saida);
+  if(entrada==null||saida==null) return null;
+  let total=saida-entrada;
+  if(saidaAlmoco!=null&&voltaAlmoco!=null) total-=Math.max(0,voltaAlmoco-saidaAlmoco);
+  return total>0?total:0;
+}
+function agruparBatidas(lista){
+  const map=new Map();
+  (lista||[]).forEach(b=>{
+    const key=b.funcionarioId+"|"+b.data;
+    if(!map.has(key)) map.set(key,{funcionarioId:b.funcionarioId,funcionarioNome:b.funcionarioNome,data:b.data,porTipo:{}});
+    map.get(key).porTipo[b.tipo]=b;
+  });
+  return [...map.values()];
+}
+
+/* ── DADOS ───────────────────────────────────────────────────── */
+let funcionarios=[],batidasPonto=[],pontos=[];
+async function getOwnedDocs(collectionName){
+  const uid=auth.currentUser?.uid;
+  const ref=collection(db,collectionName);
+  let ownedDocs=[],ownerQueryWorked=false;
+  if(uid){
+    try{
+      const snap=await getDocs(query(ref,where("ownerId","==",uid)));
+      ownedDocs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      ownerQueryWorked=true;
+    }catch(e){ console.warn("OWNER_QUERY_WARN",collectionName,e); }
+  }
+  try{
+    const snap=await getDocs(ref);
+    const allDocs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(canAccessDoc);
+    const merged=new Map();
+    [...ownedDocs,...allDocs].forEach(item=>{ if(item?.id) merged.set(item.id,item); });
+    return [...merged.values()];
+  }catch(e){
+    if(ownerQueryWorked) return ownedDocs;
+    throw e;
+  }
+}
+async function loadData(){
+  try{
+    const [fDocs,bDocs,pDocs]=await Promise.all([
+      getOwnedDocs("funcionarios"),
+      getOwnedDocs("batidasPonto"),
+      getOwnedDocs("pontos")
+    ]);
+    funcionarios=fDocs.sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||"")));
+    batidasPonto=bDocs;
+    pontos=pDocs;
+    populateSelect();
+    renderTudo();
+  }catch(e){
+    console.error("LOAD_DATA_ERROR",e);
+    toast("Erro ao carregar dados: "+firebaseErrorMessage(e),"err");
+  }
+}
+window.recarregar=async()=>{await loadData();toast("Dados atualizados!");};
+function populateSelect(){
+  const sel=$("ponto-funcionario");
+  if(!sel) return;
+  const anterior=sel.value;
+  sel.innerHTML='<option value="">— Selecione —</option>'+funcionarios.filter(f=>f.status!=="Inativo").map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
+  if(anterior&&funcionarios.some(f=>f.id===anterior)) sel.value=anterior;
+}
+
+/* ── RELÓGIO ─────────────────────────────────────────────────── */
+setInterval(()=>{
+  const now=new Date();
+  const elH=$("relogio-hora");
+  if(elH) elH.textContent=now.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  const elD=$("relogio-data");
+  if(elD) elD.textContent=now.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+},1000);
+
+/* ── RENDER ──────────────────────────────────────────────────── */
+function renderTudo(){
+  const mesEl=$("ponto-mes");
+  if(mesEl&&!mesEl.value) mesEl.value=monthKeyLocal();
+  renderStatusHoje();
+  renderTabelaHoje();
+  renderTabelaMes();
+}
+function temRostoCadastrado(f){return Array.isArray(f?.faceDescriptor)&&f.faceDescriptor.length===128;}
+function renderStatusHoje(){
+  const cont=$("ponto-status-hoje");
+  if(!cont) return;
+  const funcId=$("ponto-funcionario")?.value||"";
+  const info=$("facial-info");
+  if(info){
+    const f=funcionarios.find(x=>x.id===funcId);
+    info.textContent=f?(temRostoCadastrado(f)?"✓ Rosto cadastrado — pode usar o ponto facial":"Rosto ainda não cadastrado — clique em “Cadastrar rosto”"):"";
+    info.style.color=f&&temRostoCadastrado(f)?"var(--green)":"var(--t3)";
+  }
+  if(!funcId){
+    cont.innerHTML='<div class="empty" style="grid-column:1/-1;">Selecione um funcionário para bater o ponto.</div>';
+    return;
+  }
+  const data=hojeISO();
+  const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
+  cont.innerHTML=TIPOS_PONTO.map(t=>{
+    const rec=regs.find(r=>r.tipo===t.id);
+    if(rec){
+      return `<div class="punch-done">
+        <div class="pd-label">${t.label}</div>
+        <div class="pd-hora">${rec.hora}</div>
+        <div class="pd-actions">
+          ${rec.foto?`<button class="mini-btn" onclick="verFotoBatida('${rec.id}')" title="Ver foto">📷</button>`:""}
+          <button class="mini-btn" onclick="editarBatida('${rec.id}')" title="Corrigir">✎</button>
+          <button class="mini-btn x" onclick="deletarBatida('${rec.id}')" title="Remover">✕</button>
+        </div>
+      </div>`;
+    }
+    return `<button type="button" class="punch-btn" onclick="baterPonto('${t.id}')">${t.label}</button>`;
+  }).join("");
+}
+window.renderStatusHoje=renderStatusHoje;
+function calcSaldoDiaPonto(funcId,data){
+  const f=funcionarios.find(x=>x.id===funcId);
+  if(!f) return null;
+  const porTipo={};
+  batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data).forEach(b=>{porTipo[b.tipo]=b.hora;});
+  if(!porTipo.entrada||!porTipo.saida) return null;
+  const minTrab=calcularMinutosTrabalhados(porTipo);
+  if(minTrab==null) return null;
+  const jornada=getJornadaMinForDate(f,data);
+  return {minTrab,jornada,saldo:minTrab-jornada};
+}
+function celulaBatida(rec){
+  if(!rec) return '<span style="color:var(--t3)">—</span>';
+  const fotoBtn=rec.foto?` <button class="mini-btn" onclick="verFotoBatida('${rec.id}')" title="Ver foto">📷</button>`:"";
+  return `<span class="mono">${rec.hora}</span>${fotoBtn} <button class="mini-btn" onclick="editarBatida('${rec.id}')" title="Editar">✎</button>`;
+}
+function renderLinhaBatidas(g,mostrarData){
+  const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
+  const minTrab=calcularMinutosTrabalhados(horasMap);
+  const horasLabel=minTrab==null?"—":fmtHorasCompact(minTrab)+"h";
+  let saldoBadge="";
+  const calcDia=calcSaldoDiaPonto(g.funcionarioId,g.data);
+  if(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN){
+    const pos=calcDia.saldo>0;
+    saldoBadge=` <span class="mono" style="font-size:10px;font-weight:700;color:${pos?"var(--green)":"var(--red)"};" title="Jornada do dia: ${fmtHorasCompact(calcDia.jornada)}h">(${pos?"+":"−"}${fmtHorasCompact(Math.abs(calcDia.saldo))})</span>`;
+  }
+  const dataCol=mostrarData?(()=>{const [y,mo,d]=g.data.split("-");return `<td class="mono" style="font-size:12px;">${d}/${mo}/${y}</td>`;})():"";
+  return `<tr>
+    ${dataCol}
+    <td style="font-weight:600;">${g.funcionarioNome}</td>
+    <td>${celulaBatida(g.porTipo.entrada)}</td>
+    <td>${celulaBatida(g.porTipo.saida_almoco)}</td>
+    <td>${celulaBatida(g.porTipo.volta_almoco)}</td>
+    <td>${celulaBatida(g.porTipo.saida)}</td>
+    <td class="mono" style="font-weight:700;">${horasLabel}${saldoBadge}</td>
+  </tr>`;
+}
+function renderTabelaHoje(){
+  const tb=$("ponto-tbody-hoje");
+  if(!tb) return;
+  const data=hojeISO();
+  const grupos=agruparBatidas(batidasPonto.filter(b=>b.data===data)).sort((a,b)=>String(a.funcionarioNome).localeCompare(String(b.funcionarioNome)));
+  if(!grupos.length){tb.innerHTML='<tr><td colspan="6" class="empty">Nenhuma batida hoje.</td></tr>';return;}
+  tb.innerHTML=grupos.map(g=>renderLinhaBatidas(g,false)).join("");
+}
+function renderTabelaMes(){
+  const tb=$("ponto-tbody-mes");
+  if(!tb) return;
+  const mes=$("ponto-mes")?.value||monthKeyLocal();
+  const grupos=agruparBatidas(batidasPonto.filter(b=>b.data&&b.data.slice(0,7)===mes))
+    .sort((a,b)=>b.data===a.data?String(a.funcionarioNome).localeCompare(String(b.funcionarioNome)):b.data.localeCompare(a.data));
+  if(!grupos.length){tb.innerHTML='<tr><td colspan="7" class="empty">Nenhum registro neste mês.</td></tr>';return;}
+  tb.innerHTML=grupos.map(g=>renderLinhaBatidas(g,true)).join("");
+}
+window.renderTabelaMes=renderTabelaMes;
+
+/* ── PONTO → BANCO DE HORAS (automático) ─────────────────────── */
+const PONTO_TOLERANCIA_MIN=10;
+async function sincronizarBancoHorasDia(funcId,data){
+  const f=funcionarios.find(x=>x.id===funcId);
+  if(!f||!data) return false;
+  const autosDia=pontos.filter(p=>p.funcionarioId===funcId&&p.data===data&&p.origem==="ponto-auto");
+  const calcDia=calcSaldoDiaPonto(funcId,data);
+  const alvo=(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN)
+    ?{tipo:calcDia.saldo<0?"falta":"extra",minutos:Math.abs(calcDia.saldo)}
+    :null;
+  if(!alvo){
+    if(!autosDia.length) return false;
+    await Promise.allSettled(autosDia.map(p=>deleteDoc(doc(db,"pontos",p.id))));
+    return true;
+  }
+  if(autosDia.length===1&&autosDia[0].tipo===alvo.tipo&&autosDia[0].minutos===alvo.minutos) return false;
+  await Promise.allSettled(autosDia.map(p=>deleteDoc(doc(db,"pontos",p.id))));
+  const obs=`Automático (ponto): trabalhou ${fmtHorasCompact(calcDia.minTrab)}h, jornada ${fmtHorasCompact(calcDia.jornada)}h`;
+  await addDoc(collection(db,"pontos"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo:alvo.tipo,minutos:alvo.minutos,obs,origem:"ponto-auto",criadoEm:Timestamp.now()}));
+  return true;
+}
+async function aposBatidaPonto(funcId,data){
+  await loadData();
+  try{
+    const mudou=await sincronizarBancoHorasDia(funcId,data);
+    if(mudou){
+      const calcDia=calcSaldoDiaPonto(funcId,data);
+      if(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN){
+        const lbl=calcDia.saldo<0?`Falta de ${fmtHorasCompact(Math.abs(calcDia.saldo))}h`:`Hora extra de ${fmtHorasCompact(calcDia.saldo)}h`;
+        toast(`${lbl} lançada no Banco de Horas automaticamente.`,"warn");
+      }
+      await loadData();
+    }
+  }catch(e){ console.error("SYNC_BANCO_HORAS_ERROR",e); }
+}
+
+/* ── AÇÕES ───────────────────────────────────────────────────── */
+window.baterPonto=async function(tipo){
+  const funcId=$("ponto-funcionario")?.value;
+  if(!funcId){toast("Selecione um funcionário","err");return;}
+  const f=funcionarios.find(x=>x.id===funcId);
+  if(!f){toast("Funcionário não encontrado","err");return;}
+  const data=hojeISO();
+  const jaExiste=batidasPonto.find(b=>b.funcionarioId===funcId&&b.data===data&&b.tipo===tipo);
+  if(jaExiste){toast("Este funcionário já registrou esta batida hoje.","err");return;}
+  const hora=horaAgora();
+  try{
+    await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,hora,criadoEm:Timestamp.now()}));
+    toast(`${tipoPontoLabel(tipo)} registrada às ${hora}!`);
+    await aposBatidaPonto(funcId,data);
+  }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+};
+window.deletarBatida=async id=>{
+  if(!confirm("Remover esta batida de ponto?"))return;
+  const b=batidasPonto.find(x=>x.id===id);
+  try{
+    await deleteDoc(doc(db,"batidasPonto",id));toast("Removido.");
+    if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
+  }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+};
+window.editarBatida=function(id){
+  const b=batidasPonto.find(x=>x.id===id);if(!b)return;
+  $("edit-batida-id").value=id;
+  $("edit-batida-tipo").value=b.tipo;
+  $("edit-batida-hora").value=b.hora;
+  $("modal-editar-batida").classList.add("open");
+};
+window.fecharModalEditarBatida=()=>{$("modal-editar-batida")?.classList.remove("open");};
+window.salvarEdicaoBatida=async()=>{
+  const id=$("edit-batida-id").value;
+  const tipo=$("edit-batida-tipo")?.value;
+  const hora=$("edit-batida-hora")?.value;
+  if(!hora){toast("Informe a hora","err");return;}
+  const b=batidasPonto.find(x=>x.id===id);
+  try{
+    await updateDoc(doc(db,"batidasPonto",id),withOwner({tipo,hora}));
+    toast("Batida atualizada!");fecharModalEditarBatida();
+    if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
+  }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+};
+window.excluirBatidaDoModal=async()=>{
+  const id=$("edit-batida-id").value;if(!id)return;
+  fecharModalEditarBatida();
+  await window.deletarBatida(id);
+};
+
+/* ── EXPORTAR EXCEL ──────────────────────────────────────────── */
+window.exportarPontoExcel=function(){
+  const mes=$("ponto-mes")?.value||monthKeyLocal();
+  const lista=batidasPonto.filter(b=>b.data&&b.data.slice(0,7)===mes);
+  if(!lista.length){toast("Nenhum registro neste mês para exportar","warn");return;}
+  const grupos=agruparBatidas(lista).sort((a,b)=>a.data===b.data?String(a.funcionarioNome).localeCompare(String(b.funcionarioNome)):a.data.localeCompare(b.data));
+  const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  let csv="Data,Funcionário,Entrada,Saída Almoço,Volta Almoço,Saída,Horas Trabalhadas,Jornada,Saldo,Status\r\n";
+  csv+=grupos.map(g=>{
+    const [y,mo,d]=g.data.split("-");
+    const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
+    const minTrab=calcularMinutosTrabalhados(horasMap);
+    const horasLabel=minTrab==null?"":fmtHorasCompact(minTrab);
+    const completo=g.porTipo.entrada&&g.porTipo.saida;
+    const status=completo?"Completo":"Incompleto";
+    const calcDia=calcSaldoDiaPonto(g.funcionarioId,g.data);
+    const jornadaLabel=calcDia?fmtHorasCompact(calcDia.jornada):"";
+    const saldoLabel=calcDia?(calcDia.saldo===0?"0:00":(calcDia.saldo>0?"+":"-")+fmtHorasCompact(Math.abs(calcDia.saldo))):"";
+    return [`${d}/${mo}/${y}`,g.funcionarioNome,horasMap.entrada,horasMap.saida_almoco,horasMap.volta_almoco,horasMap.saida,horasLabel,jornadaLabel,saldoLabel,status].map(esc).join(",");
+  }).join("\r\n");
+  const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);const a=document.createElement("a");
+  a.href=url;a.download=`ponto-${mes}.csv`;
+  a.click();URL.revokeObjectURL(url);toast("Planilha de ponto exportada para Excel!");
+};
+
+/* ── PONTO FACIAL (face-api.js, carregada sob demanda) ───────── */
+const PF_SCRIPT_URLS=[
+  "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js",
+  "https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js",
+  "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/dist/face-api.min.js"
+];
+const PF_MODEL_URLS=[
+  "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights",
+  "https://unpkg.com/face-api.js@0.22.2/weights",
+  "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights"
+];
+let pfStream=null,pfTimer=null,pfModo="reconhecer",pfEnrollFunc=null,pfBusy=false,pfAtivo=false,pfAmostras=[];
+let __faceApiPromise=null;
+async function pfCarregarScript(){
+  if(window.faceapi) return;
+  let lastErr=null;
+  for(const url of PF_SCRIPT_URLS){
+    try{
+      const resp=await fetch(url);
+      if(!resp.ok) throw new Error("HTTP "+resp.status);
+      const code=await resp.text();
+      const blobUrl=URL.createObjectURL(new Blob([code],{type:"text/javascript"}));
+      await new Promise((res,rej)=>{
+        const s=document.createElement("script");
+        s.src=blobUrl;s.onload=res;s.onerror=()=>rej(new Error("Falha ao executar script"));
+        document.head.appendChild(s);
+      });
+      URL.revokeObjectURL(blobUrl);
+      if(window.faceapi) return;
+      throw new Error("faceapi não inicializou");
+    }catch(e){ lastErr=e; console.warn("PF_SCRIPT_FALLBACK",url,e?.message||e); }
+  }
+  throw lastErr||new Error("Não foi possível carregar a biblioteca facial");
+}
+async function pfCarregarModelos(){
+  let lastErr=null;
+  for(const base of PF_MODEL_URLS){
+    try{
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(base),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(base),
+        faceapi.nets.faceRecognitionNet.loadFromUri(base)
+      ]);
+      return;
+    }catch(e){ lastErr=e; console.warn("PF_MODEL_FALLBACK",base,e?.message||e); }
+  }
+  throw lastErr||new Error("Não foi possível baixar os modelos faciais");
+}
+function carregarFaceApi(){
+  if(__faceApiPromise) return __faceApiPromise;
+  __faceApiPromise=(async()=>{ await pfCarregarScript(); await pfCarregarModelos(); })();
+  __faceApiPromise.catch(()=>{ __faceApiPromise=null; });
+  return __faceApiPromise;
+}
+function setPfStatus(msg,tipo){
+  const el=$("pf-status");if(!el)return;
+  el.textContent=msg;
+  el.style.color=tipo==="ok"?"var(--green)":tipo==="err"?"var(--red)":tipo==="warn"?"var(--warn)":"var(--t2)";
+}
+function pfSnapshot(video){
+  const c=document.createElement("canvas");
+  const w=240,h=Math.round((video.videoHeight/video.videoWidth)*w)||180;
+  c.width=w;c.height=h;
+  c.getContext("2d").drawImage(video,0,0,w,h);
+  return c.toDataURL("image/jpeg",0.7);
+}
+function melhorMatchFacial(desc){
+  let best=null,bestDist=0.5;
+  funcionarios.forEach(f=>{
+    if(!temRostoCadastrado(f)) return;
+    const d=faceapi.euclideanDistance(desc,new Float32Array(f.faceDescriptor));
+    if(d<bestDist){bestDist=d;best=f;}
+  });
+  return best?{f:best,dist:bestDist}:null;
+}
+function proximoTipoPonto(funcId){
+  const data=hojeISO();
+  const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
+  return TIPOS_PONTO.find(t=>!regs.some(r=>r.tipo===t.id))?.id||null;
+}
+async function pfLoop(){
+  if(!pfAtivo) return;
+  const video=$("pf-video");
+  if(!video||video.readyState<2||pfBusy){pfTimer=setTimeout(pfLoop,300);return;}
+  pfBusy=true;
+  try{
+    const det=await faceapi.detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.4})).withFaceLandmarks(true).withFaceDescriptor();
+    if(!pfAtivo){pfBusy=false;return;}
+    if(!det){
+      setPfStatus("Posicione o rosto de frente para a câmera...");
+    }else if(pfModo==="cadastrar"){
+      pfAmostras.push(det.descriptor);
+      setPfStatus(`Capturando rosto de ${pfEnrollFunc?.nome||"funcionário"}... ${pfAmostras.length}/3`);
+      if(pfAmostras.length>=3){
+        pfAtivo=false;
+        const media=new Array(128).fill(0);
+        pfAmostras.forEach(d=>{for(let i=0;i<128;i++)media[i]+=d[i]/pfAmostras.length;});
+        await updateDoc(doc(db,"funcionarios",pfEnrollFunc.id),withOwner({faceDescriptor:media}));
+        setPfStatus(`✓ Rosto de ${pfEnrollFunc.nome} cadastrado com sucesso!`,"ok");
+        toast(`Rosto de ${pfEnrollFunc.nome} cadastrado!`);
+        setTimeout(()=>{fecharPontoFacial();},1500);
+        loadData();
+        pfBusy=false;return;
+      }
+    }else{
+      const match=melhorMatchFacial(det.descriptor);
+      if(!match){
+        setPfStatus("Rosto não reconhecido. Cadastre o rosto do funcionário primeiro.","warn");
+      }else{
+        const tipo=proximoTipoPonto(match.f.id);
+        if(!tipo){
+          setPfStatus(`${match.f.nome}: todas as batidas de hoje já foram registradas.`,"warn");
+        }else{
+          pfAtivo=false;
+          const foto=pfSnapshot(video);
+          const hora=horaAgora();
+          const dataBatida=hojeISO();
+          await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:match.f.id,funcionarioNome:match.f.nome,data:dataBatida,tipo,hora,foto,origem:"facial",criadoEm:Timestamp.now()}));
+          setPfStatus(`✓ ${match.f.nome} — ${tipoPontoLabel(tipo)} registrada às ${hora}!`,"ok");
+          toast(`${match.f.nome}: ${tipoPontoLabel(tipo)} registrada às ${hora}!`);
+          setTimeout(()=>{fecharPontoFacial();},1800);
+          aposBatidaPonto(match.f.id,dataBatida);
+          pfBusy=false;return;
+        }
+      }
+    }
+  }catch(e){
+    console.error("PF_LOOP_ERROR",e);
+    setPfStatus("Erro na análise facial: "+(e?.message||e),"err");
+  }
+  pfBusy=false;
+  if(pfAtivo) pfTimer=setTimeout(pfLoop,600);
+}
+async function abrirCameraFacial(modo){
+  pfModo=modo;pfAmostras=[];
+  const modal=$("modal-ponto-facial");if(!modal)return;
+  const titulo=$("pf-title");
+  if(titulo) titulo.textContent=modo==="cadastrar"?`📷 Cadastrar Rosto — ${pfEnrollFunc?.nome||""}`:"📷 Ponto com Reconhecimento Facial";
+  modal.classList.add("open");
+  setPfStatus("Carregando modelo de reconhecimento facial... (pode demorar na primeira vez)");
+  try{ await carregarFaceApi(); }
+  catch(e){ console.error("PF_LOAD_ERROR",e); setPfStatus("Não foi possível carregar o modelo facial. Verifique a conexão com a internet.","err"); return; }
+  setPfStatus("Iniciando câmera...");
+  try{
+    pfStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640}},audio:false});
+    const video=$("pf-video");
+    video.srcObject=pfStream;
+    await video.play().catch(()=>{});
+  }catch(e){ console.error("PF_CAMERA_ERROR",e); setPfStatus("Câmera indisponível: "+(e?.message||e),"err"); return; }
+  pfAtivo=true;pfBusy=false;
+  pfTimer=setTimeout(pfLoop,400);
+}
+window.abrirPontoFacial=()=>{abrirCameraFacial("reconhecer");};
+window.cadastrarRostoSelecionado=()=>{
+  const funcId=$("ponto-funcionario")?.value;
+  if(!funcId){toast("Selecione o funcionário para cadastrar o rosto","err");return;}
+  const f=funcionarios.find(x=>x.id===funcId);
+  if(!f){toast("Funcionário não encontrado","err");return;}
+  pfEnrollFunc=f;
+  abrirCameraFacial("cadastrar");
+};
+window.fecharPontoFacial=()=>{
+  pfAtivo=false;
+  if(pfTimer){clearTimeout(pfTimer);pfTimer=null;}
+  if(pfStream){try{pfStream.getTracks().forEach(t=>t.stop());}catch(_e){} pfStream=null;}
+  const v=$("pf-video");if(v)v.srcObject=null;
+  $("modal-ponto-facial")?.classList.remove("open");
+};
+window.verFotoBatida=id=>{
+  const b=batidasPonto.find(x=>x.id===id);
+  if(!b||!b.foto){toast("Esta batida não tem foto","warn");return;}
+  $("foto-batida-img").src=b.foto;
+  const [y,mo,d]=String(b.data||"").split("-");
+  $("foto-batida-info").textContent=`${b.funcionarioNome} — ${tipoPontoLabel(b.tipo)} às ${b.hora} em ${d}/${mo}/${y}${b.origem==="facial"?" • reconhecimento facial":""}`;
+  $("modal-foto-batida").classList.add("open");
+};
+window.fecharFotoBatida=()=>{$("modal-foto-batida")?.classList.remove("open");};
+
+/* ── LOGIN / AUTH ────────────────────────────────────────────── */
+function setLoginStatus(msg){const el=$("login-status");if(el)el.textContent=msg||"";}
+window.doLogin=async()=>{
+  const email=safeText($("login-email")?.value);
+  const senha=$("login-senha")?.value||"";
+  if(!email||!senha){setLoginStatus("Informe e-mail e senha.");return;}
+  const btn=$("btn-login");
+  if(btn){btn.disabled=true;btn.textContent="Entrando...";}
+  setLoginStatus("");
+  try{
+    try{ await setPersistence(auth,browserLocalPersistence); }catch(_e){}
+    await signInWithEmailAndPassword(auth,email,senha);
+  }catch(e){
+    console.error("LOGIN_ERROR",e);
+    setLoginStatus(firebaseErrorMessage(e));
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent="Entrar";}
+  }
+};
+window.doLogout=async()=>{
+  try{ await signOut(auth); }catch(e){ console.error("LOGOUT_ERROR",e); }
+};
+document.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!$("page-login").classList.contains("hidden")){
+    const a=document.activeElement;
+    if(a&&(a.id==="login-email"||a.id==="login-senha")) window.doLogin();
+  }
+  if(e.key==="Escape"){
+    document.querySelectorAll(".modal-overlay.open").forEach(m=>m.classList.remove("open"));
+    window.fecharPontoFacial?.();
+  }
+});
+onAuthStateChanged(auth,async user=>{
+  if(user&&user.uid){
+    $("page-login").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    if($("user-email")) $("user-email").textContent=user.email||"";
+    await loadData();
+  }else{
+    $("app").classList.add("hidden");
+    $("page-login").classList.remove("hidden");
+  }
+});
+</script>
+</body>
+</html>
