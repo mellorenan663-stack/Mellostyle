@@ -1453,6 +1453,12 @@ function renderLinhaBatidas(g,mostrarData){
   const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
   const minTrab=calcularMinutosTrabalhados(horasMap);
   const horasLabel=minTrab==null?"—":fmtHorasCompact(minTrab)+"h";
+  let saldoBadge="";
+  const calcDia=calcSaldoDiaPonto(g.funcionarioId,g.data);
+  if(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN){
+    const pos=calcDia.saldo>0;
+    saldoBadge=` <span class="td-mono" style="font-size:10px;font-weight:700;color:${pos?"var(--green)":"var(--red)"};" title="Jornada do dia: ${fmtHorasCompact(calcDia.jornada)}h">(${pos?"+":"−"}${fmtHorasCompact(Math.abs(calcDia.saldo))})</span>`;
+  }
   const dataCol=mostrarData?(()=>{const [y,mo,d]=g.data.split("-");return `<td class="td-mono sm">${d}/${mo}/${y}</td>`;})():"";
   return `<tr>
     ${dataCol}
@@ -1461,7 +1467,7 @@ function renderLinhaBatidas(g,mostrarData){
     <td>${celulaBatida(g.porTipo.saida_almoco)}</td>
     <td>${celulaBatida(g.porTipo.volta_almoco)}</td>
     <td>${celulaBatida(g.porTipo.saida)}</td>
-    <td class="td-mono" style="font-weight:700;">${horasLabel}</td>
+    <td class="td-mono" style="font-weight:700;">${horasLabel}${saldoBadge}</td>
   </tr>`;
 }
 
@@ -1477,13 +1483,17 @@ window.baterPonto=async function(tipo){
   try{
     await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,hora,criadoEm:Timestamp.now()}));
     toast(`${tipoPontoLabel(tipo)} registrada às ${hora}!`);
-    await loadData();
+    await aposBatidaPonto(funcId,data);
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 
 window.deletarBatidaPonto=async id=>{
   if(!confirm("Remover esta batida de ponto?"))return;
-  try{await deleteDoc(doc(db,"batidasPonto",id));toast("Removido.");await loadData();}
+  const b=batidasPonto.find(x=>x.id===id);
+  try{
+    await deleteDoc(doc(db,"batidasPonto",id));toast("Removido.");
+    if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
+  }
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 
@@ -1500,9 +1510,11 @@ window.salvarEdicaoBatidaPonto=async()=>{
   const tipo=$("edit-batida-tipo")?.value;
   const hora=$("edit-batida-hora")?.value;
   if(!hora){toast("Informe a hora","err");return;}
+  const b=batidasPonto.find(x=>x.id===id);
   try{
     await updateDoc(doc(db,"batidasPonto",id),withOwner({tipo,hora}));
-    toast("Batida atualizada!");fecharModalEditarBatidaPonto();await loadData();
+    toast("Batida atualizada!");fecharModalEditarBatidaPonto();
+    if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 window.excluirBatidaDoModal=async()=>{
@@ -1517,7 +1529,7 @@ window.exportarPontoExcel=function(){
   if(!lista.length){toast("Nenhum registro neste mês para exportar","warn");return;}
   const grupos=agruparBatidas(lista).sort((a,b)=>a.data===b.data?String(a.funcionarioNome).localeCompare(String(b.funcionarioNome)):a.data.localeCompare(b.data));
   const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-  let csv="Data,Funcionário,Entrada,Saída Almoço,Volta Almoço,Saída,Horas Trabalhadas,Status\r\n";
+  let csv="Data,Funcionário,Entrada,Saída Almoço,Volta Almoço,Saída,Horas Trabalhadas,Jornada,Saldo,Status\r\n";
   csv+=grupos.map(g=>{
     const [y,mo,d]=g.data.split("-");
     const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
@@ -1525,7 +1537,10 @@ window.exportarPontoExcel=function(){
     const horasLabel=minTrab==null?"":fmtHorasCompact(minTrab);
     const completo=g.porTipo.entrada&&g.porTipo.saida;
     const status=completo?"Completo":"Incompleto";
-    return [`${d}/${mo}/${y}`,g.funcionarioNome,horasMap.entrada,horasMap.saida_almoco,horasMap.volta_almoco,horasMap.saida,horasLabel,status].map(esc).join(",");
+    const calcDia=calcSaldoDiaPonto(g.funcionarioId,g.data);
+    const jornadaLabel=calcDia?fmtHorasCompact(calcDia.jornada):"";
+    const saldoLabel=calcDia?(calcDia.saldo===0?"0:00":(calcDia.saldo>0?"+":"-")+fmtHorasCompact(Math.abs(calcDia.saldo))):"";
+    return [`${d}/${mo}/${y}`,g.funcionarioNome,horasMap.entrada,horasMap.saida_almoco,horasMap.volta_almoco,horasMap.saida,horasLabel,jornadaLabel,saldoLabel,status].map(esc).join(",");
   }).join("\r\n");
   const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);const a=document.createElement("a");
@@ -1618,6 +1633,57 @@ function proximoTipoPonto(funcId){
   const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
   return TIPOS_PONTO.find(t=>!regs.some(r=>r.tipo===t.id))?.id||null;
 }
+
+/* ── PONTO → BANCO DE HORAS (automático) ─────────────────────
+   Quando o dia fica completo (entrada + saída), compara as horas
+   trabalhadas com a jornada da funcionária e lança falta/extra
+   automaticamente no Banco de Horas. Tolerância de 10 min. */
+const PONTO_TOLERANCIA_MIN=10;
+function calcSaldoDiaPonto(funcId,data){
+  const f=funcionarios.find(x=>x.id===funcId);
+  if(!f) return null;
+  const porTipo={};
+  batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data).forEach(b=>{porTipo[b.tipo]=b.hora;});
+  if(!porTipo.entrada||!porTipo.saida) return null;
+  const minTrab=calcularMinutosTrabalhados(porTipo);
+  if(minTrab==null) return null;
+  const jornada=getJornadaMinForDate(f,data);
+  return {minTrab,jornada,saldo:minTrab-jornada};
+}
+async function sincronizarBancoHorasDia(funcId,data){
+  const f=funcionarios.find(x=>x.id===funcId);
+  if(!f||!data) return false;
+  const autosDia=pontos.filter(p=>p.funcionarioId===funcId&&p.data===data&&p.origem==="ponto-auto");
+  const calcDia=calcSaldoDiaPonto(funcId,data);
+  const alvo=(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN)
+    ?{tipo:calcDia.saldo<0?"falta":"extra",minutos:Math.abs(calcDia.saldo)}
+    :null;
+  if(!alvo){
+    if(!autosDia.length) return false;
+    await Promise.allSettled(autosDia.map(p=>deleteDoc(doc(db,"pontos",p.id))));
+    return true;
+  }
+  if(autosDia.length===1&&autosDia[0].tipo===alvo.tipo&&autosDia[0].minutos===alvo.minutos) return false;
+  await Promise.allSettled(autosDia.map(p=>deleteDoc(doc(db,"pontos",p.id))));
+  const obs=`Automático (ponto): trabalhou ${fmtHorasCompact(calcDia.minTrab)}h, jornada ${fmtHorasCompact(calcDia.jornada)}h`;
+  await addDoc(collection(db,"pontos"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo:alvo.tipo,minutos:alvo.minutos,obs,origem:"ponto-auto",criadoEm:Timestamp.now()}));
+  try{ if(typeof addAuditoria==="function") addAuditoria("criou","ponto",`${f.nome} — ${alvo.tipo} automática (${fmtHorasCompact(alvo.minutos)}h)`); }catch(_e){}
+  return true;
+}
+async function aposBatidaPonto(funcId,data){
+  await loadData();
+  try{
+    const mudou=await sincronizarBancoHorasDia(funcId,data);
+    if(mudou){
+      const calcDia=calcSaldoDiaPonto(funcId,data);
+      if(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN){
+        const lbl=calcDia.saldo<0?`Falta de ${fmtHorasCompact(Math.abs(calcDia.saldo))}h`:`Hora extra de ${fmtHorasCompact(calcDia.saldo)}h`;
+        toast(`${lbl} lançada no Banco de Horas automaticamente.`,"warn");
+      }
+      await loadData();
+    }
+  }catch(e){ console.error("SYNC_BANCO_HORAS_ERROR",e); }
+}
 async function pfLoop(){
   if(!pfAtivo) return;
   const video=$("pf-video");
@@ -1654,12 +1720,13 @@ async function pfLoop(){
           pfAtivo=false;
           const foto=pfSnapshot(video);
           const hora=horaAgora();
-          await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:match.f.id,funcionarioNome:match.f.nome,data:hojeISO(),tipo,hora,foto,origem:"facial",criadoEm:Timestamp.now()}));
+          const dataBatida=hojeISO();
+          await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:match.f.id,funcionarioNome:match.f.nome,data:dataBatida,tipo,hora,foto,origem:"facial",criadoEm:Timestamp.now()}));
           try{ if(typeof addAuditoria==="function") addAuditoria("criou","ponto-batida",`${match.f.nome} (facial)`); }catch(_e){}
           setPfStatus(`✓ ${match.f.nome} — ${tipoPontoLabel(tipo)} registrada às ${hora}!`,"ok");
           toast(`${match.f.nome}: ${tipoPontoLabel(tipo)} registrada às ${hora}!`);
           setTimeout(()=>{fecharPontoFacial();},1800);
-          loadData();
+          aposBatidaPonto(match.f.id,dataBatida);
           pfBusy=false;return;
         }
       }
@@ -12767,7 +12834,7 @@ input,select,textarea,button{font-size:16px;}
     <div class="page" id="page-ponto">
       <div class="phd" style="margin-bottom:22px;">
         <div class="ptitle">Bater Ponto</div>
-        <div class="psub">Relógio de ponto digital — registre entrada, almoço e saída, e exporte tudo para Excel</div>
+        <div class="psub">Relógio de ponto digital — ao completar o dia, faltas e horas extras vão automaticamente para o Banco de Horas (tolerância de 10 min)</div>
       </div>
 
       <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 20px;">
