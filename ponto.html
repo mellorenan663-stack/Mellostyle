@@ -110,7 +110,9 @@ td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:no
     <div class="topbar">
       <div class="brand">MELLO STYLE <span>· Ponto Eletrônico</span></div>
       <div class="top-right">
+        <span id="net-dot" style="display:inline-flex;align-items:center;gap:5px;"><span id="net-dot-bola" style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;"></span><span id="net-dot-txt">Online</span></span>
         <span id="user-email"></span>
+        <button class="btn-ghost" onclick="toggleTelaCheia()">⛶ Tela cheia</button>
         <button class="btn-ghost" onclick="recarregar()">↻ Atualizar</button>
         <button class="btn-ghost" onclick="doLogout()">Sair</button>
       </div>
@@ -124,7 +126,7 @@ td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:no
     <div class="card" style="text-align:center;">
       <div class="chd">Bater Ponto</div>
       <button class="btn btn-primary" style="width:auto;font-size:17px;padding:18px 34px;" onclick="abrirPontoFacial()">📷 Bater Ponto</button>
-      <div style="font-size:12px;color:var(--t3);margin-top:12px;">
+      <div id="facial-hint" style="font-size:12px;color:var(--t3);margin-top:12px;">
         Só olhar para a câmera: o sistema reconhece quem é e sabe pelo horário se é entrada, almoço ou saída.
       </div>
     </div>
@@ -354,7 +356,7 @@ async function getOwnedDocs(collectionName){
     throw e;
   }
 }
-async function loadData(){
+async function loadData(opts={}){
   try{
     const [fDocs,bDocs,pDocs]=await Promise.all([
       getOwnedDocs("funcionarios"),
@@ -368,7 +370,9 @@ async function loadData(){
     renderTudo();
   }catch(e){
     console.error("LOAD_DATA_ERROR",e);
-    toast("Erro ao carregar dados: "+firebaseErrorMessage(e),"err");
+    // Atualização em segundo plano não incomoda quem está batendo ponto:
+    // mantém os dados já carregados e tenta de novo no próximo ciclo.
+    if(!opts.silent) toast("Erro ao carregar dados: "+firebaseErrorMessage(e),"err");
   }
 }
 window.recarregar=async()=>{await loadData();toast("Dados atualizados!");};
@@ -388,6 +392,66 @@ setInterval(()=>{
   const elD=$("relogio-data");
   if(elD) elD.textContent=now.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
 },1000);
+
+/* ── MODO QUIOSQUE ───────────────────────────────────────────────
+   Pensado para ficar aberto o dia inteiro num tablet:
+   - tela sempre acesa (Wake Lock);
+   - dados atualizados sozinhos a cada 5 min;
+   - virada de dia detectada e página renovada de madrugada;
+   - indicador de internet e timeout claro nas gravações. */
+function comTimeout(promise,ms=20000){
+  return Promise.race([
+    promise,
+    new Promise((_,rej)=>setTimeout(()=>rej(Object.assign(new Error("Demorou demais para salvar. Verifique a internet e tente de novo."),{code:"timeout"})),ms))
+  ]);
+}
+function estaOnline(){return navigator.onLine!==false;}
+function atualizarIndicadorRede(){
+  const bola=$("net-dot-bola"),txt=$("net-dot-txt");
+  if(!bola||!txt) return;
+  if(estaOnline()){bola.style.background="var(--green)";txt.textContent="Online";}
+  else{bola.style.background="var(--red)";txt.textContent="Sem internet";}
+}
+window.addEventListener("online",()=>{atualizarIndicadorRede();if(auth.currentUser) loadData({silent:true});});
+window.addEventListener("offline",()=>{atualizarIndicadorRede();toast("Sem internet — as batidas não podem ser registradas até a conexão voltar.","warn");});
+
+let __wakeLock=null;
+async function pedirWakeLock(){
+  try{
+    if("wakeLock" in navigator&&document.visibilityState==="visible"){
+      __wakeLock=await navigator.wakeLock.request("screen");
+    }
+  }catch(e){ console.warn("WAKELOCK_WARN",e?.message||e); }
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"){
+    pedirWakeLock();
+    if(auth.currentUser) loadData({silent:true});
+  }
+});
+window.toggleTelaCheia=()=>{
+  try{
+    if(document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  }catch(e){ console.warn("FULLSCREEN_WARN",e); }
+};
+
+// Dados sempre frescos sem incomodar: a cada 5 min, se visível e online.
+setInterval(()=>{
+  if(auth.currentUser&&document.visibilityState==="visible"&&estaOnline()) loadData({silent:true});
+},5*60*1000);
+
+// Virada de dia: re-renderiza (zera "hoje") e renova a página de madrugada
+// para manter memória e versão sempre limpas em uso contínuo.
+let __diaAtual=hojeISO();
+setInterval(()=>{
+  const d=hojeISO();
+  if(d!==__diaAtual){
+    __diaAtual=d;
+    try{ renderTudo(); }catch(_e){}
+    setTimeout(()=>{ try{ location.reload(); }catch(_e){} },3*60*1000);
+  }
+},30*1000);
 
 /* ── RENDER ──────────────────────────────────────────────────── */
 function renderTudo(){
@@ -534,11 +598,14 @@ async function aposBatidaPonto(funcId,data){
 }
 
 /* ── AÇÕES ───────────────────────────────────────────────────── */
+let __batidaEmAndamento=false;
 window.baterPonto=async function(){
+  if(__batidaEmAndamento) return;
   const funcId=$("ponto-funcionario")?.value;
   if(!funcId){toast("Selecione um funcionário","err");return;}
   const f=funcionarios.find(x=>x.id===funcId);
   if(!f){toast("Funcionário não encontrado","err");return;}
+  if(!estaOnline()){toast("Sem internet — não é possível registrar a batida agora.","err");return;}
   const tipo=inferirTipoBatida(funcId);
   if(!tipo){toast("O dia já foi encerrado (saída registrada). Corrija pelas batidas se precisar.","warn");return;}
   const desdeUltima=minutosDesdeUltimaBatida(funcId);
@@ -547,17 +614,20 @@ window.baterPonto=async function(){
   const jaExiste=batidasPonto.find(b=>b.funcionarioId===funcId&&b.data===data&&b.tipo===tipo);
   if(jaExiste){toast("Este funcionário já registrou esta batida hoje.","err");return;}
   const hora=horaAgora();
+  __batidaEmAndamento=true;
   try{
-    await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,hora,criadoEm:Timestamp.now()}));
+    await comTimeout(addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,hora,criadoEm:Timestamp.now()})));
     toast(`${tipoPontoLabel(tipo)} registrada às ${hora}!`);
     await aposBatidaPonto(funcId,data);
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{__batidaEmAndamento=false;}
 };
 window.deletarBatida=async id=>{
   if(!confirm("Remover esta batida de ponto?"))return;
+  if(!estaOnline()){toast("Sem internet — não é possível remover agora.","err");return;}
   const b=batidasPonto.find(x=>x.id===id);
   try{
-    await deleteDoc(doc(db,"batidasPonto",id));toast("Removido.");
+    await comTimeout(deleteDoc(doc(db,"batidasPonto",id)));toast("Removido.");
     if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
@@ -569,17 +639,22 @@ window.editarBatida=function(id){
   $("modal-editar-batida").classList.add("open");
 };
 window.fecharModalEditarBatida=()=>{$("modal-editar-batida")?.classList.remove("open");};
+let __edicaoEmAndamento=false;
 window.salvarEdicaoBatida=async()=>{
+  if(__edicaoEmAndamento) return;
   const id=$("edit-batida-id").value;
   const tipo=$("edit-batida-tipo")?.value;
   const hora=$("edit-batida-hora")?.value;
   if(!hora){toast("Informe a hora","err");return;}
+  if(!estaOnline()){toast("Sem internet — não é possível salvar agora.","err");return;}
   const b=batidasPonto.find(x=>x.id===id);
+  __edicaoEmAndamento=true;
   try{
-    await updateDoc(doc(db,"batidasPonto",id),withOwner({tipo,hora}));
+    await comTimeout(updateDoc(doc(db,"batidasPonto",id),withOwner({tipo,hora})));
     toast("Batida atualizada!");fecharModalEditarBatida();
     if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{__edicaoEmAndamento=false;}
 };
 window.excluirBatidaDoModal=async()=>{
   const id=$("edit-batida-id").value;if(!id)return;
@@ -742,7 +817,7 @@ async function pfLoop(){
         pfAtivo=false;
         const media=new Array(128).fill(0);
         pfAmostras.forEach(d=>{for(let i=0;i<128;i++)media[i]+=d[i]/pfAmostras.length;});
-        await updateDoc(doc(db,"funcionarios",pfEnrollFunc.id),withOwner({faceDescriptor:media}));
+        await comTimeout(updateDoc(doc(db,"funcionarios",pfEnrollFunc.id),withOwner({faceDescriptor:media})));
         setPfStatus(`✓ Rosto de ${pfEnrollFunc.nome} cadastrado com sucesso!`,"ok");
         toast(`Rosto de ${pfEnrollFunc.nome} cadastrado!`);
         setTimeout(()=>{fecharPontoFacial();},1500);
@@ -760,12 +835,23 @@ async function pfLoop(){
           setPfStatus(`${match.f.nome}: o dia já foi encerrado (saída registrada).`,"warn");
         }else if(desdeUltima<INTERVALO_MIN_BATIDAS){
           setPfStatus(`${match.f.nome}: batida registrada há ${Math.max(1,Math.round(desdeUltima))} min. Aguarde ou corrija manualmente.`,"warn");
+        }else if(!estaOnline()){
+          setPfStatus("Sem internet — não é possível registrar a batida agora.","err");
         }else{
           pfAtivo=false;
           const foto=pfSnapshot(video);
           const hora=horaAgora();
           const dataBatida=hojeISO();
-          await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:match.f.id,funcionarioNome:match.f.nome,data:dataBatida,tipo,hora,foto,origem:"facial",criadoEm:Timestamp.now()}));
+          try{
+            await comTimeout(addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:match.f.id,funcionarioNome:match.f.nome,data:dataBatida,tipo,hora,foto,origem:"facial",criadoEm:Timestamp.now()})));
+          }catch(e){
+            // Falhou salvar (internet caiu na hora?): avisa e continua tentando.
+            console.error("PF_SAVE_ERROR",e);
+            setPfStatus("Não deu para salvar a batida: "+firebaseErrorMessage(e),"err");
+            pfAtivo=true;pfBusy=false;
+            pfTimer=setTimeout(pfLoop,1500);
+            return;
+          }
           setPfStatus(`✓ ${match.f.nome} — ${tipoPontoLabel(tipo)} registrada às ${hora}!`,"ok");
           toast(`${match.f.nome}: ${tipoPontoLabel(tipo)} registrada às ${hora}!`);
           setTimeout(()=>{fecharPontoFacial();},1800);
@@ -858,17 +944,38 @@ document.addEventListener("keydown",e=>{
     window.fecharPontoFacial?.();
   }
 });
+/* O Firebase pode disparar user=null por um instante durante a renovação
+   do token. Sem este debounce, o quiosque voltaria para a tela de login
+   sozinho no meio do dia. Só desloga se o null persistir por 3s. */
+let __authNullTimer=null;
 onAuthStateChanged(auth,async user=>{
   if(user&&user.uid){
+    if(__authNullTimer){clearTimeout(__authNullTimer);__authNullTimer=null;}
     $("page-login").classList.add("hidden");
     $("app").classList.remove("hidden");
     if($("user-email")) $("user-email").textContent=user.email||"";
+    atualizarIndicadorRede();
+    pedirWakeLock();
     await loadData();
+    // Pré-carrega o modelo facial em segundo plano: a câmera abre na hora.
+    setTimeout(()=>{
+      carregarFaceApi().then(()=>{
+        const el=$("facial-hint");
+        if(el) el.textContent="✓ Reconhecimento pronto — só olhar para a câmera: o sistema sabe quem é e se é entrada, almoço ou saída.";
+      }).catch(e=>console.warn("PF_PRELOAD_WARN",e?.message||e));
+    },800);
   }else{
-    $("app").classList.add("hidden");
-    $("page-login").classList.remove("hidden");
+    if(__authNullTimer) clearTimeout(__authNullTimer);
+    __authNullTimer=setTimeout(()=>{
+      __authNullTimer=null;
+      if(auth.currentUser) return;
+      $("app").classList.add("hidden");
+      $("page-login").classList.remove("hidden");
+    },3000);
   }
 });
+window.addEventListener("error",ev=>{console.error("GLOBAL_JS_ERROR",ev.error||ev.message);});
+window.addEventListener("unhandledrejection",ev=>{console.error("GLOBAL_PROMISE_ERROR",ev.reason);});
 </script>
 </body>
 </html>
