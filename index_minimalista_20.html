@@ -11,7 +11,7 @@
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,browserLocalPersistence,inMemoryPersistence,setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth,signInAnonymously,signOut,onAuthStateChanged,browserLocalPersistence,inMemoryPersistence,setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore,collection,addDoc,getDocs,doc,getDoc,setDoc,updateDoc,deleteDoc,query,orderBy,where,Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBwoI6IOPgWul1uxFwJXJTQ4cGyOS9F_Fc",authDomain:"producao-saas.firebaseapp.com",projectId:"producao-saas",storageBucket:"producao-saas.firebasestorage.app",messagingSenderId:"330333904905",appId:"1:330333904905:web:6d5e2e0ec6f62d224458d8"};
@@ -233,10 +233,11 @@ function withOwner(data){
 function canAccessDoc(item){
   const uid=getCurrentUserId();
   if(!uid) return true;
-  // Recuperação de dados antigos: documento sem ownerId continua visível.
-  // Documento com ownerId/uid/userId/createdBy de outro usuário continua bloqueado.
-  // empresaId não deve esconder dados antigos de versões anteriores.
-  return !item?.ownerId || item.ownerId===uid || item.uid===uid || item.userId===uid || item.createdBy===uid;
+  // Acesso por empresa: com o login de um botão (anônimo), cada aparelho
+  // recebe um uid diferente — o vínculo dos dados passa a ser o empresaId.
+  // Documentos antigos sem ownerId continuam visíveis.
+  const empresa=getConfig().empresaId||"mello-style";
+  return !item?.ownerId || item.ownerId===uid || item.uid===uid || item.userId===uid || item.createdBy===uid || item.empresaId===empresa;
 }
 function safeText(v){return String(v??"").trim();}
 function normalize(v){return safeText(v).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
@@ -283,11 +284,14 @@ function sanitizeConfigPayload(raw={}){
   if(raw.metaCusto!==undefined) out.metaCusto=num(raw.metaCusto,atual.metaCusto||17000);
   return out;
 }
+const CONFIG_DOC_ID="mello-style";
 async function carregarConfiguracoesFirebase(){
   const user=auth.currentUser;
   if(!user?.uid) return getConfig();
   try{
-    const ref=doc(db,"configuracoes",user.uid);
+    // Config agora é da empresa (documento fixo), não do uid — assim as
+    // metas ficam iguais em qualquer aparelho com o login de um botão.
+    const ref=doc(db,"configuracoes",CONFIG_DOC_ID);
     const snap=await getDoc(ref);
     if(snap.exists()){
       const cfg=sanitizeConfigPayload(snap.data()||{});
@@ -295,6 +299,24 @@ async function carregarConfiguracoesFirebase(){
       window.__melloConfigLoadedFromCloud=true;
       return getConfig();
     }
+    // Migração: procura a config salva pela versão antiga (doc por uid)
+    // e copia para o documento da empresa.
+    try{
+      const todos=await getDocs(collection(db,"configuracoes"));
+      let antigo=null,antigoTs=0;
+      todos.docs.forEach(d=>{
+        const dados=d.data()||{};
+        const ts=dados.updatedAt?.toDate?dados.updatedAt.toDate().getTime():0;
+        if(dados.metaFaturamento!==undefined||dados.empresa){ if(ts>=antigoTs){antigo=dados;antigoTs=ts;} }
+      });
+      if(antigo){
+        const cfg=sanitizeConfigPayload(antigo);
+        saveStoredConfig(cfg);
+        window.__melloConfigLoadedFromCloud=true;
+        try{ await setDoc(ref,withOwner({...cfg}),{merge:true}); }catch(_e){}
+        return getConfig();
+      }
+    }catch(_e){}
   }catch(e){
     window.__melloConfigLoadedFromCloud=false;
     console.warn("LOAD_CONFIG_FIREBASE_WARN",e?.code||e?.message||e);
@@ -434,6 +456,9 @@ function getFinanceiroCategorias(mes=""){
   return Object.entries(map).map(([categoria,valor])=>({categoria,valor})).sort((a,b)=>b.valor-a.valor);
 }
 function getSecurityRulesText(){
+  // Modelo de acesso por empresa: o login é anônimo (um botão), então o
+  // vínculo dos dados é o empresaId — todo usuário autenticado do app
+  // acessa os dados da empresa.
   return `rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -441,23 +466,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function sameOwner() {
-      return resource.data.ownerId == request.auth.uid;
-    }
-
-    function creatingOwnDoc() {
-      return request.resource.data.ownerId == request.auth.uid;
-    }
-
     match /{collection}/{docId} {
-      allow read: if isSignedIn() && sameOwner();
-      allow create: if isSignedIn() && creatingOwnDoc()
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isSignedIn() && sameOwner()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow delete: if isSignedIn() && sameOwner();
+      allow read, delete: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && request.resource.data.empresaId == "mello-style";
     }
   }
 }`;
@@ -603,11 +615,10 @@ async function safeSetPersistence(){
 function loginErrorMessage(err){
   const code=String(err?.code||"");
   const raw=String(err?.message||"");
-  if(code.includes("invalid-credential")||code.includes("wrong-password")||code.includes("user-not-found")) return "Email ou senha incorretos.";
-  if(code.includes("invalid-email")) return "Email inválido.";
   if(code.includes("too-many-requests")) return "Muitas tentativas. Tente novamente em alguns minutos.";
   if(code.includes("network-request-failed")) return "Falha de internet ou bloqueio do Firebase.";
-  if(code.includes("operation-not-allowed")) return "Ative Email/Senha no Firebase Authentication.";
+  if(code.includes("operation-not-allowed")) return "Ative o login Anônimo no Firebase: Authentication → Sign-in method → Anonymous → Enable.";
+  if(code.includes("admin-restricted-operation")) return "Ative o login Anônimo no Firebase: Authentication → Sign-in method → Anonymous → Enable.";
   if(code.includes("unauthorized-domain")) return "Domínio do Netlify não autorizado no Firebase.";
   if(code.includes("timeout")) return "Firebase não respondeu. Verifique internet, domínio autorizado e Authentication.";
   return raw||"Não foi possível entrar.";
@@ -619,43 +630,7 @@ function setLoginStatus(msg,type=""){
   el.className="login-status "+(type||"");
 }
 function getLoginButton(){
-  // Quando o acesso rápido está visível, o feedback (Entrando...) vai nele.
-  const quick=document.getElementById("quick-login-btn");
-  if(quick && !quick.closest(".hidden")) return quick;
   return document.getElementById("login-btn")||document.querySelector("#page-login .btn-auth");
-}
-/* ── ACESSO RÁPIDO — depois do primeiro login, entra com um botão só ── */
-function saveQuickLogin(email,senha){
-  try{ localStorage.setItem("mello_quick_login",btoa(unescape(encodeURIComponent(JSON.stringify({e:email,s:senha}))))); }catch(_e){}
-}
-function getQuickLogin(){
-  try{
-    const raw=localStorage.getItem("mello_quick_login");
-    if(!raw) return null;
-    const d=JSON.parse(decodeURIComponent(escape(atob(raw))));
-    return d&&d.e&&d.s?d:null;
-  }catch(_e){ return null; }
-}
-window.doQuickLogin=function(ev){
-  const d=getQuickLogin();
-  if(!d){ window.mostrarCamposLogin(ev); return false; }
-  const em=document.getElementById("login-email"), pw=document.getElementById("login-pass");
-  if(em) em.value=d.e;
-  if(pw) pw.value=d.s;
-  return window.doLogin(ev);
-};
-window.mostrarCamposLogin=function(ev){
-  try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
-  document.getElementById("quick-login")?.classList.add("hidden");
-  document.getElementById("login-fields")?.classList.remove("hidden");
-  document.getElementById("login-email")?.focus();
-};
-function setupQuickLogin(){
-  const quick=document.getElementById("quick-login");
-  const fields=document.getElementById("login-fields");
-  if(!quick||!fields) return;
-  if(getQuickLogin()){ quick.classList.remove("hidden"); fields.classList.add("hidden"); }
-  else{ quick.classList.add("hidden"); fields.classList.remove("hidden"); }
 }
 function resetLoginButton(){
   const btn=getLoginButton();
@@ -671,14 +646,6 @@ function setLoginLoading(){
   btn.disabled=true;
   btn.setAttribute("aria-busy","true");
   btn.textContent="Entrando...";
-}
-function loginWithTimeout(email,senha,timeoutMs=20000){
-  return withAuthTimeout(
-    signInWithEmailAndPassword(auth,email,senha),
-    timeoutMs,
-    "auth/timeout",
-    "Firebase não respondeu dentro do tempo limite."
-  );
 }
 function abrirAppAposAuth(user,{showToast=false}={}){
   const resolvedUser=user||auth.currentUser;
@@ -720,26 +687,23 @@ window.doLogin=async function(event){
 
   if(__loginBusy) return false;
 
-  const email=(document.getElementById("login-email")?.value||"").trim();
-  const senha=document.getElementById("login-pass")?.value||"";
-
-  if(!email||!senha){
-    setLoginStatus("Preencha email e senha.","err");
-    if(typeof toast==="function") toast("Preencha email e senha.","err");
-    resetLoginButton();
-    return false;
+  // Sessão anterior ainda válida: entra direto, sem nova autenticação.
+  if(auth.currentUser&&auth.currentUser.uid){
+    setLoginStatus("Abrindo sistema...","ok");
+    abrirAppAposAuth(auth.currentUser,{showToast:true});
+    return true;
   }
 
   __loginBusy=true;
   setLoginLoading();
-  setLoginStatus("Autenticando no Firebase...","ok");
+  setLoginStatus("Entrando...","ok");
 
   if(__loginWatchdogTimer) clearTimeout(__loginWatchdogTimer);
   __loginWatchdogTimer=setTimeout(()=>{
     if(__loginBusy){
       __loginBusy=false;
       resetLoginButton();
-      const msg="Firebase não respondeu. Verifique internet, domínio autorizado e Authentication.";
+      const msg="Firebase não respondeu. Verifique a internet.";
       setLoginStatus(msg,"err");
       if(typeof toast==="function") toast(msg,"err");
     }
@@ -747,8 +711,12 @@ window.doLogin=async function(event){
 
   try{
     await safeSetPersistence();
-    const cred=await loginWithTimeout(email,senha,20000);
-    saveQuickLogin(email,senha);
+    const cred=await withAuthTimeout(
+      signInAnonymously(auth),
+      20000,
+      "auth/timeout",
+      "Firebase não respondeu dentro do tempo limite."
+    );
     setLoginStatus("Login realizado. Abrindo sistema...","ok");
     abrirAppAposAuth(cred.user,{showToast:true});
     return true;
@@ -756,7 +724,6 @@ window.doLogin=async function(event){
     console.error("LOGIN_ERROR:",err);
 
     if(auth.currentUser&&auth.currentUser.uid){
-      // Sessão já existente — não salva a senha digitada, pois pode estar errada.
       setLoginStatus("Login realizado. Abrindo sistema...","ok");
       abrirAppAposAuth(auth.currentUser,{showToast:true});
       return true;
@@ -777,31 +744,8 @@ window.doLogin=async function(event){
     },300);
   }
 };
-window.doRegister=async function(event){
-  try{ if(event&&typeof event.preventDefault==="function") event.preventDefault(); }catch(_e){}
-  const e=(document.getElementById("reg-email")?.value||"").trim();
-  const p=document.getElementById("reg-pass")?.value||"";
-  if(!e||!p){toast("Preencha todos os campos","err");return false;}
-  if(p.length<6){toast("Senha: mínimo 6 caracteres","err");return false;}
-  try{await safeSetPersistence();await createUserWithEmailAndPassword(auth,e,p);toast("Conta criada!");return true;}
-  catch(err){toast(err.code==="auth/email-already-in-use"?"Email já cadastrado":loginErrorMessage(err),"err");return false;}
-};
 window.doLogout=()=>signOut(auth);
-window.toggleAuthMode=function(event){
-  try{ if(event&&typeof event.preventDefault==="function") event.preventDefault(); }catch(_e){}
-  document.getElementById("form-login")?.classList.toggle("hidden");
-  document.getElementById("form-register")?.classList.toggle("hidden");
-  const formLogin=document.getElementById("form-login");
-  const lbl=document.getElementById("auth-lbl");
-  if(lbl){
-    lbl.innerHTML=formLogin?.classList.contains("hidden")
-      ?'Já tem conta? <a href="javascript:void(0)" onclick="toggleAuthMode(event)">Entrar</a>'
-      :'Não tem conta? <a href="javascript:void(0)" onclick="toggleAuthMode(event)">Cadastre-se</a>';
-  }
-};
 function setupLoginBindings(){
-  // Importante: vincula só o botão do formulário (#login-btn).
-  // O botão de acesso rápido tem o próprio handler (doQuickLogin).
   const btn=document.getElementById("login-btn");
   if(btn){
     btn.type="button";
@@ -812,28 +756,11 @@ function setupLoginBindings(){
       btn.addEventListener("click",function(e){ return window.doLogin(e); },{passive:false});
     }
   }
-  const qbtn=document.getElementById("quick-login-btn");
-  if(qbtn){
-    qbtn.type="button";
-    qbtn.onclick=function(e){ return window.doQuickLogin(e); };
-  }
-
-  const form=document.getElementById("form-login");
-  if(form){
-    form.onsubmit=function(e){ return window.doLogin(e); };
-  }
-
-  ["login-email","login-pass"].forEach(id=>{
-    const el=document.getElementById(id);
-    if(!el||el.dataset.enterLoginBoundStable) return;
-    el.dataset.enterLoginBoundStable="1";
-    el.addEventListener("keydown",e=>{ if(e.key==="Enter") window.doLogin(e); },{passive:false});
-  });
 }
-window.setupLoginBindings=function(){ setupLoginBindings(); setupQuickLogin(); };
-if(document.readyState==="loading") window.addEventListener("DOMContentLoaded",window.setupLoginBindings,{once:true});
-else window.setupLoginBindings();
-window.addEventListener("load",window.setupLoginBindings,{once:true});
+window.setupLoginBindings=setupLoginBindings;
+if(document.readyState==="loading") window.addEventListener("DOMContentLoaded",setupLoginBindings,{once:true});
+else setupLoginBindings();
+window.addEventListener("load",setupLoginBindings,{once:true});
 window.addEventListener("pageshow",()=>{ if(!__loginBusy) resetLoginButton(); });
 
 // Proteção contra falso-logout no Netlify:
@@ -886,49 +813,12 @@ function sortByField(list, field, dir="desc"){
     return na>nb?mult:na<nb?-mult:0;
   });
 }
-const scanFlagKey=c=>"mello_scan_ok_"+c;
 async function getOwnedDocs(collectionName,{sortField=null,dir="desc"}={}){
-  const uid=getCurrentUserId();
-  const ref=collection(db,collectionName);
-  let ownerQueryWorked=false;
-  let ownedDocs=[];
-
-  // 1) Busca segura: documentos do usuário logado.
-  if(uid){
-    try{
-      const snap=await getDocs(query(ref,where("ownerId","==",uid)));
-      ownerQueryWorked=true;
-      ownedDocs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(canAccessDoc);
-    }catch(e){
-      console.warn("OWNER_QUERY_FALLBACK",collectionName,e?.code||e?.message||e);
-    }
-  }
-
-  // 2) Busca compatível com dados antigos: documentos sem ownerId.
-  // Importante: a versão anterior salvava alguns gastos sem ownerId.
-  // Se retornarmos só a query por ownerId, esses gastos somem da tela.
-  // Depois que uma varredura completa não encontra mais nenhum documento
-  // órfão, gravamos uma flag e passamos a usar só a query por dono —
-  // metade das leituras do Firestore em todos os carregamentos seguintes.
-  let scanDone=false;
-  try{ scanDone=localStorage.getItem(scanFlagKey(collectionName))==="1"; }catch(_e){}
-  if(ownerQueryWorked&&scanDone) return sortByField(ownedDocs,sortField,dir);
-  try{
-    const snap=await getDocs(ref);
-    const allDocs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(canAccessDoc);
-    const merged=new Map();
-    [...ownedDocs,...allDocs].forEach(item=>{ if(item?.id) merged.set(item.id,item); });
-    const lista=[...merged.values()];
-    if(ownerQueryWorked&&!lista.some(x=>!x?.ownerId)){
-      try{ localStorage.setItem(scanFlagKey(collectionName),"1"); }catch(_e){}
-    }
-    return sortByField(lista,sortField,dir);
-  }catch(e){
-    // Com regras Firestore mais rígidas, a leitura geral pode falhar.
-    // Nesse caso, mantém pelo menos os documentos já vinculados ao usuário.
-    if(ownerQueryWorked) return sortByField(ownedDocs,sortField,dir);
-    throw e;
-  }
+  // Com o login de um botão (anônimo), o uid muda por aparelho — então a
+  // leitura é sempre da coleção inteira, filtrada por canAccessDoc
+  // (empresaId). Uma única leitura por coleção.
+  const snap=await getDocs(collection(db,collectionName));
+  return sortByField(snap.docs.map(d=>({id:d.id,...d.data()})).filter(canAccessDoc),sortField,dir);
 }
 async function adotarDadosAntigos(collectionName,items){
   const uid=getCurrentUserId();
@@ -3317,8 +3207,8 @@ window.salvarConfiguracoes=async function(){
   Object.entries(cfgLocal).forEach(([k,v])=>setConfigField(k,v));
   applyTheme(getConfig().tema);
   try{
-    const user=requireAuthUser();
-    const ref=doc(db,"configuracoes",user.uid);
+    requireAuthUser();
+    const ref=doc(db,"configuracoes",CONFIG_DOC_ID);
     const snap=await getDoc(ref);
     const base=withOwner({...cfgLocal});
     if(!snap.exists()){base.criadoEm=Timestamp.now();base.createdAt=base.criadoEm;}
@@ -4022,7 +3912,7 @@ applyTheme(getConfig().tema);
     }catch(e){ console.warn('EXPOSE_WARN',name,e); }
   }
   [
-    'doLogin','doRegister','doLogout','toggleAuthMode','navigate','cycleTheme','loadData','applyTheme',
+    'doLogin','doLogout','navigate','cycleTheme','loadData','applyTheme',
     'salvarFuncionario','editarFuncionario','salvarEdicaoFunc','deletarFuncionario',
     'salvarLote','abrirModalEditarLote','editarLote','salvarEdicaoLote','deletarLote','atualizarStatusLote','concluirLoteSemLancar','concluirLote100pct','confirmarConcluirLote',
     'salvarRegistro','editarRegistro','salvarEdicaoRegistro','deletarRegistro',
@@ -10035,24 +9925,9 @@ input,select,textarea,button{font-size:16px;}
     <div class="auth-card"><div class="auth-badge"><span class="ab-dot"></span> Plataforma premium</div>
       <div id="form-login">
         <h2>Entrar na plataforma</h2>
-        <div id="quick-login" class="hidden">
-          <button id="quick-login-btn" type="button" class="btn-auth" onclick="doQuickLogin(event)">Entrar</button>
-          <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="mostrarCamposLogin(event)">Usar outra conta</a></div>
-        </div>
-        <div id="login-fields">
-          <div class="af"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" value="mellorenan663@gmail.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-          <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-          <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
-        </div>
+        <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
         <div id="login-status" class="login-status" aria-live="polite"></div>
       </div>
-      <div id="form-register" class="hidden">
-        <h2>Criar conta</h2>
-        <div class="af"><label>E-mail</label><input id="reg-email" type="email" placeholder="seu@email.com"/></div>
-        <div class="af"><label>Senha</label><input id="reg-pass" type="password" placeholder="mínimo 6 caracteres"/></div>
-        <button type="button" class="btn-auth" onclick="doRegister(event)">Criar conta</button>
-      </div>
-      <div class="auth-tog" id="auth-lbl">Não tem conta? <a href="javascript:void(0)" onclick="toggleAuthMode()">Cadastre-se</a></div>
     </div>
   </div>
 </div>
