@@ -21,8 +21,7 @@ const db=getFirestore(app);
 
 const ETAPAS=["Ombrinho","Gola","Pesponto","Manga","Lateral","Bainha","Revisão"];
 const STATUS_LOTE=["Aberto","Em andamento","Concluído","Cancelado"];
-const TIPOS_PONTO=[{id:"entrada",label:"Entrada"},{id:"saida_almoco",label:"Saída Almoço"},{id:"volta_almoco",label:"Volta Almoço"},{id:"saida",label:"Saída"}];
-let currentPage="login",funcionarios=[],registros=[],lotes=[],gastos=[],pontos=[],controleProducaoHora=[],clientes=[],batidasPonto=[],charts={},uiState={prodBusca:"",histBusca:"",gastoBusca:"",controleHoraBusca:"",fatClienteBusca:"",fatClienteMes:"",dashMes:""};
+let currentPage="login",funcionarios=[],registros=[],lotes=[],gastos=[],pontos=[],controleProducaoHora=[],clientes=[],charts={},uiState={prodBusca:"",histBusca:"",gastoBusca:"",controleHoraBusca:"",fatClienteBusca:"",fatClienteMes:"",dashMes:""};
 let activeUserId=null;
 window.uiState=uiState;
 
@@ -92,31 +91,11 @@ function getPontoLabel(p,jornadaMin=480){
 }
 function hojeISO(){return new Date().toISOString().slice(0,10);}
 function horaAgora(){return new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});}
-function tipoPontoLabel(id){return TIPOS_PONTO.find(t=>t.id===id)?.label||id;}
 function minutosDeHora(hhmm){
   if(!hhmm) return null;
   const [h,m]=String(hhmm).split(":").map(Number);
   if(Number.isNaN(h)||Number.isNaN(m)) return null;
   return h*60+m;
-}
-function calcularMinutosTrabalhados(porTipoHoras){
-  const entrada=minutosDeHora(porTipoHoras.entrada);
-  const saidaAlmoco=minutosDeHora(porTipoHoras.saida_almoco);
-  const voltaAlmoco=minutosDeHora(porTipoHoras.volta_almoco);
-  const saida=minutosDeHora(porTipoHoras.saida);
-  if(entrada==null||saida==null) return null;
-  let total=saida-entrada;
-  if(saidaAlmoco!=null&&voltaAlmoco!=null) total-=Math.max(0,voltaAlmoco-saidaAlmoco);
-  return total>0?total:0;
-}
-function agruparBatidas(lista){
-  const map=new Map();
-  (lista||[]).forEach(b=>{
-    const key=b.funcionarioId+"|"+b.data;
-    if(!map.has(key)) map.set(key,{funcionarioId:b.funcionarioId,funcionarioNome:b.funcionarioNome,data:b.data,porTipo:{}});
-    map.get(key).porTipo[b.tipo]=b;
-  });
-  return [...map.values()];
 }
 function buildHourOptions(maxHoras=12){
   const out=[];
@@ -524,11 +503,11 @@ function navigate(page){
   $("page-"+page)?.classList.add("active");
   $("nav-"+page)?.classList.add("active");
   currentPage=page;
-  const pageNames={dashboard:"Dashboard",funcionarios:"Funcionários",producao:"Produção",lotes:"Lotes / OF",historico:"Histórico",gastos:"Gastos",relatorio:"Relatório",backup:"Backup",bancohoras:"Banco de Horas",controlehora:"Controle por Hora","fat-cliente":"Faturamento por Cliente",ponto:"Bater Ponto"};
+  const pageNames={dashboard:"Dashboard",funcionarios:"Funcionários",producao:"Produção",lotes:"Lotes / OF",historico:"Histórico",gastos:"Gastos",relatorio:"Relatório",backup:"Backup",bancohoras:"Banco de Horas",controlehora:"Controle por Hora","fat-cliente":"Faturamento por Cliente"};
   if(pageNames[page]) document.title="Mello Style v91 — "+pageNames[page];
   const map={dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,
     lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,
-    relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,"fat-cliente":renderFatCliente,ponto:typeof renderPontoBater==="function"?renderPontoBater:null};
+    relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,"fat-cliente":renderFatCliente};
   map[page]?.();
   if(window.innerWidth<=900){ try{ window.closeNav?.(); }catch(e){} }
 }
@@ -640,7 +619,43 @@ function setLoginStatus(msg,type=""){
   el.className="login-status "+(type||"");
 }
 function getLoginButton(){
+  // Quando o acesso rápido está visível, o feedback (Entrando...) vai nele.
+  const quick=document.getElementById("quick-login-btn");
+  if(quick && !quick.closest(".hidden")) return quick;
   return document.getElementById("login-btn")||document.querySelector("#page-login .btn-auth");
+}
+/* ── ACESSO RÁPIDO — depois do primeiro login, entra com um botão só ── */
+function saveQuickLogin(email,senha){
+  try{ localStorage.setItem("mello_quick_login",btoa(unescape(encodeURIComponent(JSON.stringify({e:email,s:senha}))))); }catch(_e){}
+}
+function getQuickLogin(){
+  try{
+    const raw=localStorage.getItem("mello_quick_login");
+    if(!raw) return null;
+    const d=JSON.parse(decodeURIComponent(escape(atob(raw))));
+    return d&&d.e&&d.s?d:null;
+  }catch(_e){ return null; }
+}
+window.doQuickLogin=function(ev){
+  const d=getQuickLogin();
+  if(!d){ window.mostrarCamposLogin(ev); return false; }
+  const em=document.getElementById("login-email"), pw=document.getElementById("login-pass");
+  if(em) em.value=d.e;
+  if(pw) pw.value=d.s;
+  return window.doLogin(ev);
+};
+window.mostrarCamposLogin=function(ev){
+  try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
+  document.getElementById("quick-login")?.classList.add("hidden");
+  document.getElementById("login-fields")?.classList.remove("hidden");
+  document.getElementById("login-email")?.focus();
+};
+function setupQuickLogin(){
+  const quick=document.getElementById("quick-login");
+  const fields=document.getElementById("login-fields");
+  if(!quick||!fields) return;
+  if(getQuickLogin()){ quick.classList.remove("hidden"); fields.classList.add("hidden"); }
+  else{ quick.classList.add("hidden"); fields.classList.remove("hidden"); }
 }
 function resetLoginButton(){
   const btn=getLoginButton();
@@ -733,6 +748,7 @@ window.doLogin=async function(event){
   try{
     await safeSetPersistence();
     const cred=await loginWithTimeout(email,senha,20000);
+    saveQuickLogin(email,senha);
     setLoginStatus("Login realizado. Abrindo sistema...","ok");
     abrirAppAposAuth(cred.user,{showToast:true});
     return true;
@@ -740,6 +756,7 @@ window.doLogin=async function(event){
     console.error("LOGIN_ERROR:",err);
 
     if(auth.currentUser&&auth.currentUser.uid){
+      // Sessão já existente — não salva a senha digitada, pois pode estar errada.
       setLoginStatus("Login realizado. Abrindo sistema...","ok");
       abrirAppAposAuth(auth.currentUser,{showToast:true});
       return true;
@@ -783,7 +800,9 @@ window.toggleAuthMode=function(event){
   }
 };
 function setupLoginBindings(){
-  const btn=getLoginButton();
+  // Importante: vincula só o botão do formulário (#login-btn).
+  // O botão de acesso rápido tem o próprio handler (doQuickLogin).
+  const btn=document.getElementById("login-btn");
   if(btn){
     btn.type="button";
     resetLoginButton();
@@ -792,6 +811,11 @@ function setupLoginBindings(){
       btn.dataset.loginBoundStable="1";
       btn.addEventListener("click",function(e){ return window.doLogin(e); },{passive:false});
     }
+  }
+  const qbtn=document.getElementById("quick-login-btn");
+  if(qbtn){
+    qbtn.type="button";
+    qbtn.onclick=function(e){ return window.doQuickLogin(e); };
   }
 
   const form=document.getElementById("form-login");
@@ -806,10 +830,10 @@ function setupLoginBindings(){
     el.addEventListener("keydown",e=>{ if(e.key==="Enter") window.doLogin(e); },{passive:false});
   });
 }
-window.setupLoginBindings=setupLoginBindings;
-if(document.readyState==="loading") window.addEventListener("DOMContentLoaded",setupLoginBindings,{once:true});
-else setupLoginBindings();
-window.addEventListener("load",setupLoginBindings,{once:true});
+window.setupLoginBindings=function(){ setupLoginBindings(); setupQuickLogin(); };
+if(document.readyState==="loading") window.addEventListener("DOMContentLoaded",window.setupLoginBindings,{once:true});
+else window.setupLoginBindings();
+window.addEventListener("load",window.setupLoginBindings,{once:true});
 window.addEventListener("pageshow",()=>{ if(!__loginBusy) resetLoginButton(); });
 
 // Proteção contra falso-logout no Netlify:
@@ -921,7 +945,7 @@ async function loadData(){
   const previous={
     funcionarios:[...funcionarios],registros:[...registros],lotes:[...lotes],
     gastos:[...gastos],pontos:[...pontos],controleProducaoHora:[...(Array.isArray(controleProducaoHora)?controleProducaoHora:[])],
-    clientes:[...clientes],batidasPonto:[...(Array.isArray(batidasPonto)?batidasPonto:[])]
+    clientes:[...clientes]
   };
   const safeGet=async(collectionName,options,fallback)=>{
     try{
@@ -973,8 +997,7 @@ async function loadData(){
       "fat-cliente":renderFatCliente,
       clientes:typeof renderClientes==="function"?renderClientes:null,
       lixeira:typeof renderLixeira==="function"?renderLixeira:null,
-      auditoria:typeof renderAuditoria==="function"?renderAuditoria:null,
-      ponto:typeof renderPontoBater==="function"?renderPontoBater:null};
+      auditoria:typeof renderAuditoria==="function"?renderAuditoria:null};
     try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); toast('Erro ao renderizar a aba atual: '+(e?.message||e),'err'); }
 
     const refreshBtn=document.querySelector('.btn-topbar-refresh');
@@ -988,14 +1011,12 @@ async function loadData(){
     // atual caso ela dependa desses dados.
     Promise.all([
       safeGet("controleProducaoHora",{sortField:"createdAt",dir:"desc"},previous.controleProducaoHora),
-      safeGet("clientes",{sortField:"nome",dir:"asc"},previous.clientes),
-      safeGet("batidasPonto",{sortField:"data",dir:"desc"},previous.batidasPonto)
-    ]).then(([cphDocs,cliDocs,bpDocs])=>{
+      safeGet("clientes",{sortField:"nome",dir:"asc"},previous.clientes)
+    ]).then(([cphDocs,cliDocs])=>{
       controleProducaoHora=cphDocs;
       clientes=cliDocs;
-      batidasPonto=bpDocs;
       try{ populateSelects(); }catch(_e){}
-      if(["controlehora","clientes","fat-cliente","ponto","relatorio","backup","bancohoras"].includes(currentPage)){
+      if(["controlehora","clientes","fat-cliente","relatorio","backup","bancohoras"].includes(currentPage)){
         try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); }
       }
       // Adoção de dados antigos (grava ownerId em documentos órfãos) também
@@ -1007,16 +1028,15 @@ async function loadData(){
         adotarDadosAntigos("gastos",gastos),
         adotarDadosAntigos("pontos",pontos),
         adotarDadosAntigos("controleProducaoHora",controleProducaoHora),
-        adotarDadosAntigos("clientes",clientes),
-        adotarDadosAntigos("batidasPonto",batidasPonto)
+        adotarDadosAntigos("clientes",clientes)
       ]);
     }).catch(e=>console.warn('FASE2_LOAD_WARN',e));
   }catch(e){
     console.error("LOAD_DATA_FATAL_ERROR",e);
-    funcionarios=previous.funcionarios;registros=previous.registros;lotes=previous.lotes;gastos=previous.gastos;pontos=previous.pontos;controleProducaoHora=previous.controleProducaoHora;clientes=previous.clientes;batidasPonto=previous.batidasPonto;
+    funcionarios=previous.funcionarios;registros=previous.registros;lotes=previous.lotes;gastos=previous.gastos;pontos=previous.pontos;controleProducaoHora=previous.controleProducaoHora;clientes=previous.clientes;
     toast("Erro ao carregar dados: "+(e?.message||e),"err");
     try{ populateSelects(); }catch(_e){}
-    try{ ({dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,'fat-cliente':renderFatCliente,ponto:typeof renderPontoBater==="function"?renderPontoBater:null}[currentPage])?.(); }catch(_e){}
+    try{ ({dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,'fat-cliente':renderFatCliente}[currentPage])?.(); }catch(_e){}
   }
 }
 
@@ -1385,424 +1405,6 @@ function renderBancoHoras(){
 }
 
 window.renderBancoHoras=renderBancoHoras;
-
-/* ══════════════════════════════════════════════════════════════
-   BATER PONTO
-══════════════════════════════════════════════════════════════ */
-setInterval(()=>{
-  const now=new Date();
-  const elH=$("ponto-relogio-hora");
-  if(elH) elH.textContent=now.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-  const elD=$("ponto-relogio-data");
-  if(elD) elD.textContent=now.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
-},1000);
-
-function renderPontoBater(){
-  const mesEl=$("ponto-mes");
-  if(mesEl&&!mesEl.value) mesEl.value=monthKeyLocal();
-  renderPontoStatusHoje();
-  renderPontoTabelaHoje();
-  renderPontoTabelaMes();
-}
-window.renderPontoBater=renderPontoBater;
-
-function renderPontoStatusHoje(){
-  const cont=$("ponto-status-hoje");
-  if(!cont) return;
-  const funcId=$("ponto-funcionario")?.value||"";
-  const info=$("ponto-facial-info");
-  if(info){
-    const f=funcionarios.find(x=>x.id===funcId);
-    info.textContent=f?(temRostoCadastrado(f)?"✓ Rosto cadastrado — pode usar o ponto facial":"Rosto ainda não cadastrado — clique em “Cadastrar rosto” para habilitar o ponto facial"):"";
-    info.style.color=f&&temRostoCadastrado(f)?"var(--green)":"var(--t3)";
-  }
-  if(!funcId){
-    cont.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><div class="ei">🕐</div><p>Selecione um funcionário para bater o ponto.</p></div>';
-    return;
-  }
-  const data=hojeISO();
-  const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
-  cont.innerHTML=TIPOS_PONTO.map(t=>{
-    const rec=regs.find(r=>r.tipo===t.id);
-    if(rec){
-      return `<div class="bh-card" style="padding:14px;text-align:center;">
-        <div style="font-size:11px;color:var(--t3);margin-bottom:4px;">${t.label}</div>
-        <div class="td-mono" style="font-size:20px;font-weight:700;color:var(--green);">${rec.hora}</div>
-        <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;">
-          ${rec.foto?`<button class="btn-edit" onclick="verFotoBatida('${rec.id}')" title="Ver foto">📷</button>`:""}
-          <button class="btn-edit" onclick="editarBatidaPonto('${rec.id}')" title="Corrigir">✎</button>
-          <button class="btn-x" onclick="deletarBatidaPonto('${rec.id}')" title="Remover">✕</button>
-        </div>
-      </div>`;
-    }
-    return `<button type="button" class="btn-save" style="padding:18px 10px;font-size:14px;" onclick="baterPonto('${t.id}')">${t.label}</button>`;
-  }).join("");
-}
-window.renderPontoStatusHoje=renderPontoStatusHoje;
-
-function renderPontoTabelaHoje(){
-  const tb=$("ponto-tbody-hoje");
-  if(!tb) return;
-  const data=hojeISO();
-  const grupos=agruparBatidas(batidasPonto.filter(b=>b.data===data)).sort((a,b)=>String(a.funcionarioNome).localeCompare(String(b.funcionarioNome)));
-  if(!grupos.length){
-    tb.innerHTML='<tr><td colspan="6" class="td-empty">Nenhuma batida hoje.</td></tr>';
-    return;
-  }
-  tb.innerHTML=grupos.map(g=>renderLinhaBatidas(g,false)).join("");
-}
-
-function renderPontoTabelaMes(){
-  const tb=$("ponto-tbody-mes");
-  if(!tb) return;
-  const mes=$("ponto-mes")?.value||monthKeyLocal();
-  const grupos=agruparBatidas(batidasPonto.filter(b=>b.data&&b.data.slice(0,7)===mes))
-    .sort((a,b)=>b.data===a.data?String(a.funcionarioNome).localeCompare(String(b.funcionarioNome)):b.data.localeCompare(a.data));
-  if(!grupos.length){
-    tb.innerHTML='<tr><td colspan="7" class="td-empty">Nenhum registro neste mês.</td></tr>';
-    return;
-  }
-  tb.innerHTML=grupos.map(g=>renderLinhaBatidas(g,true)).join("");
-}
-
-function celulaBatida(rec){
-  if(!rec) return '<span style="color:var(--t3)">—</span>';
-  const fotoBtn=rec.foto?` <button class="btn-edit" style="padding:1px 5px;font-size:10px;" onclick="verFotoBatida('${rec.id}')" title="Ver foto">📷</button>`:"";
-  return `<span class="td-mono">${rec.hora}</span>${fotoBtn} <button class="btn-edit" style="padding:1px 5px;font-size:10px;" onclick="editarBatidaPonto('${rec.id}')" title="Editar">✎</button>`;
-}
-function renderLinhaBatidas(g,mostrarData){
-  const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
-  const minTrab=calcularMinutosTrabalhados(horasMap);
-  const horasLabel=minTrab==null?"—":fmtHorasCompact(minTrab)+"h";
-  let saldoBadge="";
-  const calcDia=calcSaldoDiaPonto(g.funcionarioId,g.data);
-  if(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN){
-    const pos=calcDia.saldo>0;
-    saldoBadge=` <span class="td-mono" style="font-size:10px;font-weight:700;color:${pos?"var(--green)":"var(--red)"};" title="Jornada do dia: ${fmtHorasCompact(calcDia.jornada)}h">(${pos?"+":"−"}${fmtHorasCompact(Math.abs(calcDia.saldo))})</span>`;
-  }
-  const dataCol=mostrarData?(()=>{const [y,mo,d]=g.data.split("-");return `<td class="td-mono sm">${d}/${mo}/${y}</td>`;})():"";
-  return `<tr>
-    ${dataCol}
-    <td><div class="fn-nome" style="font-size:12px;">${g.funcionarioNome}</div></td>
-    <td>${celulaBatida(g.porTipo.entrada)}</td>
-    <td>${celulaBatida(g.porTipo.saida_almoco)}</td>
-    <td>${celulaBatida(g.porTipo.volta_almoco)}</td>
-    <td>${celulaBatida(g.porTipo.saida)}</td>
-    <td class="td-mono" style="font-weight:700;">${horasLabel}${saldoBadge}</td>
-  </tr>`;
-}
-
-window.baterPonto=async function(tipo){
-  const funcId=$("ponto-funcionario")?.value;
-  if(!funcId){toast("Selecione um funcionário","err");return;}
-  const f=funcionarios.find(x=>x.id===funcId);
-  if(!f){toast("Funcionário não encontrado","err");return;}
-  const data=hojeISO();
-  const jaExiste=batidasPonto.find(b=>b.funcionarioId===funcId&&b.data===data&&b.tipo===tipo);
-  if(jaExiste){toast("Este funcionário já registrou esta batida hoje.","err");return;}
-  const hora=horaAgora();
-  try{
-    await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,hora,criadoEm:Timestamp.now()}));
-    toast(`${tipoPontoLabel(tipo)} registrada às ${hora}!`);
-    await aposBatidaPonto(funcId,data);
-  }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-};
-
-window.deletarBatidaPonto=async id=>{
-  if(!confirm("Remover esta batida de ponto?"))return;
-  const b=batidasPonto.find(x=>x.id===id);
-  try{
-    await deleteDoc(doc(db,"batidasPonto",id));toast("Removido.");
-    if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
-  }
-  catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-};
-
-window.editarBatidaPonto=function(id){
-  const b=batidasPonto.find(x=>x.id===id);if(!b)return;
-  $("edit-batida-id").value=id;
-  if($("edit-batida-tipo")) $("edit-batida-tipo").value=b.tipo;
-  if($("edit-batida-hora")) $("edit-batida-hora").value=b.hora;
-  $("modal-editar-batida-ponto").classList.add("open");document.body.style.overflow="hidden";
-};
-window.fecharModalEditarBatidaPonto=()=>{$("modal-editar-batida-ponto")?.classList.remove("open");document.body.style.overflow="";};
-window.salvarEdicaoBatidaPonto=async()=>{
-  const id=$("edit-batida-id").value;
-  const tipo=$("edit-batida-tipo")?.value;
-  const hora=$("edit-batida-hora")?.value;
-  if(!hora){toast("Informe a hora","err");return;}
-  const b=batidasPonto.find(x=>x.id===id);
-  try{
-    await updateDoc(doc(db,"batidasPonto",id),withOwner({tipo,hora}));
-    toast("Batida atualizada!");fecharModalEditarBatidaPonto();
-    if(b) await aposBatidaPonto(b.funcionarioId,b.data); else await loadData();
-  }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-};
-window.excluirBatidaDoModal=async()=>{
-  const id=$("edit-batida-id").value;if(!id)return;
-  fecharModalEditarBatidaPonto();
-  await window.deletarBatidaPonto(id);
-};
-
-window.exportarPontoExcel=function(){
-  const mes=$("ponto-mes")?.value||monthKeyLocal();
-  const lista=batidasPonto.filter(b=>b.data&&b.data.slice(0,7)===mes);
-  if(!lista.length){toast("Nenhum registro neste mês para exportar","warn");return;}
-  const grupos=agruparBatidas(lista).sort((a,b)=>a.data===b.data?String(a.funcionarioNome).localeCompare(String(b.funcionarioNome)):a.data.localeCompare(b.data));
-  const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-  let csv="Data,Funcionário,Entrada,Saída Almoço,Volta Almoço,Saída,Horas Trabalhadas,Jornada,Saldo,Status\r\n";
-  csv+=grupos.map(g=>{
-    const [y,mo,d]=g.data.split("-");
-    const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
-    const minTrab=calcularMinutosTrabalhados(horasMap);
-    const horasLabel=minTrab==null?"":fmtHorasCompact(minTrab);
-    const completo=g.porTipo.entrada&&g.porTipo.saida;
-    const status=completo?"Completo":"Incompleto";
-    const calcDia=calcSaldoDiaPonto(g.funcionarioId,g.data);
-    const jornadaLabel=calcDia?fmtHorasCompact(calcDia.jornada):"";
-    const saldoLabel=calcDia?(calcDia.saldo===0?"0:00":(calcDia.saldo>0?"+":"-")+fmtHorasCompact(Math.abs(calcDia.saldo))):"";
-    return [`${d}/${mo}/${y}`,g.funcionarioNome,horasMap.entrada,horasMap.saida_almoco,horasMap.volta_almoco,horasMap.saida,horasLabel,jornadaLabel,saldoLabel,status].map(esc).join(",");
-  }).join("\r\n");
-  const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
-  const url=URL.createObjectURL(blob);const a=document.createElement("a");
-  a.href=url;a.download=`ponto-${mes}.csv`;
-  a.click();URL.revokeObjectURL(url);toast("Planilha de ponto exportada para Excel!");
-};
-
-/* ── PONTO FACIAL — reconhecimento facial com face-api.js ────
-   A biblioteca e os modelos são carregados sob demanda (só quando
-   o usuário abre a câmera), com fontes alternativas de CDN porque
-   alguns provedores/redes bloqueiam um ou outro. */
-const PF_SCRIPT_URLS=[
-  "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js",
-  "https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js",
-  "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/dist/face-api.min.js"
-];
-const PF_MODEL_URLS=[
-  "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights",
-  "https://unpkg.com/face-api.js@0.22.2/weights",
-  "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights"
-];
-let pfStream=null,pfTimer=null,pfModo="reconhecer",pfEnrollFunc=null,pfBusy=false,pfAtivo=false,pfAmostras=[];
-let __faceApiPromise=null;
-async function pfCarregarScript(){
-  if(window.faceapi) return;
-  let lastErr=null;
-  for(const url of PF_SCRIPT_URLS){
-    try{
-      // fetch + blob evita bloqueio de MIME (raw.githubusercontent serve text/plain)
-      const resp=await fetch(url);
-      if(!resp.ok) throw new Error("HTTP "+resp.status);
-      const code=await resp.text();
-      const blobUrl=URL.createObjectURL(new Blob([code],{type:"text/javascript"}));
-      await new Promise((res,rej)=>{
-        const s=document.createElement("script");
-        s.src=blobUrl;s.onload=res;s.onerror=()=>rej(new Error("Falha ao executar script"));
-        document.head.appendChild(s);
-      });
-      URL.revokeObjectURL(blobUrl);
-      if(window.faceapi) return;
-      throw new Error("faceapi não inicializou");
-    }catch(e){ lastErr=e; console.warn("PF_SCRIPT_FALLBACK",url,e?.message||e); }
-  }
-  throw lastErr||new Error("Não foi possível carregar a biblioteca facial");
-}
-async function pfCarregarModelos(){
-  let lastErr=null;
-  for(const base of PF_MODEL_URLS){
-    try{
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(base),
-        faceapi.nets.faceLandmark68TinyNet.loadFromUri(base),
-        faceapi.nets.faceRecognitionNet.loadFromUri(base)
-      ]);
-      return;
-    }catch(e){ lastErr=e; console.warn("PF_MODEL_FALLBACK",base,e?.message||e); }
-  }
-  throw lastErr||new Error("Não foi possível baixar os modelos faciais");
-}
-function carregarFaceApi(){
-  if(__faceApiPromise) return __faceApiPromise;
-  __faceApiPromise=(async()=>{ await pfCarregarScript(); await pfCarregarModelos(); })();
-  __faceApiPromise.catch(()=>{ __faceApiPromise=null; });
-  return __faceApiPromise;
-}
-function setPfStatus(msg,tipo){
-  const el=$("pf-status");if(!el)return;
-  el.textContent=msg;
-  el.style.color=tipo==="ok"?"var(--green)":tipo==="err"?"var(--red)":tipo==="warn"?"#fbbf24":"var(--t2)";
-}
-function pfSnapshot(video){
-  const c=document.createElement("canvas");
-  const w=240,h=Math.round((video.videoHeight/video.videoWidth)*w)||180;
-  c.width=w;c.height=h;
-  c.getContext("2d").drawImage(video,0,0,w,h);
-  return c.toDataURL("image/jpeg",0.7);
-}
-function temRostoCadastrado(f){return Array.isArray(f?.faceDescriptor)&&f.faceDescriptor.length===128;}
-function melhorMatchFacial(desc){
-  let best=null,bestDist=0.5;
-  funcionarios.forEach(f=>{
-    if(!temRostoCadastrado(f)) return;
-    const d=faceapi.euclideanDistance(desc,new Float32Array(f.faceDescriptor));
-    if(d<bestDist){bestDist=d;best=f;}
-  });
-  return best?{f:best,dist:bestDist}:null;
-}
-function proximoTipoPonto(funcId){
-  const data=hojeISO();
-  const regs=batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data);
-  return TIPOS_PONTO.find(t=>!regs.some(r=>r.tipo===t.id))?.id||null;
-}
-
-/* ── PONTO → BANCO DE HORAS (automático) ─────────────────────
-   Quando o dia fica completo (entrada + saída), compara as horas
-   trabalhadas com a jornada da funcionária e lança falta/extra
-   automaticamente no Banco de Horas. Tolerância de 10 min. */
-const PONTO_TOLERANCIA_MIN=10;
-function calcSaldoDiaPonto(funcId,data){
-  const f=funcionarios.find(x=>x.id===funcId);
-  if(!f) return null;
-  const porTipo={};
-  batidasPonto.filter(b=>b.funcionarioId===funcId&&b.data===data).forEach(b=>{porTipo[b.tipo]=b.hora;});
-  if(!porTipo.entrada||!porTipo.saida) return null;
-  const minTrab=calcularMinutosTrabalhados(porTipo);
-  if(minTrab==null) return null;
-  const jornada=getJornadaMinForDate(f,data);
-  return {minTrab,jornada,saldo:minTrab-jornada};
-}
-async function sincronizarBancoHorasDia(funcId,data){
-  const f=funcionarios.find(x=>x.id===funcId);
-  if(!f||!data) return false;
-  const autosDia=pontos.filter(p=>p.funcionarioId===funcId&&p.data===data&&p.origem==="ponto-auto");
-  const calcDia=calcSaldoDiaPonto(funcId,data);
-  const alvo=(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN)
-    ?{tipo:calcDia.saldo<0?"falta":"extra",minutos:Math.abs(calcDia.saldo)}
-    :null;
-  if(!alvo){
-    if(!autosDia.length) return false;
-    await Promise.allSettled(autosDia.map(p=>deleteDoc(doc(db,"pontos",p.id))));
-    return true;
-  }
-  if(autosDia.length===1&&autosDia[0].tipo===alvo.tipo&&autosDia[0].minutos===alvo.minutos) return false;
-  await Promise.allSettled(autosDia.map(p=>deleteDoc(doc(db,"pontos",p.id))));
-  const obs=`Automático (ponto): trabalhou ${fmtHorasCompact(calcDia.minTrab)}h, jornada ${fmtHorasCompact(calcDia.jornada)}h`;
-  await addDoc(collection(db,"pontos"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo:alvo.tipo,minutos:alvo.minutos,obs,origem:"ponto-auto",criadoEm:Timestamp.now()}));
-  try{ if(typeof addAuditoria==="function") addAuditoria("criou","ponto",`${f.nome} — ${alvo.tipo} automática (${fmtHorasCompact(alvo.minutos)}h)`); }catch(_e){}
-  return true;
-}
-async function aposBatidaPonto(funcId,data){
-  await loadData();
-  try{
-    const mudou=await sincronizarBancoHorasDia(funcId,data);
-    if(mudou){
-      const calcDia=calcSaldoDiaPonto(funcId,data);
-      if(calcDia&&Math.abs(calcDia.saldo)>PONTO_TOLERANCIA_MIN){
-        const lbl=calcDia.saldo<0?`Falta de ${fmtHorasCompact(Math.abs(calcDia.saldo))}h`:`Hora extra de ${fmtHorasCompact(calcDia.saldo)}h`;
-        toast(`${lbl} lançada no Banco de Horas automaticamente.`,"warn");
-      }
-      await loadData();
-    }
-  }catch(e){ console.error("SYNC_BANCO_HORAS_ERROR",e); }
-}
-async function pfLoop(){
-  if(!pfAtivo) return;
-  const video=$("pf-video");
-  if(!video||video.readyState<2||pfBusy){pfTimer=setTimeout(pfLoop,300);return;}
-  pfBusy=true;
-  try{
-    const det=await faceapi.detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.4})).withFaceLandmarks(true).withFaceDescriptor();
-    if(!pfAtivo){pfBusy=false;return;}
-    if(!det){
-      setPfStatus("Posicione o rosto de frente para a câmera...");
-    }else if(pfModo==="cadastrar"){
-      pfAmostras.push(det.descriptor);
-      setPfStatus(`Capturando rosto de ${pfEnrollFunc?.nome||"funcionário"}... ${pfAmostras.length}/3`);
-      if(pfAmostras.length>=3){
-        pfAtivo=false;
-        const media=new Array(128).fill(0);
-        pfAmostras.forEach(d=>{for(let i=0;i<128;i++)media[i]+=d[i]/pfAmostras.length;});
-        await updateDoc(doc(db,"funcionarios",pfEnrollFunc.id),withOwner({faceDescriptor:media}));
-        setPfStatus(`✓ Rosto de ${pfEnrollFunc.nome} cadastrado com sucesso!`,"ok");
-        toast(`Rosto de ${pfEnrollFunc.nome} cadastrado!`);
-        setTimeout(()=>{fecharPontoFacial();},1500);
-        loadData();
-        pfBusy=false;return;
-      }
-    }else{
-      const match=melhorMatchFacial(det.descriptor);
-      if(!match){
-        setPfStatus("Rosto não reconhecido. Cadastre o rosto do funcionário primeiro.","warn");
-      }else{
-        const tipo=proximoTipoPonto(match.f.id);
-        if(!tipo){
-          setPfStatus(`${match.f.nome}: todas as batidas de hoje já foram registradas.`,"warn");
-        }else{
-          pfAtivo=false;
-          const foto=pfSnapshot(video);
-          const hora=horaAgora();
-          const dataBatida=hojeISO();
-          await addDoc(collection(db,"batidasPonto"),withOwner({funcionarioId:match.f.id,funcionarioNome:match.f.nome,data:dataBatida,tipo,hora,foto,origem:"facial",criadoEm:Timestamp.now()}));
-          try{ if(typeof addAuditoria==="function") addAuditoria("criou","ponto-batida",`${match.f.nome} (facial)`); }catch(_e){}
-          setPfStatus(`✓ ${match.f.nome} — ${tipoPontoLabel(tipo)} registrada às ${hora}!`,"ok");
-          toast(`${match.f.nome}: ${tipoPontoLabel(tipo)} registrada às ${hora}!`);
-          setTimeout(()=>{fecharPontoFacial();},1800);
-          aposBatidaPonto(match.f.id,dataBatida);
-          pfBusy=false;return;
-        }
-      }
-    }
-  }catch(e){
-    console.error("PF_LOOP_ERROR",e);
-    setPfStatus("Erro na análise facial: "+(e?.message||e),"err");
-  }
-  pfBusy=false;
-  if(pfAtivo) pfTimer=setTimeout(pfLoop,600);
-}
-async function abrirCameraFacial(modo){
-  pfModo=modo;pfAmostras=[];
-  const modal=$("modal-ponto-facial");if(!modal)return;
-  const titulo=$("pf-title");
-  if(titulo) titulo.textContent=modo==="cadastrar"?`📷 Cadastrar Rosto — ${pfEnrollFunc?.nome||""}`:"📷 Ponto com Reconhecimento Facial";
-  modal.classList.add("open");document.body.style.overflow="hidden";
-  setPfStatus("Carregando modelo de reconhecimento facial... (pode demorar na primeira vez)");
-  try{ await carregarFaceApi(); }
-  catch(e){ console.error("PF_LOAD_ERROR",e); setPfStatus("Não foi possível carregar o modelo facial. Verifique a conexão com a internet.","err"); return; }
-  setPfStatus("Iniciando câmera...");
-  try{
-    pfStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640}},audio:false});
-    const video=$("pf-video");
-    video.srcObject=pfStream;
-    await video.play().catch(()=>{});
-  }catch(e){ console.error("PF_CAMERA_ERROR",e); setPfStatus("Câmera indisponível: "+(e?.message||e),"err"); return; }
-  pfAtivo=true;pfBusy=false;
-  pfTimer=setTimeout(pfLoop,400);
-}
-window.abrirPontoFacial=()=>{abrirCameraFacial("reconhecer");};
-window.cadastrarRostoSelecionado=()=>{
-  const funcId=$("ponto-funcionario")?.value;
-  if(!funcId){toast("Selecione o funcionário para cadastrar o rosto","err");return;}
-  const f=funcionarios.find(x=>x.id===funcId);
-  if(!f){toast("Funcionário não encontrado","err");return;}
-  pfEnrollFunc=f;
-  abrirCameraFacial("cadastrar");
-};
-window.fecharPontoFacial=()=>{
-  pfAtivo=false;
-  if(pfTimer){clearTimeout(pfTimer);pfTimer=null;}
-  if(pfStream){try{pfStream.getTracks().forEach(t=>t.stop());}catch(_e){} pfStream=null;}
-  const v=$("pf-video");if(v)v.srcObject=null;
-  $("modal-ponto-facial")?.classList.remove("open");document.body.style.overflow="";
-};
-window.verFotoBatida=id=>{
-  const b=batidasPonto.find(x=>x.id===id);
-  if(!b||!b.foto){toast("Esta batida não tem foto","warn");return;}
-  $("foto-batida-img").src=b.foto;
-  const [y,mo,d]=String(b.data||"").split("-");
-  $("foto-batida-info").textContent=`${b.funcionarioNome} — ${tipoPontoLabel(b.tipo)} às ${b.hora} em ${d}/${mo}/${y}${b.origem==="facial"?" • reconhecimento facial":""}`;
-  $("modal-foto-batida").classList.add("open");document.body.style.overflow="hidden";
-};
-window.fecharFotoBatida=()=>{$("modal-foto-batida")?.classList.remove("open");document.body.style.overflow="";};
 
 /* ══════════════════════════════════════════════════════════════
    CONTROLE DE PRODUÇÃO POR HORA
@@ -3751,13 +3353,13 @@ window.restaurarBackupJSON=async function(){
     const raw=await file.text();
     const data=JSON.parse(raw);
     if(!data||typeof data!=="object"){toast("Arquivo de backup inválido","err");return;}
-    const colMap={funcionarios:data.funcionarios||[],lotes:data.lotes||[],gastos:data.gastos||[],pontos:data.pontos||[],registros:data.registros||[],batidasPonto:data.batidasPonto||[]};
+    const colMap={funcionarios:data.funcionarios||[],lotes:data.lotes||[],gastos:data.gastos||[],pontos:data.pontos||[],registros:data.registros||[]};
     const totalSolicitado=Object.values(colMap).reduce((s,arr)=>s+(Array.isArray(arr)?arr.length:0),0);
     if(!totalSolicitado){toast("Backup sem dados para importar","warn");return;}
     if(!confirm(`Importar ${totalSolicitado} item(ns) do backup? Itens aparentemente duplicados serão pulados.`)) return;
     if(data.config) saveStoredConfig({...getStoredConfig(),...data.config});
 
-    const existentes={funcionarios,lotes,gastos,pontos,registros,batidasPonto};
+    const existentes={funcionarios,lotes,gastos,pontos,registros};
     const identity=(col,item)=>{
       if(!item) return "";
       if(col==="funcionarios") return normalize(item.nome||"");
@@ -3765,7 +3367,6 @@ window.restaurarBackupJSON=async function(){
       if(col==="gastos") return normalize([item.descricao,item.valor,item.competencia,item.categoria].join("|"));
       if(col==="pontos") return normalize([item.funcionarioId||item.funcionarioNome,item.data,item.tipo,item.minutos].join("|"));
       if(col==="registros") return normalize([item.loteId||item.loteNumeroOf,item.funcionarioId||item.funcionarioNome,item.etapa,item.qtd,item.criadoEm?.seconds||item.criadoEm||""].join("|"));
-      if(col==="batidasPonto") return normalize([item.funcionarioId||item.funcionarioNome,item.data,item.tipo].join("|"));
       return normalize(JSON.stringify(item));
     };
     const seen={};
@@ -3797,20 +3398,18 @@ window.restaurarBackupJSON=async function(){
 ══════════════════════════════════════════════════════════════ */
 function renderBackup(){
   const el=$("backup-status");if(!el)return;
-  const total=funcionarios.length+registros.length+lotes.length+gastos.length+pontos.length+batidasPonto.length;
+  const total=funcionarios.length+registros.length+lotes.length+gastos.length+pontos.length;
   el.innerHTML=`
     <div class="bk-stat"><span class="bk-n">${funcionarios.length}</span><span class="bk-l">👥 Funcionários</span></div>
     <div class="bk-stat"><span class="bk-n">${lotes.length}</span><span class="bk-l">📦 Lotes (OF)</span></div>
     <div class="bk-stat"><span class="bk-n">${registros.length}</span><span class="bk-l">⚡ Registros</span></div>
     <div class="bk-stat"><span class="bk-n">${gastos.length}</span><span class="bk-l">💸 Gastos</span></div>
     <div class="bk-stat"><span class="bk-n">${pontos.length}</span><span class="bk-l">⏱ Pontos</span></div>
-    <div class="bk-stat"><span class="bk-n">${batidasPonto.length}</span><span class="bk-l">🕐 Batidas de ponto</span></div>
     <div class="bk-stat accent"><span class="bk-n">${total}</span><span class="bk-l">📋 Total docs</span></div>`;
 }
 window.baixarBackupJSON=()=>{
   // fotos das batidas ficam fora do backup para o arquivo não ficar gigante
   const data={geradoEm:new Date().toISOString(),sistema:"Mello Style v91",config:getConfig(),funcionarios,lotes,gastos,pontos,
-    batidasPonto:batidasPonto.map(({foto,...b})=>b),
     registros:registros.map(r=>({...r,criadoEm:r.criadoEm?.toDate?r.criadoEm.toDate().toISOString():r.criadoEm}))};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob);const a=document.createElement("a");
@@ -3830,12 +3429,6 @@ window.baixarBackupExcel=()=>{
   csv+=gastos.map(g=>[g.descricao,g.categoria,g.tipo,g.valor,g.competencia].map(esc).join(",")).join("\r\n");
   csv+="\r\n\r\nBANCO DE HORAS (FALTAS)\r\nData,Funcionário,Tipo,Obs\r\n";
   csv+=pontos.map(p=>[p.data,p.funcionarioNome,p.tipo==="falta-meio"?"Meio período":"Dia inteiro",p.obs||""].map(esc).join(",")).join("\r\n");
-  csv+="\r\n\r\nBATIDAS DE PONTO\r\nData,Funcionario,Entrada,Saida Almoco,Volta Almoco,Saida,Horas Trabalhadas\r\n";
-  csv+=agruparBatidas(batidasPonto).sort((a,b)=>a.data.localeCompare(b.data)).map(g=>{
-    const horasMap={entrada:g.porTipo.entrada?.hora||"",saida_almoco:g.porTipo.saida_almoco?.hora||"",volta_almoco:g.porTipo.volta_almoco?.hora||"",saida:g.porTipo.saida?.hora||""};
-    const minTrab=calcularMinutosTrabalhados(horasMap);
-    return[g.data,g.funcionarioNome,horasMap.entrada,horasMap.saida_almoco,horasMap.volta_almoco,horasMap.saida,minTrab==null?"":fmtHorasCompact(minTrab)].map(esc).join(",");
-  }).join("\r\n");
   const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);const a=document.createElement("a");
   a.href=url;a.download=`mello-style-backup-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`;
@@ -3989,7 +3582,7 @@ function addLixeira(tipo, collectionName, item){
   saveLixeiraStore(arr.slice(0,300));
 }
 function getCollectionSnapshot(collectionName,id){
-  const map={funcionarios,registros,lotes,gastos,pontos,clientes,batidasPonto};
+  const map={funcionarios,registros,lotes,gastos,pontos,clientes};
   const list=map[collectionName]||[];
   const found=list.find(x=>x.id===id);
   return found?JSON.parse(JSON.stringify(found)):null;
@@ -3997,10 +3590,10 @@ function getCollectionSnapshot(collectionName,id){
 function hasPageAccess(page){
   const perfil=(getConfig().perfil||'admin').toLowerCase();
   const allowed={
-    admin:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','ponto','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
-    gerente:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','ponto','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
+    admin:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
+    gerente:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
     financeiro:['dashboard','controlehora','gastos','historico','relatorio','backup','fat-cliente','clientes','auditoria'],
-    operador:['dashboard','lotes','funcionarios','producao','controlehora','historico','bancohoras','ponto','fat-cliente','clientes']
+    operador:['dashboard','lotes','funcionarios','producao','controlehora','historico','bancohoras','fat-cliente','clientes']
   };
   return (allowed[perfil]||allowed.admin).includes(page);
 }
@@ -4150,7 +3743,6 @@ function renderAuditoria(){
   wrapDelete('deletarPonto','pontos',x=>x.funcionarioNome||'ponto');
   wrapDelete('deletarLote','lotes',x=>`OF ${x.numeroOf||''} ${x.produto||''}`);
   wrapDelete('deletarClienteFirebase','clientes',x=>x.nome||'cliente');
-  wrapDelete('deletarBatidaPonto','batidasPonto',x=>`${x.funcionarioNome||'batida'} • ${tipoPontoLabel(x.tipo)}`);
 
   const wrapLog=(name, acao, tipo, labelResolver)=>{
     if(typeof window[name]!=='function') return;
@@ -4172,8 +3764,6 @@ function renderAuditoria(){
   wrapLog('salvarEdicaoGasto','editou','gasto',()=>$('edit-gasto-desc')?.value||'gasto');
   wrapLog('salvarPonto','criou','ponto',()=>$('bh-funcionario')?.selectedOptions?.[0]?.textContent||'ponto');
   wrapLog('salvarEdicaoPonto','editou','ponto',()=>$('edit-bh-funcionario')?.selectedOptions?.[0]?.textContent||'ponto');
-  wrapLog('baterPonto','criou','ponto-batida',()=>$('ponto-funcionario')?.selectedOptions?.[0]?.textContent||'batida');
-  wrapLog('salvarEdicaoBatidaPonto','editou','ponto-batida',()=>$('ponto-funcionario')?.selectedOptions?.[0]?.textContent||'batida');
   wrapLog('salvarConfiguracoes','editou','configuracoes',()=>getConfig().empresa||'configurações');
 })();
 
@@ -4182,7 +3772,7 @@ function renderAuditoria(){
     dashboard:'Dashboard',funcionarios:'Funcionários',producao:'Produção',lotes:'Lotes / OF',
     historico:'Histórico',gastos:'Gastos',relatorio:'Relatório',backup:'Backup',
     bancohoras:'Banco de Horas',controlehora:'Controle por Hora','fat-cliente':'Faturamento por Cliente',
-    clientes:'Clientes',lixeira:'Lixeira',auditoria:'Auditoria',ponto:'Bater Ponto'
+    clientes:'Clientes',lixeira:'Lixeira',auditoria:'Auditoria'
   };
 
   function closeInactiveLayers(){
@@ -4206,8 +3796,7 @@ function renderAuditoria(){
       historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,backup:renderBackup,
       bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,'fat-cliente':typeof renderFatCliente==='function'?renderFatCliente:null,
       clientes:typeof renderClientes==='function'?renderClientes:null,
-      lixeira:typeof renderLixeira==='function'?renderLixeira:null,auditoria:typeof renderAuditoria==='function'?renderAuditoria:null,
-      ponto:typeof renderPontoBater==='function'?renderPontoBater:null
+      lixeira:typeof renderLixeira==='function'?renderLixeira:null,auditoria:typeof renderAuditoria==='function'?renderAuditoria:null
     };
   }
 
@@ -4391,7 +3980,7 @@ applyTheme(getConfig().tema);
   });
   window.uiState=uiState;
 
-  const guardedDeletes=["deletarFuncionario","deletarPonto","deletarLote","deletarRegistro","deletarGasto","deletarGastoDrawer","deletarClienteFirebase","deletarBatidaPonto"];
+  const guardedDeletes=["deletarFuncionario","deletarPonto","deletarLote","deletarRegistro","deletarGasto","deletarGastoDrawer","deletarClienteFirebase"];
   guardedDeletes.forEach(name=>{
     const original=window[name];
     if(typeof original!=="function" || original.__melloGuarded) return;
@@ -4439,8 +4028,6 @@ applyTheme(getConfig().tema);
     'salvarRegistro','editarRegistro','salvarEdicaoRegistro','deletarRegistro',
     'salvarGasto','editarGasto','salvarEdicaoGasto','deletarGasto','salvarGastoDrawer','deletarGastoDrawer',
     'salvarPonto','editarPonto','salvarEdicaoPonto','deletarPonto',
-    'baterPonto','deletarBatidaPonto','editarBatidaPonto','fecharModalEditarBatidaPonto','salvarEdicaoBatidaPonto','excluirBatidaDoModal','exportarPontoExcel','renderPontoBater','renderPontoStatusHoje',
-    'abrirPontoFacial','fecharPontoFacial','cadastrarRostoSelecionado','verFotoBatida','fecharFotoBatida',
     'renderDashboard','renderFuncionarios','renderLotes','renderProducao','renderHistorico','renderGastos','renderBancoHoras','renderRelatorio','renderBackup','renderControleProducaoHora',
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
@@ -10448,10 +10035,16 @@ input,select,textarea,button{font-size:16px;}
     <div class="auth-card"><div class="auth-badge"><span class="ab-dot"></span> Plataforma premium</div>
       <div id="form-login">
         <h2>Entrar na plataforma</h2>
-        <div class="af"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-        <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+        <div id="quick-login" class="hidden">
+          <button id="quick-login-btn" type="button" class="btn-auth" onclick="doQuickLogin(event)">Entrar</button>
+          <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="mostrarCamposLogin(event)">Usar outra conta</a></div>
+        </div>
+        <div id="login-fields">
+          <div class="af"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" value="mellorenan663@gmail.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+          <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+          <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
+        </div>
         <div id="login-status" class="login-status" aria-live="polite"></div>
-        <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
       </div>
       <div id="form-register" class="hidden">
         <h2>Criar conta</h2>
@@ -10484,7 +10077,6 @@ input,select,textarea,button{font-size:16px;}
         <button class="tp-btn" id="tp-controlehora" onclick="navigate('controlehora')"><span class="tp-icon">⏱</span>Hora</button>
         <button class="tp-btn" id="tp-historico" onclick="navigate('historico')"><span class="tp-icon">📋</span>Histórico</button>
         <button class="tp-btn" id="tp-bancohoras" onclick="navigate('bancohoras')"><span class="tp-icon">⏱</span>Horas</button>
-        <button class="tp-btn" id="tp-ponto" onclick="navigate('ponto')"><span class="tp-icon">🕐</span>Ponto</button>
       </div>
     </div>
     <div class="topbar-actions">
@@ -10534,7 +10126,6 @@ input,select,textarea,button{font-size:16px;}
       <button class="nav-btn"        id="nav-gastos" data-page="gastos" onclick="navigate('gastos')">      <span class="nb-icon">💸</span> Gastos</button>
       <button class="nav-btn"        id="nav-historico" data-page="historico" onclick="navigate('historico')">   <span class="nb-icon">📋</span> Histórico</button>
       <button class="nav-btn"        id="nav-bancohoras" data-page="bancohoras" onclick="navigate('bancohoras')">  <span class="nb-icon">⏱</span> Banco de Horas</button>
-      <button class="nav-btn"        id="nav-ponto" data-page="ponto" onclick="navigate('ponto')">      <span class="nb-icon">🕐</span> Bater Ponto</button>
       <div class="nav-sec">Relatórios</div>
       <button class="nav-btn"        id="nav-fat-cliente" data-page="fat-cliente" onclick="navigate('fat-cliente')"><span class="nb-icon">💼</span> Fat. por Cliente</button>
       <button class="nav-btn"        id="nav-relatorio" data-page="relatorio" onclick="navigate('relatorio')">   <span class="nb-icon">📄</span> Relatório</button>
@@ -10938,95 +10529,6 @@ input,select,textarea,button{font-size:16px;}
     </div>
 
     <!-- BATER PONTO -->
-    <div class="page" id="page-ponto">
-      <div class="phd" style="margin-bottom:22px;">
-        <div class="ptitle">Bater Ponto</div>
-        <div class="psub">Relógio de ponto digital — ao completar o dia, faltas e horas extras vão automaticamente para o Banco de Horas (tolerância de 10 min)</div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 20px;">
-        <div id="ponto-relogio-hora" style="font-family:'DM Mono',monospace;font-size:48px;font-weight:600;letter-spacing:1px;line-height:1;">--:--:--</div>
-        <div id="ponto-relogio-data" style="color:var(--t3);font-size:13px;margin-top:8px;text-transform:capitalize;"></div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div class="chd">Registrar Batida</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
-          <button type="button" class="btn-save" onclick="abrirPontoFacial()">📷 Bater ponto com reconhecimento facial</button>
-          <button type="button" class="btn-outline" onclick="cadastrarRostoSelecionado()">＋ Cadastrar rosto</button>
-          <span id="ponto-facial-info" style="font-size:11px;color:var(--t3);"></span>
-        </div>
-        <div class="fg">
-          <div class="ff" style="grid-column:span 2"><label>Funcionário (para batida manual ou cadastro de rosto)</label><select id="ponto-funcionario" onchange="renderPontoStatusHoje()"><option value="">— Selecione —</option></select></div>
-        </div>
-        <div id="ponto-status-hoje" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:6px;">
-          <div class="empty-state" style="grid-column:1/-1;"><div class="ei">🕐</div><p>Selecione um funcionário para bater o ponto.</p></div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div class="chd">Registros de Hoje</div>
-        <div class="tbl-wrap"><table>
-          <thead><tr><th>Funcionário</th><th>Entrada</th><th>Saída Almoço</th><th>Volta Almoço</th><th>Saída</th><th>Horas</th></tr></thead>
-          <tbody id="ponto-tbody-hoje"><tr><td colspan="6" class="td-empty">Nenhuma batida hoje.</td></tr></tbody>
-        </table></div>
-      </div>
-
-      <div class="card">
-        <div class="chd">Relatório Mensal</div>
-        <div class="fg" style="margin-bottom:14px;max-width:260px">
-          <div class="ff"><label>Mês de referência</label><input id="ponto-mes" type="month" onchange="renderPontoBater()"/></div>
-        </div>
-        <div class="fa" style="margin-bottom:14px;">
-          <button type="button" class="btn-outline" onclick="exportarPontoExcel()">⬇ Exportar para Excel</button>
-        </div>
-        <div class="tbl-wrap"><table>
-          <thead><tr><th>Data</th><th>Funcionário</th><th>Entrada</th><th>Saída Almoço</th><th>Volta Almoço</th><th>Saída</th><th>Horas</th></tr></thead>
-          <tbody id="ponto-tbody-mes"><tr><td colspan="7" class="td-empty">Nenhum registro neste mês.</td></tr></tbody>
-        </table></div>
-      </div>
-    </div>
-
-    <div id="modal-ponto-facial" class="modal-overlay" onclick="if(event.target===this)fecharPontoFacial()">
-      <div class="modal-box md">
-        <div class="modal-hd"><div class="modal-title" id="pf-title">📷 Ponto com Reconhecimento Facial</div><button class="modal-close" onclick="fecharPontoFacial()">✕</button></div>
-        <div class="modal-body">
-          <div id="pf-status" style="text-align:center;padding:12px;border-radius:10px;background:var(--bg2);border:1px solid var(--bd);margin-bottom:12px;font-size:13px;">Iniciando...</div>
-          <video id="pf-video" autoplay muted playsinline style="width:100%;border-radius:12px;background:#000;transform:scaleX(-1);min-height:200px;"></video>
-        </div>
-        <div class="modal-footer"><button class="btn-outline" onclick="fecharPontoFacial()">Fechar</button></div>
-      </div>
-    </div>
-
-    <div id="modal-foto-batida" class="modal-overlay" onclick="if(event.target===this)fecharFotoBatida()">
-      <div class="modal-box md">
-        <div class="modal-hd"><div class="modal-title">📷 Foto da Batida</div><button class="modal-close" onclick="fecharFotoBatida()">✕</button></div>
-        <div class="modal-body" style="text-align:center;">
-          <img id="foto-batida-img" alt="Foto da batida de ponto" style="max-width:100%;border-radius:12px;"/>
-          <div id="foto-batida-info" style="margin-top:10px;color:var(--t3);font-size:12px;"></div>
-        </div>
-        <div class="modal-footer"><button class="btn-outline" onclick="fecharFotoBatida()">Fechar</button></div>
-      </div>
-    </div>
-
-    <div id="modal-editar-batida-ponto" class="modal-overlay" onclick="if(event.target===this)fecharModalEditarBatidaPonto()">
-      <div class="modal-box md">
-        <div class="modal-hd"><div class="modal-title">✎ Corrigir Batida</div><button class="modal-close" onclick="fecharModalEditarBatidaPonto()">✕</button></div>
-        <input type="hidden" id="edit-batida-id"/>
-        <div class="modal-body">
-          <div class="fg">
-            <div class="ff"><label>Tipo</label><select id="edit-batida-tipo"><option value="entrada">Entrada</option><option value="saida_almoco">Saída Almoço</option><option value="volta_almoco">Volta Almoço</option><option value="saida">Saída</option></select></div>
-            <div class="ff"><label>Hora *</label><input id="edit-batida-hora" type="time"/></div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-x" onclick="excluirBatidaDoModal()">Excluir</button>
-          <button class="btn-outline" onclick="fecharModalEditarBatidaPonto()">Cancelar</button>
-          <button class="btn-save" onclick="salvarEdicaoBatidaPonto()">Salvar</button>
-        </div>
-      </div>
-    </div>
-
     <!-- CONTROLE DE PRODUÇÃO POR HORA -->
     <div class="page" id="page-controlehora">
       <div class="phd" style="margin-bottom:22px;">
