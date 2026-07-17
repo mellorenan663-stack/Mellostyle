@@ -2665,7 +2665,51 @@ function renderDashboard(){
   if($("dash-mes-input")) $("dash-mes-input").value=mesAtual;
   if($("dash-mes-next")) $("dash-mes-next").disabled=isMesAtual;
 
-  // ── METAS MENSAIS — única seção do dashboard ──
+  // ── ATÉ O MOMENTO — peças produzidas, faturado e a faturar no mês ──
+  if($("dash-agora")){
+    const resumo=calcResumoMensal(mesAtual);
+    const lotesMes=(resumo.lotesDoMes||[]).filter(l=>getStatusOperacionalLote(l)!=="Cancelado");
+    const concluidos=lotesMes.filter(l=>getStatusOperacionalLote(l)==="Concluído");
+    const abertos=lotesMes.filter(l=>getStatusOperacionalLote(l)!=="Concluído");
+    const pecasPrevistas=lotesMes.reduce((s,l)=>s+toNumber(l.qtdTotal,0),0);
+    const pecasProduzidas=lotesMes.reduce((s,l)=>s+calcProg(l).produzido,0);
+    const fatRealizado=concluidos.reduce((s,l)=>s+calcFaturamentoLote(l),0);
+    const fatAberto=abertos.reduce((s,l)=>s+calcFaturamentoLote(l),0);
+    const fatTotal=fatRealizado+fatAberto;
+    const pctFat=fatTotal>0?Math.round((fatRealizado/fatTotal)*100):0;
+    const pctPecas=pecasPrevistas>0?Math.min(100,Math.round((pecasProduzidas/pecasPrevistas)*100)):0;
+    const plural=(n,s,p)=>n===1?s:p;
+    $("dash-agora").innerHTML=`<div class="ag-section">
+      <div class="metas-section-hd">
+        <div class="metas-section-title">📊 Até o momento — ${mesLabelCap}</div>
+        <span class="ag-hint">${lotesMes.length} ${plural(lotesMes.length,"OF","OFs")} no mês</span>
+      </div>
+      <div class="ag-grid">
+        <div class="ag-tile">
+          <div class="ag-tile-hd"><span class="ag-ico">🧵</span><span class="ag-l">Peças produzidas</span></div>
+          <div class="ag-v">${pecasProduzidas.toLocaleString("pt-BR")}</div>
+          <div class="ag-s">de ${pecasPrevistas.toLocaleString("pt-BR")} previstas · ${pctPecas}%</div>
+          <div class="ag-mini-bar"><div style="width:${pctPecas}%"></div></div>
+        </div>
+        <div class="ag-tile ag-green">
+          <div class="ag-tile-hd"><span class="ag-ico">💰</span><span class="ag-l">Faturado até agora</span></div>
+          <div class="ag-v">${fmtMoney(fatRealizado)}</div>
+          <div class="ag-s">${concluidos.length} ${plural(concluidos.length,"OF concluída","OFs concluídas")}</div>
+        </div>
+        <div class="ag-tile ag-amber">
+          <div class="ag-tile-hd"><span class="ag-ico">⏳</span><span class="ag-l">Falta faturar</span></div>
+          <div class="ag-v">${fmtMoney(fatAberto)}</div>
+          <div class="ag-s">${abertos.length} ${plural(abertos.length,"OF em aberto","OFs em aberto")}</div>
+        </div>
+      </div>
+      <div class="ag-bar-wrap">
+        <div class="ag-bar"><div class="ag-bar-fill" style="width:${pctFat}%"></div></div>
+        <div class="ag-bar-legend"><span>${pctFat}% do faturamento do mês já realizado</span><span>Total previsto: <strong>${fmtMoney(fatTotal)}</strong></span></div>
+      </div>
+    </div>`;
+  }
+
+  // ── METAS MENSAIS ──
   renderMetas();
 }
 
@@ -8993,6 +9037,28 @@ select:focus-visible {
 /* ════ SISTEMA DE METAS MENSAIS v61 ════ */
 
 /* ── Seção wrapper ── */
+/* ── Até o momento — produção & faturamento ── */
+.ag-section{margin-bottom:18px;}
+.ag-hint{font-size:11px;color:var(--t3);font-weight:600;}
+.ag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:12px;}
+.ag-tile{background:var(--bg2);border:1px solid var(--bd);border-radius:18px;padding:16px 18px;border-left:3px solid var(--accent);}
+.ag-tile.ag-green{border-left-color:#34d399;}
+.ag-tile.ag-amber{border-left-color:#fbbf24;}
+.ag-tile-hd{display:flex;align-items:center;gap:7px;margin-bottom:8px;}
+.ag-ico{font-size:15px;}
+.ag-l{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);}
+.ag-v{font-size:26px;font-weight:800;color:var(--t);line-height:1.1;}
+.ag-tile.ag-green .ag-v{color:#34d399;}
+.ag-tile.ag-amber .ag-v{color:#fbbf24;}
+.ag-s{font-size:11px;color:var(--t3);margin-top:4px;}
+.ag-mini-bar{height:5px;border-radius:99px;background:var(--bg4);margin-top:10px;overflow:hidden;}
+.ag-mini-bar>div{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent2));}
+.ag-bar-wrap{background:var(--bg2);border:1px solid var(--bd);border-radius:14px;padding:12px 16px;}
+.ag-bar{height:8px;border-radius:99px;background:var(--bg4);overflow:hidden;margin-bottom:8px;}
+.ag-bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#34d399,#10b981);transition:width .4s ease;}
+.ag-bar-legend{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--t3);}
+.ag-bar-legend strong{color:var(--t);}
+
 .metas-section {
   margin-bottom: 18px;
 }
@@ -10097,6 +10163,9 @@ input,select,textarea,button{font-size:16px;}
           </div>
         </div>
       </div>
+
+      <!-- ═══ ATÉ O MOMENTO — PRODUÇÃO & FATURAMENTO ═══ -->
+      <div id="dash-agora"></div>
 
       <!-- ═══ METAS MENSAIS ═══ -->
       <div id="dash-metas"></div>
