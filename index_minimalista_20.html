@@ -637,7 +637,11 @@ function getLoginButton(){
   return document.getElementById("login-btn")||document.querySelector("#page-login .btn-auth");
 }
 /* ── ACESSO RÁPIDO — depois do primeiro login, entra com um botão só,
-   sempre na SUA conta do Firebase (e-mail/senha salvos neste aparelho) ── */
+   sempre na SUA conta do Firebase (e-mail/senha salvos neste aparelho).
+   LOGIN_SENHA_FIXA: se preenchida, o app NUNCA pede senha — entra com um
+   clique em qualquer aparelho (quem tiver o arquivo consegue entrar). ── */
+const LOGIN_EMAIL_FIXO="mellorenan663@gmail.com";
+const LOGIN_SENHA_FIXA="";
 function saveQuickLogin(email,senha){
   try{ localStorage.setItem("mello_quick_login",btoa(unescape(encodeURIComponent(JSON.stringify({e:email,s:senha}))))); }catch(_e){}
 }
@@ -650,7 +654,7 @@ function getQuickLogin(){
   }catch(_e){ return null; }
 }
 window.doQuickLogin=function(ev){
-  const d=getQuickLogin();
+  const d=getQuickLogin()||(LOGIN_SENHA_FIXA?{e:LOGIN_EMAIL_FIXO,s:LOGIN_SENHA_FIXA}:null);
   if(!d){ window.mostrarCamposLogin(ev); return false; }
   const em=document.getElementById("login-email"), pw=document.getElementById("login-pass");
   if(em) em.value=d.e;
@@ -661,13 +665,19 @@ window.mostrarCamposLogin=function(ev){
   try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
   document.getElementById("quick-login")?.classList.add("hidden");
   document.getElementById("login-fields")?.classList.remove("hidden");
+  document.getElementById("login-pass")?.focus();
+};
+window.mostrarCampoEmail=function(ev){
+  try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
+  const w=document.getElementById("login-email-wrap");
+  if(w){ w.style.display=""; }
   document.getElementById("login-email")?.focus();
 };
 function setupQuickLogin(){
   const quick=document.getElementById("quick-login");
   const fields=document.getElementById("login-fields");
   if(!quick||!fields) return;
-  if(getQuickLogin()){ quick.classList.remove("hidden"); fields.classList.add("hidden"); }
+  if(getQuickLogin()||LOGIN_SENHA_FIXA){ quick.classList.remove("hidden"); fields.classList.add("hidden"); }
   else{ quick.classList.add("hidden"); fields.classList.remove("hidden"); }
 }
 function resetLoginButton(){
@@ -742,8 +752,8 @@ window.doLogin=async function(event){
     return true;
   }
 
-  const email=(document.getElementById("login-email")?.value||"").trim();
-  const senha=document.getElementById("login-pass")?.value||"";
+  const email=((document.getElementById("login-email")?.value||"").trim())||LOGIN_EMAIL_FIXO;
+  const senha=(document.getElementById("login-pass")?.value||"")||LOGIN_SENHA_FIXA;
 
   if(!email||!senha){
     window.mostrarCamposLogin(event);
@@ -9174,6 +9184,7 @@ select:focus-visible {
 /* ════ SISTEMA DE METAS MENSAIS v61 ════ */
 
 /* ── Seção wrapper ── */
+.login-first-hint{font-size:11px;color:var(--t3);font-weight:600;margin:-4px 0 12px;display:flex;align-items:center;gap:5px;}
 /* ── Até o momento ── */
 .ag-hint{font-size:11px;color:var(--t3);font-weight:600;}
 
@@ -10232,9 +10243,11 @@ input,select,textarea,button{font-size:16px;}
           <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="mostrarCamposLogin(event)">Usar outra conta</a></div>
         </div>
         <div id="login-fields">
-          <div class="af"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" value="mellorenan663@gmail.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+          <div class="af" id="login-email-wrap" style="display:none;"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" value="mellorenan663@gmail.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
           <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+          <div class="login-first-hint">🔒 Só na primeira vez neste aparelho — depois vira um clique.</div>
           <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
+          <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="mostrarCampoEmail(event)">Entrar com outro e-mail</a></div>
         </div>
         <div id="login-status" class="login-status" aria-live="polite"></div>
       </div>
