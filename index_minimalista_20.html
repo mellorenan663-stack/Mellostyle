@@ -640,8 +640,8 @@ function getLoginButton(){
    sempre na SUA conta do Firebase (e-mail/senha salvos neste aparelho).
    LOGIN_SENHA_FIXA: se preenchida, o app NUNCA pede senha — entra com um
    clique em qualquer aparelho (quem tiver o arquivo consegue entrar). ── */
-const LOGIN_EMAIL_FIXO="mellorenan663@gmail.com";
-const LOGIN_SENHA_FIXA="";
+const LOGIN_EMAIL_FIXO="acesso@mellostyle.app";
+const LOGIN_SENHA_FIXA="Aio8LCaAsJ0AuntJt14Dz3dOC2Lk";
 function saveQuickLogin(email,senha){
   try{ localStorage.setItem("mello_quick_login",btoa(unescape(encodeURIComponent(JSON.stringify({e:email,s:senha}))))); }catch(_e){}
 }
@@ -753,7 +753,7 @@ window.doLogin=async function(event){
   }
 
   const email=((document.getElementById("login-email")?.value||"").trim())||LOGIN_EMAIL_FIXO;
-  const senha=(document.getElementById("login-pass")?.value||"")||LOGIN_SENHA_FIXA;
+  const senha=(document.getElementById("login-pass")?.value||"")||(email===LOGIN_EMAIL_FIXO?LOGIN_SENHA_FIXA:"");
 
   if(!email||!senha){
     window.mostrarCamposLogin(event);
