@@ -4230,18 +4230,30 @@ window.navigate = function(page){
     const currentPageEl = document.getElementById('page-' + (typeof currentPage!=='undefined'?currentPage:''));
     if(currentPageEl && page !== (typeof currentPage!=='undefined'?currentPage:'')){
       const inputs = currentPageEl.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),textarea');
-      const hasData = Array.from(inputs).some(el=>{
-        // Ignora campos de busca e filtros
+      // Só campos que o usuário realmente vê contam como "não salvos".
+      // (o seletor de mês do dashboard é um input invisível sempre preenchido
+      //  e fazia o aviso disparar em toda troca de aba, apagando o mês.)
+      const conta = el=>{
         const id=el.id||'';
-        if(/busca|filtro|search/i.test(id)) return false;
-        return (el.value||'').trim().length > 0;
-      });
+        // busca/filtros, configurações (têm botão próprio de salvar) e campos
+        // pré-preenchidos pelo app não são "dados não salvos"
+        if(/busca|filtro|search|competencia|-mes|^cfg-|jornada/i.test(id)) return false;
+        if(el.value===el.defaultValue&&el.defaultValue!=='') return false;
+        // datas/horas são pré-preenchidas com "hoje" pelo app em várias telas;
+        // trabalho não salvo de verdade é texto/número digitado
+        if(['date','month','time','week'].includes(el.type)) return false;
+        if(!(el.offsetWidth>0 && el.offsetHeight>0)) return false;
+        const cs=getComputedStyle(el);
+        if(cs.opacity==='0'||cs.visibility==='hidden'||cs.display==='none'||cs.pointerEvents==='none') return false;
+        return true;
+      };
+      const hasData = Array.from(inputs).some(el=>conta(el) && (el.value||'').trim().length > 0);
       if(hasData){
         if(!confirm('Há dados não salvos neste formulário. Deseja continuar sem salvar?')){
           return;
         }
-        // Limpar os campos ao navegar
-        inputs.forEach(el=>{ if(!/busca|filtro|search/i.test(el.id||'')) el.value=''; });
+        // Limpar os campos ao navegar (apenas os visíveis)
+        inputs.forEach(el=>{ if(conta(el)) el.value=''; });
       }
     }
   }catch(e){ console.warn('NAV_GUARD_WARN',e); }
@@ -12813,6 +12825,227 @@ html[data-theme="claro"]{--bg:#e8eef9;--bg2:#eef3fc;--bg3:#ffffff;--bg4:#dfe8f7;
   to { transform: rotate(360deg); }
 }
 
+</style>
+
+<style id="mello-refresh">
+/* ═══════════════════════════════════════════════════════════════
+   MELLO NOIR — camada final de design (minimalismo premium)
+   Superfícies planas · hairlines · tipografia refinada · 1 acento
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Tokens · tema escuro (padrão) ── */
+:root, :root[data-theme="escuro"]{
+  --bg:#0B0C0E; --bg2:#131417; --bg3:#191B1F; --bg4:#1E2025; --bg5:#24262C;
+  --panel:#131417; --panel2:#0E0F12; --card:#131417; --card2:#131417;
+  --bd:rgba(255,255,255,.07); --bd2:rgba(255,255,255,.13); --line:rgba(255,255,255,.07);
+  --t:#F4F5F6; --t2:#C9CBD1; --t3:#8A8F98; --t4:#666B74;
+  --text:#F4F5F6; --muted:#8A8F98;
+  --accent:#E8E9EC; --accent2:#C9CBD1; --accent-lt:#F4F5F6;
+  --accent-soft:rgba(232,233,236,.07); --accent-line:rgba(232,233,236,.18);
+  --success:#34d399; --success-soft:rgba(52,211,153,.10); --success-line:rgba(52,211,153,.24);
+  --danger:#f87171;  --danger-soft:rgba(248,113,113,.10);  --danger-line:rgba(248,113,113,.24);
+  --warning:#fbbf24; --warning-soft:rgba(251,191,36,.10);  --warning-line:rgba(251,191,36,.24);
+  --radius:14px;
+  --shadow:0 18px 48px rgba(0,0,0,.45);
+  --shadow2:0 1px 2px rgba(0,0,0,.35);
+}
+/* ── Tokens · tema claro ── */
+:root[data-theme="claro"]{
+  --bg:#F6F6F7; --bg2:#FFFFFF; --bg3:#FAFAFB; --bg4:#EFEFF1; --bg5:#E7E8EA;
+  --panel:#FFFFFF; --panel2:#F2F2F4; --card:#FFFFFF; --card2:#FFFFFF;
+  --bd:rgba(17,18,20,.09); --bd2:rgba(17,18,20,.16); --line:rgba(17,18,20,.09);
+  --t:#141519; --t2:#3E4249; --t3:#71767E; --t4:#9AA0A8;
+  --text:#141519; --muted:#71767E;
+  --accent:#17181C; --accent2:#3E4249; --accent-lt:#141519;
+  --accent-soft:rgba(20,21,25,.05); --accent-line:rgba(20,21,25,.16);
+  --shadow:0 18px 48px rgba(15,17,22,.14);
+  --shadow2:0 1px 2px rgba(15,17,22,.06);
+}
+
+/* ── Canvas: plano, sem gradientes decorativos ── */
+html,body{ background:var(--bg)!important; }
+body{ background-image:none!important; }
+
+/* ── Superfícies: hairline + raio consistentes, sem brilho ── */
+.card,.gauge-card,.metas-recap,.summary-bar,.kpi-card,.lote-card,.bh-card,
+.fin-card,.rel-card,.metric-card,.config-tip,.modal-card,.drawer,.table-wrap,
+.content-card,.dash-card,.panel,.box,.gasto-grupo,.hg,.client-card,.trash-card{
+  background:var(--bg2)!important;
+  border:1px solid var(--bd)!important;
+  border-radius:var(--radius)!important;
+  box-shadow:var(--shadow2)!important;
+}
+.gauge-card.gc-ok{border-left:3px solid #34d399!important}
+.gauge-card.gc-warn{border-left:3px solid #fbbf24!important}
+.gauge-card.gc-bad{border-left:3px solid #f87171!important}
+.gauge-card.gc-over{border-left:3px solid var(--bd2)!important}
+.gauge-card::after{ display:none!important; } /* mata o shimmer */
+.gauge-card:hover,.card:hover{
+  transform:translateY(-1px)!important;
+  box-shadow:var(--shadow2)!important;
+  border-color:var(--bd2)!important;
+}
+*{ transition-duration:.15s; }
+
+/* ── Topbar: flat + blur, hairline embaixo ── */
+.topbar{
+  background:color-mix(in srgb,var(--bg) 78%,transparent)!important;
+  backdrop-filter:blur(16px)!important;
+  border-bottom:1px solid var(--bd)!important;
+  box-shadow:none!important;
+}
+.tp-btn{
+  background:transparent!important; border:1px solid transparent!important;
+  color:var(--t3)!important; border-radius:10px!important; box-shadow:none!important;
+  font-weight:600!important;
+}
+.tp-btn:hover{ background:var(--bg3)!important; color:var(--t)!important; transform:none!important; }
+.tp-btn.active{
+  background:var(--bg3)!important; color:var(--t)!important;
+  border-color:var(--bd)!important; box-shadow:none!important;
+}
+.topbar-name{ letter-spacing:1px!important; }
+#global-search-input{
+  background:var(--panel2)!important; border:1px solid var(--bd)!important;
+  border-radius:10px!important; box-shadow:none!important;
+}
+#global-search-input:focus{ border-color:var(--bd2)!important; box-shadow:0 0 0 3px var(--accent-soft)!important; }
+
+/* ── Sidebar: trilho limpo, item ativo discreto ── */
+.sidebar{
+  background:var(--bg)!important;
+  border-right:1px solid var(--bd)!important;
+  box-shadow:none!important;
+}
+.nav-btn,.sidebar button{
+  background:transparent!important; border:1px solid transparent!important;
+  color:var(--t3)!important; border-radius:10px!important; box-shadow:none!important;
+  font-weight:600!important;
+}
+.nav-btn:hover,.sidebar button:hover{
+  background:var(--bg3)!important; color:var(--t)!important;
+  border-color:transparent!important; transform:none!important;
+}
+.nav-btn.active,.sidebar button.active{
+  background:var(--bg3)!important; color:var(--t)!important;
+  border:1px solid var(--bd)!important; box-shadow:none!important;
+}
+
+/* ── Cabeçalhos de página ── */
+.phd .ptitle,.db-hero-title{
+  font-size:25px!important; font-weight:800!important;
+  letter-spacing:-.8px!important; color:var(--t)!important;
+}
+.phd .psub,.db-hero-sub{ color:var(--t3)!important; font-size:12.5px!important; }
+.db-hero{
+  background:transparent!important; border:none!important;
+  box-shadow:none!important; padding-left:0!important; padding-right:0!important;
+}
+.metas-section-title::before{
+  background:var(--accent)!important; width:3px!important; border-radius:2px!important;
+}
+
+/* ── Botões: primário platinum, resto fantasma ── */
+button,.btn,.btn-outline,.btn-save,.btn-edit,.btn-auth,.btn-primary,
+.btn-topbar-refresh,.btn-theme-quick,.btn-gastos-quick,.theme-swatch,.btn-dash-nav,.btn-refresh{
+  border-radius:10px!important;
+  transition:background .15s ease,border-color .15s ease,transform .15s ease,box-shadow .15s ease!important;
+}
+.btn-primary,.btn-save,.btn-auth,.btn-gd-save{
+  background:var(--accent)!important; color:#101114!important;
+  border:1px solid var(--accent)!important; box-shadow:none!important;
+  font-weight:700!important;
+}
+:root[data-theme="claro"] .btn-primary,
+:root[data-theme="claro"] .btn-save,
+:root[data-theme="claro"] .btn-auth,
+:root[data-theme="claro"] .btn-gd-save{ color:#FFFFFF!important; }
+.btn-primary:hover,.btn-save:hover,.btn-auth:hover,.btn-gd-save:hover{
+  filter:brightness(1.06); transform:translateY(-1px);
+}
+.btn-outline,.btn-ghost,.btn-topbar-refresh,.btn-theme-quick,.btn-gastos-quick,
+.theme-swatch,.btn-dash-nav,.btn-refresh{
+  background:transparent!important; color:var(--t2)!important;
+  border:1px solid var(--bd)!important; box-shadow:none!important;
+}
+.btn-outline:hover,.btn-ghost:hover,.btn-topbar-refresh:hover,.btn-theme-quick:hover,
+.btn-gastos-quick:hover,.theme-swatch:hover,.btn-dash-nav:hover,.btn-refresh:hover{
+  background:var(--bg3)!important; border-color:var(--bd2)!important; color:var(--t)!important;
+}
+.btn-x,.btn-del,.btn-danger{
+  background:transparent!important; color:var(--danger)!important;
+  border:1px solid var(--danger-line)!important; box-shadow:none!important;
+}
+.btn-x:hover,.btn-del:hover{ background:var(--danger-soft)!important; }
+
+/* ── Inputs ── */
+input,select,textarea{
+  background:var(--panel2)!important; color:var(--t)!important;
+  border:1px solid var(--bd)!important; border-radius:10px!important;
+  box-shadow:none!important;
+}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--bd2)!important;
+  box-shadow:0 0 0 3px var(--accent-soft)!important;
+}
+label{ color:var(--t3)!important; }
+
+/* ── Tabelas ── */
+th{
+  background:transparent!important; color:var(--t4)!important;
+  border-bottom:1px solid var(--bd)!important;
+  font-size:10px!important; text-transform:uppercase!important; letter-spacing:.7px!important;
+}
+td{ border-bottom:1px solid var(--bd)!important; }
+tr:last-child td{ border-bottom:none!important; }
+
+/* ── Chips e selos: fantasmas com hairline ── */
+.chip,.badge,.tag,.status-pill{
+  background:var(--bg3)!important; color:var(--t3)!important;
+  border:1px solid var(--bd)!important; border-radius:999px!important;
+  box-shadow:none!important;
+}
+
+/* ── Modais e drawers ── */
+.modal-box{
+  background:var(--bg2)!important; border:1px solid var(--bd)!important;
+  border-radius:16px!important; box-shadow:var(--shadow)!important;
+}
+.modal-overlay{ backdrop-filter:blur(6px)!important; }
+
+/* ── Login ── */
+.auth-card{
+  background:var(--bg2)!important; border:1px solid var(--bd)!important;
+  border-radius:20px!important; box-shadow:var(--shadow)!important;
+}
+.auth-badge{
+  background:var(--bg3)!important; border:1px solid var(--bd)!important;
+  color:var(--t3)!important; box-shadow:none!important;
+}
+#page-login{ background:var(--bg)!important; background-image:none!important; }
+
+/* ── Barra de rolagem fina ── */
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{
+  background:var(--bd2); border-radius:99px;
+  border:3px solid var(--bg); background-clip:padding-box;
+}
+::-webkit-scrollbar-thumb:hover{ background:var(--t4); border:3px solid var(--bg); background-clip:padding-box; }
+
+/* ── Toques finais ── */
+.live-dot{ background:var(--success)!important; box-shadow:none!important; }
+.metas-edit-btn{
+  background:transparent!important; border:1px solid var(--bd)!important;
+  color:var(--t2)!important; border-radius:10px!important;
+}
+.metas-edit-btn:hover{ background:var(--bg3)!important; border-color:var(--bd2)!important; }
+.gc-icon{ background:var(--bg3)!important; border:1px solid var(--bd)!important; border-radius:10px!important; }
+.gc-bar-fill.ok{ background:#0ea371!important; box-shadow:none!important; }
+.gc-bar-fill.warn{ background:#c87e08!important; box-shadow:none!important; }
+.gc-bar-fill.bad{ background:#dc2626!important; box-shadow:none!important; }
+.gc-bar-fill.over{ background:var(--bd2)!important; box-shadow:none!important; }
+.gc-bar-track{ background:var(--bg4)!important; }
 </style>
 
 <script id="mello-style-final-stability-js">
