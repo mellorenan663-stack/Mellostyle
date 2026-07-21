@@ -11,7 +11,7 @@
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth,signInAnonymously,signOut,onAuthStateChanged,browserLocalPersistence,inMemoryPersistence,setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,browserLocalPersistence,inMemoryPersistence,setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore,collection,addDoc,getDocs,doc,getDoc,setDoc,updateDoc,deleteDoc,query,orderBy,where,Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBwoI6IOPgWul1uxFwJXJTQ4cGyOS9F_Fc",authDomain:"producao-saas.firebaseapp.com",projectId:"producao-saas",storageBucket:"producao-saas.firebasestorage.app",messagingSenderId:"330333904905",appId:"1:330333904905:web:6d5e2e0ec6f62d224458d8"};
@@ -615,10 +615,11 @@ async function safeSetPersistence(){
 function loginErrorMessage(err){
   const code=String(err?.code||"");
   const raw=String(err?.message||"");
+  if(code.includes("invalid-credential")||code.includes("wrong-password")||code.includes("user-not-found")) return "Email ou senha incorretos.";
+  if(code.includes("invalid-email")) return "Email inválido.";
   if(code.includes("too-many-requests")) return "Muitas tentativas. Tente novamente em alguns minutos.";
   if(code.includes("network-request-failed")) return "Falha de internet ou bloqueio do Firebase.";
-  if(code.includes("operation-not-allowed")) return "Ative o login Anônimo no Firebase: Authentication → Sign-in method → Anonymous → Enable.";
-  if(code.includes("admin-restricted-operation")) return "Ative o login Anônimo no Firebase: Authentication → Sign-in method → Anonymous → Enable.";
+  if(code.includes("operation-not-allowed")) return "Ative Email/Senha no Firebase Authentication.";
   if(code.includes("unauthorized-domain")) return "Domínio do Netlify não autorizado no Firebase.";
   if(code.includes("timeout")) return "Firebase não respondeu. Verifique internet, domínio autorizado e Authentication.";
   return raw||"Não foi possível entrar.";
@@ -630,7 +631,44 @@ function setLoginStatus(msg,type=""){
   el.className="login-status "+(type||"");
 }
 function getLoginButton(){
+  // Quando o acesso rápido está visível, o feedback (Entrando...) vai nele.
+  const quick=document.getElementById("quick-login-btn");
+  if(quick && !quick.closest(".hidden")) return quick;
   return document.getElementById("login-btn")||document.querySelector("#page-login .btn-auth");
+}
+/* ── ACESSO RÁPIDO — depois do primeiro login, entra com um botão só,
+   sempre na SUA conta do Firebase (e-mail/senha salvos neste aparelho) ── */
+function saveQuickLogin(email,senha){
+  try{ localStorage.setItem("mello_quick_login",btoa(unescape(encodeURIComponent(JSON.stringify({e:email,s:senha}))))); }catch(_e){}
+}
+function getQuickLogin(){
+  try{
+    const raw=localStorage.getItem("mello_quick_login");
+    if(!raw) return null;
+    const d=JSON.parse(decodeURIComponent(escape(atob(raw))));
+    return d&&d.e&&d.s?d:null;
+  }catch(_e){ return null; }
+}
+window.doQuickLogin=function(ev){
+  const d=getQuickLogin();
+  if(!d){ window.mostrarCamposLogin(ev); return false; }
+  const em=document.getElementById("login-email"), pw=document.getElementById("login-pass");
+  if(em) em.value=d.e;
+  if(pw) pw.value=d.s;
+  return window.doLogin(ev);
+};
+window.mostrarCamposLogin=function(ev){
+  try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
+  document.getElementById("quick-login")?.classList.add("hidden");
+  document.getElementById("login-fields")?.classList.remove("hidden");
+  document.getElementById("login-email")?.focus();
+};
+function setupQuickLogin(){
+  const quick=document.getElementById("quick-login");
+  const fields=document.getElementById("login-fields");
+  if(!quick||!fields) return;
+  if(getQuickLogin()){ quick.classList.remove("hidden"); fields.classList.add("hidden"); }
+  else{ quick.classList.add("hidden"); fields.classList.remove("hidden"); }
 }
 function resetLoginButton(){
   const btn=getLoginButton();
@@ -650,6 +688,8 @@ function setLoginLoading(){
 function abrirAppAposAuth(user,{showToast=false}={}){
   const resolvedUser=user||auth.currentUser;
   if(!resolvedUser||!resolvedUser.uid) return;
+  // Sessão anônima antiga (de versão anterior do app): descarta e volta ao login.
+  if(resolvedUser.isAnonymous){ try{ signOut(auth); }catch(_e){} return; }
 
   setActiveUser(resolvedUser);
   __authOpened=true;
@@ -678,6 +718,14 @@ function abrirAppAposAuth(user,{showToast=false}={}){
     }
   });
 }
+function loginWithTimeout(email,senha,timeoutMs=20000){
+  return withAuthTimeout(
+    signInWithEmailAndPassword(auth,email,senha),
+    timeoutMs,
+    "auth/timeout",
+    "Firebase não respondeu dentro do tempo limite."
+  );
+}
 window.doLogin=async function(event){
   try{
     if(event&&typeof event.preventDefault==="function") event.preventDefault();
@@ -687,23 +735,34 @@ window.doLogin=async function(event){
 
   if(__loginBusy) return false;
 
-  // Sessão anterior ainda válida: entra direto, sem nova autenticação.
-  if(auth.currentUser&&auth.currentUser.uid){
+  // Sessão anterior ainda válida (conta real): entra direto, sem nova autenticação.
+  if(auth.currentUser&&auth.currentUser.uid&&!auth.currentUser.isAnonymous){
     setLoginStatus("Abrindo sistema...","ok");
     abrirAppAposAuth(auth.currentUser,{showToast:true});
     return true;
   }
 
+  const email=(document.getElementById("login-email")?.value||"").trim();
+  const senha=document.getElementById("login-pass")?.value||"";
+
+  if(!email||!senha){
+    window.mostrarCamposLogin(event);
+    setLoginStatus("Preencha email e senha.","err");
+    if(typeof toast==="function") toast("Preencha email e senha.","err");
+    resetLoginButton();
+    return false;
+  }
+
   __loginBusy=true;
   setLoginLoading();
-  setLoginStatus("Entrando...","ok");
+  setLoginStatus("Autenticando no Firebase...","ok");
 
   if(__loginWatchdogTimer) clearTimeout(__loginWatchdogTimer);
   __loginWatchdogTimer=setTimeout(()=>{
     if(__loginBusy){
       __loginBusy=false;
       resetLoginButton();
-      const msg="Firebase não respondeu. Verifique a internet.";
+      const msg="Firebase não respondeu. Verifique internet, domínio autorizado e Authentication.";
       setLoginStatus(msg,"err");
       if(typeof toast==="function") toast(msg,"err");
     }
@@ -711,19 +770,16 @@ window.doLogin=async function(event){
 
   try{
     await safeSetPersistence();
-    const cred=await withAuthTimeout(
-      signInAnonymously(auth),
-      20000,
-      "auth/timeout",
-      "Firebase não respondeu dentro do tempo limite."
-    );
+    const cred=await loginWithTimeout(email,senha,20000);
+    saveQuickLogin(email,senha);
     setLoginStatus("Login realizado. Abrindo sistema...","ok");
     abrirAppAposAuth(cred.user,{showToast:true});
     return true;
   }catch(err){
     console.error("LOGIN_ERROR:",err);
 
-    if(auth.currentUser&&auth.currentUser.uid){
+    if(auth.currentUser&&auth.currentUser.uid&&!auth.currentUser.isAnonymous){
+      // Sessão já existente — não salva a senha digitada, pois pode estar errada.
       setLoginStatus("Login realizado. Abrindo sistema...","ok");
       abrirAppAposAuth(auth.currentUser,{showToast:true});
       return true;
@@ -746,6 +802,7 @@ window.doLogin=async function(event){
 };
 window.doLogout=()=>signOut(auth);
 function setupLoginBindings(){
+  // Vincula só o botão do formulário; o de acesso rápido tem o próprio handler.
   const btn=document.getElementById("login-btn");
   if(btn){
     btn.type="button";
@@ -756,11 +813,22 @@ function setupLoginBindings(){
       btn.addEventListener("click",function(e){ return window.doLogin(e); },{passive:false});
     }
   }
+  const qbtn=document.getElementById("quick-login-btn");
+  if(qbtn){
+    qbtn.type="button";
+    qbtn.onclick=function(e){ return window.doQuickLogin(e); };
+  }
+  ["login-email","login-pass"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el||el.dataset.enterLoginBoundStable) return;
+    el.dataset.enterLoginBoundStable="1";
+    el.addEventListener("keydown",e=>{ if(e.key==="Enter") window.doLogin(e); },{passive:false});
+  });
 }
-window.setupLoginBindings=setupLoginBindings;
-if(document.readyState==="loading") window.addEventListener("DOMContentLoaded",setupLoginBindings,{once:true});
-else setupLoginBindings();
-window.addEventListener("load",setupLoginBindings,{once:true});
+window.setupLoginBindings=function(){ setupLoginBindings(); setupQuickLogin(); };
+if(document.readyState==="loading") window.addEventListener("DOMContentLoaded",window.setupLoginBindings,{once:true});
+else window.setupLoginBindings();
+window.addEventListener("load",window.setupLoginBindings,{once:true});
 window.addEventListener("pageshow",()=>{ if(!__loginBusy) resetLoginButton(); });
 
 // Proteção contra falso-logout no Netlify:
@@ -769,6 +837,11 @@ window.addEventListener("pageshow",()=>{ if(!__loginBusy) resetLoginButton(); })
 // que só executamos o logout se o usuário realmente saiu.
 let __authNullTimer=null;
 onAuthStateChanged(auth,user=>{
+  if(user&&user.uid&&user.isAnonymous){
+    // Sessão anônima persistida de versão anterior: encerra e exibe o login.
+    try{ signOut(auth); }catch(_e){}
+    return;
+  }
   if(user&&user.uid){
     // Usuário confirmado — cancela qualquer logout pendente e abre o app
     if(__authNullTimer){ clearTimeout(__authNullTimer); __authNullTimer=null; }
@@ -10154,7 +10227,15 @@ input,select,textarea,button{font-size:16px;}
     <div class="auth-card"><div class="auth-badge"><span class="ab-dot"></span> Plataforma premium</div>
       <div id="form-login">
         <h2>Entrar na plataforma</h2>
-        <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
+        <div id="quick-login" class="hidden">
+          <button id="quick-login-btn" type="button" class="btn-auth" onclick="doQuickLogin(event)">Entrar</button>
+          <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="mostrarCamposLogin(event)">Usar outra conta</a></div>
+        </div>
+        <div id="login-fields">
+          <div class="af"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" value="mellorenan663@gmail.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+          <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+          <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
+        </div>
         <div id="login-status" class="login-status" aria-live="polite"></div>
       </div>
     </div>
