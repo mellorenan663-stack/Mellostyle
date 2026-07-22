@@ -3003,73 +3003,43 @@ function renderMetas(){
   const prjPcls=prjP.cls==='good'?'green':prjP.cls==='meh'?'yellow':'red';
   const mBatidas=[pF,pL,pM,pP].filter(p=>p>=100).length;
 
+  const barCls=s=>s==='over'?'ok':s;
+  const metaRow=(label,valueStr,targetStr,p,st,lb)=>{
+    const c=barCls(st);
+    return `<div class="bar-row">
+      <div class="bar-label"><span class="bar-dot ${c}"></span>${label}</div>
+      <div class="bar-values">${valueStr}<span class="bar-target"> / ${targetStr}</span></div>
+      <div class="bar-track"><div class="bar-fill ${c}" style="width:${Math.min(p,100)}%"></div></div>
+      <div class="bar-pct">${p}%</div>
+      <div class="bar-status ${barCls(lb.cls)}">${lb.txt}</div>
+    </div>`;
+  };
+  const kpi=(l,v,s,scls='')=>`<div class="krb"><div class="krb-l">${l}</div><div class="krb-v">${v}</div><div class="krb-s ${scls}">${s}</div></div>`;
   el.innerHTML=`<div class="metas-section">
     <div class="metas-section-hd">
-      <div class="metas-section-title">🎯 Metas do mês — ${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
+      <div class="metas-section-title">Metas do mês — ${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
       <button class="metas-edit-btn" onclick="navigate('configuracoes')">⚙ Editar metas</button>
     </div>
-    <div class="metas-grid">
-      ${card('💰','Faturamento',fmtMoney(fat),
-        `Meta: <strong>${fmtMoney(mFat)}</strong> · Faltam ${fmtMoney(Math.max(0,mFat-fat))}`,
-        pF,stF,lbF,arc(pF,colF),
-        footerStat('Projeção',vF,prjFcls)+footerStat('Dias rest.',diasRestantes+'d')+projBadge(prjF)
-      )}
-      ${card('📈','Lucro líquido',fmtMoney(lucro),
-        `Meta: <strong>${fmtMoney(mLucro)}</strong> · Faltam ${fmtMoney(Math.max(0,mLucro-lucro))}`,
-        pL,stL,lbL,arc(pL,colL),
-        footerStat('Meta margem',mMargem+'%',stM==='ok'||stM==='over'?'green':stM==='warn'?'yellow':'red')+
-        footerStat('Real',margem+'%',margem>=mMargem?'green':'red')+
-        footerStat('Falta',fmtMoney(Math.max(0,mLucro-lucro)))
-      )}
-      ${card('📊','Margem de lucro',margem+'%',
-        `Meta: <strong>${mMargem}%</strong> · ${margem>=mMargem?'Acima ✓':'Abaixo por '+(mMargem-margem).toFixed(1)+'pp'}`,
-        pM,stM,lbM,arc(pM,colM),
-        footerStat('Faturamento',fmtMoney(fat))+
-        footerStat('Custo',fmtMoney(custo))+
-        footerStat('Variação',(margem>=mMargem?'+':'')+((margem-mMargem).toFixed(1))+'pp',margem>=mMargem?'green':'red')
-      )}
-      ${card('🔻','Teto de custo',fmtMoney(custo),
-        `Teto: <strong>${fmtMoney(mCusto)}</strong> · ${custo<=mCusto?'Sobra '+fmtMoney(mCusto-custo):'Excedeu '+fmtMoney(custo-mCusto)}`,
-        pC,stC,lbC,arc(pC,colC),
-        footerStat('Folha',fmtMoney(resumo.folha||0))+
-        footerStat('Fixos',fmtMoney(resumo.fixo||0))+
-        footerStat('Variáveis',fmtMoney(resumo.variavel||0)),
-        'gc-custo'
-      )}
-      ${card('🧵','Produção (peças)',pecas.toLocaleString('pt-BR'),
-        `Meta: <strong>${mPecas.toLocaleString('pt-BR')} pçs</strong> · Faltam ${Math.max(0,mPecas-pecas).toLocaleString('pt-BR')}`,
-        pP,stP,lbP,arc(pP,colP),
-        footerStat('Projeção',Math.round(projVal(pecas)).toLocaleString('pt-BR'),prjPcls)+
-        footerStat('Por dia',diasDecorridos>0?Math.round(pecas/diasDecorridos).toLocaleString('pt-BR'):'—')+
-        projBadge(prjP)
-      )}
+    <div class="krb-wrap">
+      ${kpi('Faturamento',fmtMoney(fat),`${pF}% da meta`,pF>=70?'up':pF>=40?'':'down')}
+      ${kpi('Lucro líquido',fmtMoney(lucro),`${pL}% da meta`,pL>=70?'up':pL>=40?'':'down')}
+      ${kpi('Margem',margem+'%',`meta ${mMargem}%`,margem>=mMargem?'up':'down')}
+      ${kpi('Produção',pecas.toLocaleString('pt-BR'),`de ${mPecas.toLocaleString('pt-BR')} pçs`,pP>=70?'up':pP>=40?'':'down')}
+      ${kpi('Custo',fmtMoney(custo),`teto ${fmtMoney(mCusto)}`,custo<=mCusto?'up':'down')}
     </div>
-    <div class="metas-recap">
-      <div class="metas-recap-item">
-        <div class="mri-label">Metas batidas</div>
-        <div class="mri-val ${mBatidas>=3?'green':mBatidas>=1?'yellow':'red'}">${mBatidas}/4</div>
-        <div class="mri-sub">fat, lucro, margem, peças</div>
-      </div>
-      <div class="metas-recap-item">
-        <div class="mri-label">Dia do mês</div>
-        <div class="mri-val">${diaAtual}/${totalDiasMes}</div>
-        <div class="mri-sub">${diasRestantes} dias restantes</div>
-      </div>
-      <div class="metas-recap-item">
-        <div class="mri-label">Ritmo fat.</div>
-        <div class="mri-val ${prjFcls}">${fracaoMes>0?Math.round(fat/fracaoMes/mFat*100):0}%</div>
-        <div class="mri-sub">do esperado pro dia</div>
-      </div>
-      <div class="metas-recap-item">
-        <div class="mri-label">Precisa/dia restante</div>
-        <div class="mri-val">${diasRestantes>0?fmtMoney(Math.max(0,Math.round((mFat-fat)/diasRestantes))):'—'}</div>
-        <div class="mri-sub">para bater o faturamento</div>
-      </div>
-      <div class="metas-recap-item">
-        <div class="mri-label">Custo do teto</div>
-        <div class="mri-val ${stC==='ok'?'green':stC==='warn'?'yellow':'red'}">${pC}%</div>
-        <div class="mri-sub">usado até agora</div>
-      </div>
+    <div class="card bars-panel">
+      ${metaRow('Faturamento',fmtMoney(fat),fmtMoney(mFat),pF,stF,lbF)}
+      ${metaRow('Lucro líquido',fmtMoney(lucro),fmtMoney(mLucro),pL,stL,lbL)}
+      ${metaRow('Margem de lucro',margem+'%',mMargem+'%',pM,stM,lbM)}
+      ${metaRow('Teto de custo',fmtMoney(custo),fmtMoney(mCusto),pC,stC,lbC)}
+      ${metaRow('Produção (peças)',pecas.toLocaleString('pt-BR'),mPecas.toLocaleString('pt-BR')+' pçs',pP,stP,lbP)}
+    </div>
+    <div class="ledger-foot">
+      <div class="lf-item"><span class="lf-v ${mBatidas>=3?'pos':mBatidas>=1?'':'neg'}">${mBatidas}/4</span><span class="lf-l">metas batidas</span></div>
+      <div class="lf-item"><span class="lf-v">${diaAtual}/${totalDiasMes}</span><span class="lf-l">${diasRestantes} dias restantes</span></div>
+      <div class="lf-item"><span class="lf-v">${fracaoMes>0?Math.round(fat/fracaoMes/mFat*100):0}%</span><span class="lf-l">ritmo do faturamento</span></div>
+      <div class="lf-item"><span class="lf-v">${diasRestantes>0?fmtMoney(Math.max(0,Math.round((mFat-fat)/diasRestantes))):'—'}</span><span class="lf-l">precisa/dia p/ bater</span></div>
+      <div class="lf-item"><span class="lf-v ${stC==='ok'?'pos':stC==='warn'?'':'neg'}">${pC}%</span><span class="lf-l">do teto de custo usado</span></div>
     </div>
   </div>`;
 
@@ -3101,29 +3071,24 @@ function renderMetas(){
 
     elAg.innerHTML=`<div class="metas-section">
       <div class="metas-section-hd">
-        <div class="metas-section-title">📊 Até o momento — ${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
+        <div class="metas-section-title">Produção & faturamento — ${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
         <span class="ag-hint">${lotesMes.length} ${plural(lotesMes.length,'OF','OFs')} no mês</span>
       </div>
-      <div class="metas-grid">
-        ${card('🧵','Peças produzidas',pecasProduzidas.toLocaleString('pt-BR'),
-          `Previsto: <strong>${pecasPrevistas.toLocaleString('pt-BR')} pçs</strong> · Faltam ${Math.max(0,pecasPrevistas-pecasProduzidas).toLocaleString('pt-BR')}`,
-          pctPecas,stPec,lbPec,arc(pctPecas,colPec,'do previsto'),
-          footerStat('OFs no mês',lotesMes.length)+
-          footerStat('Concluídas',concluidos.length,'green')+
-          footerStat('Em aberto',abertos.length,abertos.length?'yellow':'green')
-        )}
-        ${card('💰','Faturado até agora',fmtMoney(fatRealizado),
-          `Previsto: <strong>${fmtMoney(fatTotal)}</strong> · ${pctFat}% realizado`,
-          pctFat,stFat,lbFat,arc(pctFat,colFat,'do previsto'),
-          footerStat('OFs concluídas',concluidos.length,'green')+
-          footerStat('Em aberto',fmtMoney(fatAberto),'yellow')
-        )}
-        ${card('⏳','Falta faturar',fmtMoney(fatAberto),
-          `${abertos.length} ${plural(abertos.length,'OF em aberto','OFs em aberto')} · ${pctAberto}% do previsto`,
-          pctAberto,stAb,lbAb,arc(pctAberto,colAb,'do previsto'),
-          footerStat('Já faturado',fmtMoney(fatRealizado),'green')+
-          footerStat('Total previsto',fmtMoney(fatTotal))
-        )}
+      <div class="krb-wrap krb-wrap-3">
+        ${kpi('Peças produzidas',pecasProduzidas.toLocaleString('pt-BR'),`de ${pecasPrevistas.toLocaleString('pt-BR')} previstas`,pctPecas>=70?'up':pctPecas>=40?'':'down')}
+        ${kpi('Faturado até agora',fmtMoney(fatRealizado),`${concluidos.length} ${plural(concluidos.length,'OF concluída','OFs concluídas')}`,'up')}
+        ${kpi('Falta faturar',fmtMoney(fatAberto),`${abertos.length} ${plural(abertos.length,'OF em aberto','OFs em aberto')}`,abertos.length?'':'up')}
+      </div>
+      <div class="card split-panel">
+        <div class="split-bar">
+          <div class="split-seg real" style="width:${pctFat}%"></div>
+          <div class="split-seg open" style="width:${pctAberto}%"></div>
+        </div>
+        <div class="split-legend">
+          <span class="sl-item"><i class="sl-dot real"></i>Realizado — ${pctFat}% · ${fmtMoney(fatRealizado)}</span>
+          <span class="sl-item"><i class="sl-dot open"></i>A faturar — ${pctAberto}% · ${fmtMoney(fatAberto)}</span>
+          <span class="sl-total">Total previsto ${fmtMoney(fatTotal)}</span>
+        </div>
       </div>
     </div>`;
   }
@@ -13171,6 +13136,80 @@ tr:last-child td{ border-bottom:none!important; }
 .gc-bar-fill.bad{ background:var(--danger)!important; box-shadow:none!important; }
 .gc-bar-fill.over{ background:var(--bd2)!important; box-shadow:none!important; }
 .gc-bar-track{ background:var(--bg4)!important; }
+
+/* ── DASHBOARD LEDGER — faixa de KPIs ── */
+.krb-wrap{
+  display:grid; grid-template-columns:repeat(5,1fr); gap:0;
+  background:var(--bg2); border:1px solid var(--bd); border-radius:var(--radius);
+  padding:20px 8px; margin-bottom:14px; box-shadow:var(--shadow-card);
+}
+.krb-wrap-3{ grid-template-columns:repeat(3,1fr); }
+.krb{ padding:2px 20px; border-left:1px solid var(--bd); }
+.krb:first-child{ border-left:none; }
+.krb-l{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; color:var(--t4); margin-bottom:9px; }
+.krb-v{ font-size:27px; font-weight:800; letter-spacing:-1.3px; color:var(--t); line-height:1; font-variant-numeric:tabular-nums; }
+.krb-s{ font-size:11px; font-weight:600; color:var(--t3); margin-top:8px; }
+.krb-s.up{ color:var(--success); }
+.krb-s.down{ color:var(--danger); }
+
+/* ── Metas em barras horizontais ── */
+.bars-panel{ padding:4px 6px!important; }
+.bar-row{
+  display:grid; grid-template-columns:170px minmax(150px,190px) 1fr 52px 118px;
+  align-items:center; gap:18px; padding:15px 18px; border-bottom:1px solid var(--bd);
+  grid-template-areas:"label values track pct status";
+}
+.bars-panel .bar-row:last-child{ border-bottom:none; }
+.bar-label{ grid-area:label; font-weight:700; color:var(--t); font-size:13.5px; display:flex; align-items:center; gap:9px; }
+.bar-dot{ width:8px; height:8px; border-radius:99px; flex-shrink:0; }
+.bar-dot.ok{ background:var(--success); } .bar-dot.warn{ background:var(--warning); } .bar-dot.bad{ background:var(--danger); }
+.bar-values{ grid-area:values; font-size:13px; color:var(--t2); font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+.bar-target{ color:var(--t4); font-weight:600; }
+.bar-track{ grid-area:track; height:8px; border-radius:99px; background:var(--bg4); overflow:hidden; }
+.bar-fill{ height:100%; border-radius:99px; transition:width .6s cubic-bezier(.34,1.06,.64,1); }
+.bar-fill.ok{ background:var(--success); } .bar-fill.warn{ background:var(--warning); } .bar-fill.bad{ background:var(--danger); }
+.bar-pct{ grid-area:pct; font-size:13.5px; font-weight:800; color:var(--t); text-align:right; font-variant-numeric:tabular-nums; }
+.bar-status{ grid-area:status; font-size:11px; font-weight:700; text-align:right; white-space:nowrap; }
+.bar-status.ok{ color:var(--success); } .bar-status.warn{ color:var(--warning); } .bar-status.bad{ color:var(--danger); }
+
+/* ── Rodapé de indicadores ── */
+.ledger-foot{
+  display:grid; grid-template-columns:repeat(5,1fr); gap:0; margin-top:14px;
+  background:var(--bg2); border:1px solid var(--bd); border-radius:var(--radius);
+  padding:16px 8px; box-shadow:var(--shadow-card);
+}
+.lf-item{ padding:2px 16px; border-left:1px solid var(--bd); text-align:center; }
+.lf-item:first-child{ border-left:none; }
+.lf-v{ display:block; font-size:20px; font-weight:800; color:var(--t); letter-spacing:-.5px; font-variant-numeric:tabular-nums; }
+.lf-v.pos{ color:var(--success); } .lf-v.neg{ color:var(--danger); }
+.lf-l{ display:block; font-size:9.5px; color:var(--t4); font-weight:700; margin-top:5px; text-transform:uppercase; letter-spacing:.4px; }
+
+/* ── Split realizado / a faturar ── */
+.split-panel{ padding:20px 22px!important; }
+.split-bar{ display:flex; height:16px; border-radius:99px; overflow:hidden; background:var(--bg4); gap:2px; margin-bottom:15px; }
+.split-seg{ height:100%; transition:width .6s cubic-bezier(.34,1.06,.64,1); }
+.split-seg.real{ background:var(--ink); }
+.split-seg.open{ background:var(--bg5); }
+.split-legend{ display:flex; flex-wrap:wrap; gap:18px; align-items:center; font-size:12px; color:var(--t2); font-weight:600; }
+.sl-item{ display:flex; align-items:center; gap:8px; }
+.sl-dot{ width:11px; height:11px; border-radius:3px; }
+.sl-dot.real{ background:var(--ink); } .sl-dot.open{ background:var(--bg5); }
+.sl-total{ margin-left:auto; color:var(--t3); font-weight:700; }
+
+@media (max-width:900px){
+  body:not(.desktop-forced) .krb-wrap,
+  body:not(.desktop-forced) .ledger-foot{ grid-template-columns:repeat(2,1fr); gap:20px 4px; }
+  body:not(.desktop-forced) .krb-wrap-3{ grid-template-columns:1fr; }
+  body:not(.desktop-forced) .krb,
+  body:not(.desktop-forced) .lf-item{ border-left:none!important; }
+}
+@media (max-width:820px){
+  body:not(.desktop-forced) .bar-row{
+    grid-template-columns:1fr auto; gap:6px 12px;
+    grid-template-areas:"label status" "values pct" "track track";
+  }
+  body:not(.desktop-forced) .bar-values{ text-align:left; }
+}
 
 /* ── Caixa da Empresa ── */
 .cx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:12px;}
