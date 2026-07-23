@@ -13094,11 +13094,17 @@ button,.btn,.btn-outline,.btn-save,.btn-edit,.btn-auth,.btn-primary,
 .btn-x:hover,.btn-del:hover{ background:var(--danger-soft)!important; }
 
 /* ── Inputs ── */
-input,select,textarea{
+input,select,textarea,
+.ff input,.ff select,.ff textarea,
+.mf-field input,.mf-field select,.af input{
   background:var(--panel2)!important; color:var(--t)!important;
   border:1px solid var(--bd)!important; border-radius:12px!important; box-shadow:none!important;
 }
-input:focus,select:focus,textarea:focus{ border-color:var(--ink)!important; box-shadow:0 0 0 3px var(--accent-soft)!important; }
+input:focus,select:focus,textarea:focus,
+.ff input:focus,.ff select:focus,.ff textarea:focus{
+  border-color:var(--ink)!important; box-shadow:0 0 0 3px var(--accent-soft)!important;
+}
+input::placeholder,textarea::placeholder{ color:var(--t4)!important; opacity:1; }
 label{ color:var(--t3)!important; font-weight:600!important; }
 
 /* ── Tabelas ── */
