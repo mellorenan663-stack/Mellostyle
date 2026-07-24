@@ -10439,23 +10439,14 @@ input,select,textarea,button{font-size:16px;}
 
       <div class="card" style="margin-bottom:16px;">
         <div class="chd">Nova Ordem de Fabricação</div>
-        <div class="fg">
-          <div class="ff"><label>Nº da OF *</label><input id="lote-numero" type="text" placeholder="Ex: 2024-001" onkeydown="if(event.key==='Enter')salvarLote()"/></div>
-          <div class="ff"><label>Produto *</label><input id="lote-produto" type="text" placeholder="Ex: Camiseta Básica P"/></div>
-          <div class="ff"><label>Cliente</label><select id="lote-cliente"><option value="">— Nenhum —</option></select><button type="button" onclick="abrirModalNovoCliente()" style="margin-top:5px;font-size:11px;padding:4px 10px;background:rgba(191,195,202,.08);border:1px solid rgba(191,195,202,.2);border-radius:7px;color:var(--accent-lt);cursor:pointer;font-weight:600;">+ Novo cliente</button></div>
-          <div class="ff"><label>Qtd Total *</label><input id="lote-qtd" type="number" min="1" placeholder="Ex: 500"/></div>
-          <div class="ff"><label>Valor por Peça (R$)</label><input id="lote-valor" type="number" step="0.01" min="0" placeholder="Ex: 4.50"/></div>
-          <div class="ff"><label>Mês que vai cair</label><div class="month-inline"><input id="lote-competencia" type="month"/><div class="month-actions"><button type="button" onclick="setLoteCompetenciaRapida('lote-competencia',0)">Este mês</button><button type="button" onclick="setLoteCompetenciaRapida('lote-competencia',1)">Mês que vem</button></div></div><small>Define em qual mês o lote entra no Dashboard e no Relatório.</small></div>
-          <div class="ff"><label>Prazo de entrega</label><input id="lote-prazo" type="date"/></div>
-          <div class="ff"><label>Prioridade</label>
-            <select id="lote-prioridade">
-              <option value="Baixa">🟢 Baixa</option>
-              <option value="Normal" selected>🔵 Normal</option>
-              <option value="Alta">🟠 Alta</option>
-              <option value="Urgente">🔴 Urgente</option>
-            </select>
-          </div>
-          <div class="ff"><label>Status inicial</label>
+        <div class="fg fg-of">
+          <div class="ff" style="grid-column:span 3"><label>Nº da OF *</label><input id="lote-numero" type="text" placeholder="Ex: 2024-001" onkeydown="if(event.key==='Enter')salvarLote()"/></div>
+          <div class="ff" style="grid-column:span 5"><label>Produto *</label><input id="lote-produto" type="text" placeholder="Ex: Camiseta Básica P"/></div>
+          <div class="ff" style="grid-column:span 4"><label>Cliente</label><select id="lote-cliente"><option value="">— Nenhum —</option></select><button type="button" class="ff-mini-btn" onclick="abrirModalNovoCliente()">+ Novo cliente</button></div>
+          <div class="ff" style="grid-column:span 3"><label>Qtd Total *</label><input id="lote-qtd" type="number" min="1" placeholder="Ex: 500"/></div>
+          <div class="ff" style="grid-column:span 3"><label>Valor por Peça (R$)</label><input id="lote-valor" type="number" step="0.01" min="0" placeholder="Ex: 4.50"/></div>
+          <div class="ff" style="grid-column:span 3"><label>Prazo de entrega</label><input id="lote-prazo" type="date"/></div>
+          <div class="ff" style="grid-column:span 3"><label>Status inicial</label>
             <select id="lote-status">
               <option>Aberto</option>
               <option>Em andamento</option>
@@ -10463,8 +10454,17 @@ input,select,textarea,button{font-size:16px;}
               <option>Cancelado</option>
             </select>
           </div>
-          <div class="ff" style="grid-column:span 2"><label>Tamanhos / grade</label><input id="lote-tamanhos" type="text" placeholder="Ex: P:100 M:200 G:150 GG:50"/></div>
-          <div class="ff" style="grid-column:span 2"><label>Observações</label><input id="lote-obs" type="text" placeholder="Cor, tecido, detalhes internos..."/></div>
+          <div class="ff" style="grid-column:span 3"><label>Prioridade</label>
+            <select id="lote-prioridade">
+              <option value="Baixa">🟢 Baixa</option>
+              <option value="Normal" selected>🔵 Normal</option>
+              <option value="Alta">🟠 Alta</option>
+              <option value="Urgente">🔴 Urgente</option>
+            </select>
+          </div>
+          <div class="ff" style="grid-column:span 9"><label>Mês que vai cair no faturamento</label><div class="month-inline"><input id="lote-competencia" type="month"/><div class="month-actions"><button type="button" onclick="setLoteCompetenciaRapida('lote-competencia',0)">Este mês</button><button type="button" onclick="setLoteCompetenciaRapida('lote-competencia',1)">Mês que vem</button></div></div><small>Define em qual mês o lote entra no Dashboard e no Relatório.</small></div>
+          <div class="ff" style="grid-column:span 6"><label>Tamanhos / grade</label><input id="lote-tamanhos" type="text" placeholder="Ex: P:100 M:200 G:150 GG:50"/></div>
+          <div class="ff" style="grid-column:span 6"><label>Observações</label><input id="lote-obs" type="text" placeholder="Cor, tecido, detalhes internos..."/></div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
           <button type="button" class="btn-save" onclick="salvarLote()" style="flex:1;max-width:220px;">+ Cadastrar OF</button>
@@ -13142,6 +13142,33 @@ tr:last-child td{ border-bottom:none!important; }
 .gc-bar-fill.bad{ background:var(--danger)!important; box-shadow:none!important; }
 .gc-bar-fill.over{ background:var(--bd2)!important; box-shadow:none!important; }
 .gc-bar-track{ background:var(--bg4)!important; }
+
+/* ── Formulário de Nova OF — grid 12 colunas, respirável ── */
+.fg-of{ display:grid!important; grid-template-columns:repeat(12,1fr)!important; gap:18px 16px!important; align-items:start; }
+.fg-of .ff{ min-width:0; }
+.fg-of .ff label{ margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fg-of .ff input,.fg-of .ff select{ width:100%; }
+.fg-of .month-inline{ display:flex; gap:8px; flex-wrap:wrap; align-items:stretch; }
+.fg-of .month-inline input[type=month]{ flex:1 1 150px; min-width:140px!important; }
+.fg-of .month-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+.fg-of .ff small{ white-space:normal; }
+.ff-mini-btn{
+  margin-top:6px; align-self:flex-start; font-size:11px!important; font-weight:600!important;
+  padding:5px 11px!important; background:transparent!important; border:1px solid var(--bd)!important;
+  border-radius:9px!important; color:var(--t2)!important; cursor:pointer; box-shadow:none!important;
+}
+.ff-mini-btn:hover{ background:var(--bg3)!important; border-color:var(--bd2)!important; color:var(--t)!important; }
+@media (max-width:1040px){
+  body:not(.desktop-forced) .fg-of{ grid-template-columns:repeat(6,1fr)!important; }
+  body:not(.desktop-forced) .fg-of .ff{ grid-column:span 3!important; }
+  body:not(.desktop-forced) .fg-of .ff[style*="span 9"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 6"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 5"]{ grid-column:span 6!important; }
+}
+@media (max-width:640px){
+  body:not(.desktop-forced) .fg-of{ grid-template-columns:1fr!important; }
+  body:not(.desktop-forced) .fg-of .ff{ grid-column:1 / -1!important; }
+}
 
 /* ── DASHBOARD LEDGER — faixa de KPIs ── */
 .krb-wrap{
