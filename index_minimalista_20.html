@@ -2215,63 +2215,58 @@ function renderLotes(){
     const competenciaTxt=formatMonthLabel(competenciaLote);
     const pipeline=calcPipeline(l);
     const temProd=ETAPAS.some(e=>pipeline.porEtapa[e]>0);
-    const pipelineHtml=`<div class="lc-pipeline">
-      <div class="lc-pipeline-title">
-        <span>Pipeline de etapas</span>
-        ${temProd?`<span class="lc-completas ${pipeline.completas>=meta?"completas-ok":""}">${pipeline.completas.toLocaleString("pt-BR")} peça${pipeline.completas!==1?"s":""} concluída${pipeline.completas!==1?"s":""}</span>`:""}
-      </div>
-      <div class="etapa-flow">${ETAPAS.map((etapa,i)=>{
-        const qtd=pipeline.porEtapa[etapa];
-        const epct=meta>0?Math.min(100,Math.round((qtd/meta)*100)):0;
-        const isG=temProd&&etapa===pipeline.gargaloEtapa,isDone=epct===100;
-        const sc=!temProd?"etapa-vazia":isDone?"etapa-done":isG?"etapa-gargalo":"etapa-ok";
-        return`<div class="etapa-item ${sc}" title="${etapa}: ${qtd.toLocaleString("pt-BR")} pçs (${epct}%)">
-          <div class="etapa-bar-wrap"><div class="etapa-bar-fill" style="height:${epct}%"></div></div>
-          <div class="etapa-qtd">${temProd?epct+"%":"—"}</div>
-          <div class="etapa-nome">${etapa}</div>
-          ${isG?'<div class="etapa-gargalo-tag">gargalo</div>':""}
-          ${isDone?'<div class="etapa-done-tag">✓</div>':""}
-        </div>`;
-      }).join("")}</div>
-      ${temProd&&pipeline.minVal!==pipeline.maxVal?`<div class="lc-pipeline-dica">⚠ Gargalo: <strong>${pipeline.gargaloEtapa}</strong> com ${pipeline.minVal.toLocaleString("pt-BR")} pçs — ${pipeline.minVal===0?"não iniciada":`${(pipeline.maxVal-pipeline.minVal).toLocaleString("pt-BR")} pçs atrás`}</div>`:""}
-    </div>`;
-    // Badge de prioridade
+    const etapasHtml=ETAPAS.map(etapa=>{
+      const qtd=pipeline.porEtapa[etapa];
+      const epct=meta>0?Math.min(100,Math.round((qtd/meta)*100)):0;
+      const isG=temProd&&etapa===pipeline.gargaloEtapa&&pipeline.minVal!==pipeline.maxVal;
+      const isDone=epct===100;
+      const sc=!temProd?'e-vazia':isDone?'e-done':isG?'e-gargalo':'e-ok';
+      return `<div class="of2-etapa ${sc}" title="${etapa}: ${qtd.toLocaleString('pt-BR')} pçs (${epct}%)">
+        <div class="of2-etapa-hd"><span class="of2-etapa-nome">${etapa}</span><span class="of2-etapa-pct">${temProd?epct+'%':'—'}</span></div>
+        <div class="of2-etapa-bar"><div class="of2-etapa-fill" style="width:${epct}%"></div></div>
+      </div>`;
+    }).join('');
     const priorBadge=l.prioridade&&l.prioridade!=="Normal"?`<span class="prior-badge prior-${normalize(l.prioridade)}">${l.prioridade==="Urgente"?"🔴":l.prioridade==="Alta"?"🟠":"🟢"} ${l.prioridade}</span>`:"";
-    return`<div class="lote-card" style="border-color:${sm.bd}">
-      <div class="lc-top">
-        <div class="lc-id"><div class="of-tag">OF</div><div><div class="lc-num">${l.numeroOf}${priorBadge?` ${priorBadge}`:""}</div><div class="lc-prod">${getLoteDisplay(l)}</div>${l.tamanhos?`<div class="td-mini">📐 ${l.tamanhos}</div>`:""}${l.observacoes?`<div class="td-mini">💬 ${l.observacoes}</div>`:""}</div></div>
-        <div class="lc-actions">
-          <div class="sdot" style="background:${sm.c}"></div>
-          <select class="spill" style="color:${sm.c};border-color:${sm.bd};background:${sm.bg}" onchange="atualizarStatusLote('${l.id}',this.value)">
+    const podeConcluir=statusReal!=="Concluído"&&statusReal!=="Cancelado";
+    return `<div class="of2-card" style="--ofc:${sm.c}">
+      <div class="of2-head">
+        <div class="of2-head-l">
+          <div class="of2-badge">OF ${l.numeroOf}</div>
+          <div class="of2-titles">
+            <div class="of2-name">${getLoteDisplay(l)}</div>
+            <div class="of2-sub">${priorBadge}${prazoBadge(l.prazo,statusReal)}</div>
+          </div>
+        </div>
+        <div class="of2-head-r">
+          <span class="of2-sdot" style="background:${sm.c}"></span>
+          <select class="of2-status spill" style="color:${sm.c};border-color:${sm.bd};background:${sm.bg}" onchange="atualizarStatusLote('${l.id}',this.value)">
             ${STATUS_LOTE.map(s=>`<option${s===statusReal?" selected":""}>${s}</option>`).join("")}
           </select>
-          <button class="btn-edit" onclick="abrirModalEditarLote('${l.id}')" title="Editar">✎</button>
-          <button class="btn-x" onclick="deletarLote('${l.id}')">✕</button>
+          <button class="btn-edit of2-ico" onclick="abrirModalEditarLote('${l.id}')" title="Editar">✎</button>
+          <button class="btn-x of2-ico" onclick="deletarLote('${l.id}')" title="Excluir">✕</button>
         </div>
       </div>
-      ${prazoBadge(l.prazo,statusReal)}
-      <div class="lc-prog">
-        <div class="lc-prog-labels"><span class="lc-pct">${pct}%</span><span class="lc-pdesc">Progresso geral por etapa</span></div>
-        <div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${pct===100?"var(--green)":"var(--grad-prog)"}"></div></div>
+      <div class="of2-prog">
+        <div class="of2-prog-hd"><span class="of2-prog-pct">${pct}%</span><span class="of2-prog-sub">${produzido.toLocaleString('pt-BR')} de ${meta.toLocaleString('pt-BR')} peças · restam ${rest.toLocaleString('pt-BR')}</span></div>
+        <div class="of2-prog-track"><div class="of2-prog-fill" style="width:${pct}%;background:${pct===100?'var(--success)':'var(--grad)'}"></div></div>
       </div>
-      <div class="lc-prog" style="margin-top:4px">
-        <div class="lc-prog-labels" style="font-size:11px;color:var(--t3)"><span>Peças concluídas no lote</span><span>${produzido.toLocaleString("pt-BR")} pçs (meta: ${meta.toLocaleString("pt-BR")})</span></div>
+      <div class="of2-stats">
+        <div class="of2-stat"><span class="of2-stat-l">Faturamento</span><span class="of2-stat-v">${fmtMoney(fat)}</span></div>
+        <div class="of2-stat"><span class="of2-stat-l">Lucro est.</span><span class="of2-stat-v ${lucro>=0?'pos':'neg'}">${fmtMoney(lucro)}</span></div>
+        <div class="of2-stat"><span class="of2-stat-l">Valor / peça</span><span class="of2-stat-v">${fmtMoney(l.valorPeca)}</span></div>
+        <div class="of2-stat"><span class="of2-stat-l">Cai em</span><span class="of2-stat-v">${competenciaTxt}</span></div>
       </div>
-      ${pipelineHtml}
-      <div class="lc-stats">
-        <div class="ls"><div class="ls-l">Restante</div><div class="ls-v">${rest.toLocaleString("pt-BR")}</div></div>
-        <div class="ls"><div class="ls-l">Vlr/Peça</div><div class="ls-v">${fmtMoney(l.valorPeca)}</div></div>
-        <div class="ls"><div class="ls-l">Faturamento</div><div class="ls-v">${fmtMoney(fat)}</div></div>
-        <div class="ls"><div class="ls-l">Custo prop.</div><div class="ls-v">${fmtMoney(custoProp)}</div></div>
-        <div class="ls hi"><div class="ls-l">Lucro est.</div><div class="ls-v ${lucro>=0?"hi-pos":"hi-neg"}">${fmtMoney(lucro)}</div></div>
-        <div class="ls"><div class="ls-l">Meta total</div><div class="ls-v">${fmtMoney((l.valorPeca||0)*meta)}</div></div>
-        <div class="ls"><div class="ls-l">Vai cair em</div><div class="ls-v">${competenciaTxt}</div></div>
+      ${(l.tamanhos||l.observacoes)?`<div class="of2-hints">${l.tamanhos?`<span>📐 ${l.tamanhos}</span>`:''}${l.observacoes?`<span>💬 ${l.observacoes}</span>`:''}</div>`:''}
+      <div class="of2-etapas-wrap">
+        <div class="of2-etapas-hd"><span>Etapas de produção</span>${temProd?`<span class="of2-etapas-done">${pipeline.completas.toLocaleString('pt-BR')} peça${pipeline.completas!==1?'s':''} concluída${pipeline.completas!==1?'s':''}</span>`:''}</div>
+        <div class="of2-etapas">${etapasHtml}</div>
+        ${temProd&&pipeline.minVal!==pipeline.maxVal?`<div class="of2-gargalo">⚠ Gargalo em <strong>${pipeline.gargaloEtapa}</strong> — ${pipeline.minVal===0?'não iniciada':`${(pipeline.maxVal-pipeline.minVal).toLocaleString('pt-BR')} pçs atrás`}</div>`:''}
       </div>
-      ${statusReal!=="Concluído"&&statusReal!=="Cancelado"?`<div class="lc-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-concluir" onclick="abrirModalConcluir('${l.id}')" style="flex:1;min-width:160px;"><span style="font-size:16px;">✓</span> Lançar e concluir lote</button>
-        <button class="btn-concluir" id="btn-100pct-${l.id}" onclick="concluirLote100pct('${l.id}')" style="flex:1;min-width:160px;background:linear-gradient(135deg,#059669,#10b981);"><span style="font-size:16px;">⚡</span> Concluir 100% o lote</button>
-      </div>`:""}
-    </div>`;
+      ${podeConcluir?`<div class="of2-actions">
+        <button class="btn-save of2-btn" onclick="abrirModalConcluir('${l.id}')">✓ Lançar e concluir</button>
+        <button class="of2-btn of2-btn-alt" id="btn-100pct-${l.id}" onclick="concluirLote100pct('${l.id}')">⚡ Concluir 100%</button>
+      </div>`:''}
+    </div>`
    }catch(err){
      console.error("LOTE_RENDER_ERROR", l?.numeroOf||l?.id, err);
      return `<div class="lote-card" style="border-color:rgba(248,113,113,.4)"><div class="lc-top"><div class="lc-id"><div class="of-tag">OF</div><div><div class="lc-num">${l?.numeroOf||"—"}</div><div class="lc-prod" style="color:var(--red)">⚠ Erro ao exibir este lote (dado inconsistente). Os demais carregaram normalmente.</div></div></div></div></div>`;
@@ -13125,6 +13120,71 @@ tr:last-child td{ border-bottom:none!important; }
 .gc-bar-fill.bad{ background:var(--danger)!important; box-shadow:none!important; }
 .gc-bar-fill.over{ background:var(--grad)!important; box-shadow:none!important; }
 .gc-bar-track{ background:var(--bg4)!important; }
+
+/* ── Cartão de OF — layout limpo e organizado ── */
+.of2-card{
+  background:var(--bg2)!important; border:1px solid var(--bd)!important;
+  border-left:4px solid var(--ofc,var(--accent))!important; border-radius:var(--radius)!important;
+  box-shadow:var(--shadow-card)!important; padding:20px 22px!important;
+}
+.of2-card:hover{ box-shadow:var(--shadow); transform:translateY(-2px); transition:transform .18s,box-shadow .2s; }
+.of2-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:18px; }
+.of2-head-l{ display:flex; gap:13px; align-items:flex-start; min-width:0; }
+.of2-badge{ background:var(--accent-soft); color:var(--accent-lt); font-weight:800; font-size:13px; padding:8px 13px; border-radius:12px; white-space:nowrap; letter-spacing:.3px; flex-shrink:0; }
+.of2-titles{ min-width:0; }
+.of2-name{ font-size:17px; font-weight:800; color:var(--t); letter-spacing:-.4px; line-height:1.2; }
+.of2-sub{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:7px; }
+.of2-sub:empty{ display:none; }
+.of2-sub .prazo-badge{ display:inline-flex; margin:0!important; }
+.of2-head-r{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.of2-sdot{ width:8px; height:8px; border-radius:99px; flex-shrink:0; }
+.of2-status{ font-size:12px!important; font-weight:700!important; border-radius:10px!important; padding:6px 26px 6px 11px!important; cursor:pointer; min-height:0!important; }
+.of2-ico{ width:34px!important; height:34px!important; min-height:0!important; padding:0!important; border-radius:10px!important; display:inline-flex!important; align-items:center; justify-content:center; font-size:13px; }
+.of2-prog{ margin-bottom:16px; }
+.of2-prog-hd{ display:flex; align-items:baseline; gap:11px; margin-bottom:9px; flex-wrap:wrap; }
+.of2-prog-pct{ font-size:23px; font-weight:800; color:var(--t); letter-spacing:-1px; font-variant-numeric:tabular-nums; line-height:1; }
+.of2-prog-sub{ font-size:12px; color:var(--t3); font-weight:600; }
+.of2-prog-track{ height:10px; border-radius:99px; background:var(--bg4); overflow:hidden; }
+.of2-prog-fill{ height:100%; border-radius:99px; transition:width .6s cubic-bezier(.34,1.06,.64,1); }
+.of2-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding:15px 0; border-top:1px solid var(--bd); border-bottom:1px solid var(--bd); margin-bottom:16px; }
+.of2-stat{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.of2-stat-l{ font-size:9.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--t4); font-weight:800; }
+.of2-stat-v{ font-size:15px; font-weight:800; color:var(--t); font-variant-numeric:tabular-nums; letter-spacing:-.3px; overflow:hidden; text-overflow:ellipsis; }
+.of2-stat-v.pos{ color:var(--success); }
+.of2-stat-v.neg{ color:var(--danger); }
+.of2-hints{ display:flex; flex-wrap:wrap; gap:6px 16px; margin-bottom:14px; font-size:11.5px; color:var(--t3); font-weight:600; }
+.of2-etapas-wrap{ margin-bottom:16px; }
+.of2-etapas-hd{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:10px; font-weight:800; color:var(--t4); text-transform:uppercase; letter-spacing:.7px; margin-bottom:11px; }
+.of2-etapas-done{ color:var(--success); }
+.of2-etapas{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+.of2-etapa{ background:var(--bg3); border:1px solid var(--bd); border-radius:11px; padding:9px 10px; min-width:0; }
+.of2-etapa-hd{ display:flex; justify-content:space-between; align-items:center; gap:5px; margin-bottom:7px; }
+.of2-etapa-nome{ font-size:10px; font-weight:700; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.of2-etapa-pct{ font-size:10px; font-weight:800; color:var(--t2); font-variant-numeric:tabular-nums; flex-shrink:0; }
+.of2-etapa-bar{ height:4px; border-radius:99px; background:var(--bg5); overflow:hidden; }
+.of2-etapa-fill{ height:100%; border-radius:99px; background:var(--accent); }
+.of2-etapa.e-done{ border-color:var(--success-line); }
+.of2-etapa.e-done .of2-etapa-fill{ background:var(--success); }
+.of2-etapa.e-done .of2-etapa-pct{ color:var(--success); }
+.of2-etapa.e-gargalo{ border-color:var(--danger-line); }
+.of2-etapa.e-gargalo .of2-etapa-fill{ background:var(--danger); }
+.of2-etapa.e-gargalo .of2-etapa-pct{ color:var(--danger); }
+.of2-etapa.e-vazia .of2-etapa-fill{ background:transparent; }
+.of2-etapa.e-vazia .of2-etapa-pct{ color:var(--t4); }
+.of2-gargalo{ margin-top:11px; font-size:11.5px; color:var(--danger); font-weight:600; }
+.of2-gargalo strong{ font-weight:800; }
+.of2-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+.of2-btn{ flex:1; min-width:150px; padding:12px 14px!important; border-radius:12px!important; font-weight:700!important; font-size:13px!important; cursor:pointer; }
+.of2-btn-alt{ background:var(--success-soft)!important; color:var(--success)!important; border:1px solid var(--success-line)!important; box-shadow:none!important; }
+.of2-btn-alt:hover{ background:var(--success)!important; color:#fff!important; border-color:transparent!important; transform:translateY(-1px); }
+@media (max-width:760px){
+  body:not(.desktop-forced) .of2-stats{ grid-template-columns:repeat(2,1fr); }
+  body:not(.desktop-forced) .of2-etapas{ grid-template-columns:repeat(4,1fr); }
+  body:not(.desktop-forced) .of2-head{ flex-direction:column; }
+  body:not(.desktop-forced) .of2-head-r{ align-self:stretch; }
+  body:not(.desktop-forced) .of2-status{ flex:1; }
+}
+@media (max-width:440px){ body:not(.desktop-forced) .of2-etapas{ grid-template-columns:repeat(2,1fr); } }
 
 /* ── Formulário de Nova OF — grid 12 colunas, respirável ── */
 .fg-of{ display:grid!important; grid-template-columns:repeat(12,1fr)!important; gap:18px 16px!important; align-items:start; }
