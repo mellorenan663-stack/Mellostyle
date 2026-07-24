@@ -1918,7 +1918,9 @@ window.salvarLote=async()=>{
     [$("lote-numero"),$("lote-produto"),$("lote-qtd"),$("lote-valor"),$("lote-prazo"),$("lote-cliente"),$("lote-tamanhos"),$("lote-obs")].forEach(el=>{if(el)el.value="";});
     if($("lote-competencia")) $("lote-competencia").value=monthKeyLocal();
     if($("lote-prioridade")) $("lote-prioridade").value="Normal";
-    $("lote-status").value="Aberto";toast("OF cadastrada!");await loadData();
+    $("lote-status").value="Aberto";toast("OF cadastrada!");
+    try{ if(typeof toggleLoteForm==="function") toggleLoteForm(false); }catch(_e){}
+    await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 window.atualizarStatusLote=async(id,status)=>{
@@ -2145,6 +2147,15 @@ window.confirmarConcluirLote=async()=>{
   }catch(e){tratarErroConclusaoLote(e);}
 };
 
+window.toggleLoteForm=function(force){
+  const card=document.getElementById("lote-form-card");
+  const btn=document.getElementById("btn-nova-of");
+  if(!card) return;
+  const show=(typeof force==="boolean")?force:(card.style.display==="none");
+  card.style.display=show?"":"none";
+  if(btn) btn.innerHTML=show?'<span style="font-size:15px;line-height:0;">✕</span> Fechar':'<span style="font-size:15px;line-height:0;">+</span> Nova OF';
+  if(show){ try{ card.scrollIntoView({behavior:"smooth",block:"nearest"}); }catch(_e){} setTimeout(()=>document.getElementById("lote-numero")?.focus(),80); }
+};
 function renderLotes(){
   const c=$("lotes-list");if(!c)return;
   try{
@@ -10404,6 +10415,9 @@ input,select,textarea,button{font-size:16px;}
           <button class="btn-outline" onclick="navigate('producao')" style="font-size:12px;padding:8px 14px;display:flex;align-items:center;gap:6px;">
             <span>⚡</span> Registrar produção
           </button>
+          <button class="btn-save" id="btn-nova-of" onclick="toggleLoteForm()" style="font-size:12px;padding:8px 16px;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:15px;line-height:0;">+</span> Nova OF
+          </button>
         </div>
       </div>
 
@@ -10432,7 +10446,7 @@ input,select,textarea,button{font-size:16px;}
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card" id="lote-form-card" style="margin-bottom:16px;display:none;">
         <div class="chd">Nova Ordem de Fabricação</div>
         <div class="fg fg-of">
           <div class="ff" style="grid-column:span 3"><label>Nº da OF *</label><input id="lote-numero" type="text" placeholder="Ex: 2024-001" onkeydown="if(event.key==='Enter')salvarLote()"/></div>
@@ -13120,6 +13134,34 @@ tr:last-child td{ border-bottom:none!important; }
 .gc-bar-fill.bad{ background:var(--danger)!important; box-shadow:none!important; }
 .gc-bar-fill.over{ background:var(--grad)!important; box-shadow:none!important; }
 .gc-bar-track{ background:var(--bg4)!important; }
+
+/* ── Barra de resumo dos Lotes — tiles limpos ── */
+.lotes-summary-bar{ display:grid!important; grid-template-columns:repeat(6,1fr)!important; gap:0!important; padding:18px 6px!important; align-items:stretch; }
+.lotes-summary-bar .sb-item{ padding:2px 15px!important; border-left:1px solid var(--bd); text-align:left!important; display:flex; flex-direction:column; gap:7px; min-width:0; }
+.lotes-summary-bar .sb-item:first-child{ border-left:none; }
+.lotes-summary-bar .sb-l{ font-size:9.5px!important; text-transform:uppercase; letter-spacing:.5px; color:var(--t4)!important; font-weight:800!important; margin:0!important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lotes-summary-bar .sb-v{ font-size:20px!important; font-weight:800!important; letter-spacing:-.8px; font-variant-numeric:tabular-nums; line-height:1!important; white-space:nowrap; }
+.lotes-summary-bar .sb-v.ac{ color:var(--accent-lt)!important; }
+@media (max-width:900px){
+  body:not(.desktop-forced) .lotes-summary-bar{ grid-template-columns:repeat(3,1fr)!important; row-gap:20px!important; }
+  body:not(.desktop-forced) .lotes-summary-bar .sb-item{ border-left:none!important; }
+}
+@media (max-width:520px){ body:not(.desktop-forced) .lotes-summary-bar{ grid-template-columns:repeat(2,1fr)!important; } }
+
+/* ── Busca + filtros dos Lotes ── */
+#lotes-busca{ border-radius:999px!important; background:var(--panel2)!important; border:1px solid var(--bd)!important; padding:11px 15px 11px 40px!important; font-size:13px!important; }
+#lotes-busca:focus{ border-color:var(--accent)!important; box-shadow:0 0 0 3px var(--accent-soft)!important; }
+.lf-btn{ border-radius:999px!important; background:transparent!important; border:1px solid var(--bd)!important; color:var(--t3)!important; font-weight:600!important; padding:9px 15px!important; font-size:12.5px!important; box-shadow:none!important; cursor:pointer; transition:all .15s; }
+.lf-btn:hover{ background:var(--bg3)!important; color:var(--t)!important; border-color:var(--bd2)!important; }
+.lf-btn.active{ background:var(--grad)!important; color:#fff!important; border-color:transparent!important; box-shadow:var(--glow)!important; }
+
+/* ── Barra de navegação de mês ── */
+.lotes-mes-bar{ display:flex!important; align-items:center; gap:10px; margin:0 0 16px!important; padding:9px 12px!important; background:var(--bg2)!important; border:1px solid var(--bd)!important; border-radius:14px!important; box-shadow:var(--shadow-card)!important; }
+.lmb-nav{ width:34px!important; height:34px!important; padding:0!important; border-radius:10px!important; background:transparent!important; border:1px solid var(--bd)!important; color:var(--t2)!important; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+.lmb-nav:hover{ background:var(--accent-soft)!important; color:var(--accent-lt)!important; border-color:var(--accent-line)!important; }
+.lmb-label{ font-weight:800!important; color:var(--t)!important; font-size:14px!important; min-width:130px; text-align:center; }
+.lmb-todos{ margin-left:auto!important; border-radius:10px!important; background:transparent!important; border:1px solid var(--bd)!important; color:var(--t2)!important; font-size:12px!important; padding:8px 13px!important; cursor:pointer; font-weight:600; }
+.lmb-todos:hover{ background:var(--bg3)!important; color:var(--t)!important; border-color:var(--bd2)!important; }
 
 /* ── Cartão de OF — layout limpo e organizado ── */
 .of2-card{
