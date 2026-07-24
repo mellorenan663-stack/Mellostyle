@@ -10858,6 +10858,74 @@ input,select,textarea,button{font-size:16px;}
       </div>
     </div>
 
+    <!-- FATURAMENTO POR CLIENTE -->
+    <div class="page" id="page-fat-cliente">
+      <div class="phd" style="margin-bottom:22px;">
+        <div class="ptitle">Faturamento por Cliente</div>
+        <div class="psub">Análise de receita, peças e OFs separadas por cliente</div>
+      </div>
+
+      <!-- KPIs — grid 2x2 no mobile, 4 col no desktop -->
+      <div class="kpi-row fc-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <div class="kpi-card kpi-noir">
+          <div class="kpi-icon-wrap">💰</div>
+          <div class="kpi-info">
+            <div class="kpi-l">Faturamento Total</div>
+            <div class="kpi-v" id="fc-kpi-fat">—</div>
+          </div>
+        </div>
+        <div class="kpi-card kpi-green">
+          <div class="kpi-icon-wrap">🧵</div>
+          <div class="kpi-info">
+            <div class="kpi-l">Total de Peças</div>
+            <div class="kpi-v" id="fc-kpi-pecas">—</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon-wrap">📦</div>
+          <div class="kpi-info">
+            <div class="kpi-l">Total de OFs</div>
+            <div class="kpi-v" id="fc-kpi-lotes">—</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon-wrap">👤</div>
+          <div class="kpi-info">
+            <div class="kpi-l">Clientes Ativos</div>
+            <div class="kpi-v" id="fc-kpi-clientes">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="chd">Filtros</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end;">
+          <div class="ff"><label>Busca por cliente</label><input id="fc-busca" type="text" placeholder="Nome do cliente..." oninput="uiState.fatClienteBusca=this.value;renderFatCliente()"/></div>
+          <div class="ff"><label>Filtrar por mês</label><input id="fc-mes" type="month" oninput="uiState.fatClienteMes=this.value;renderFatCliente()"/></div>
+          <button class="btn-outline" onclick="$('fc-busca').value='';$('fc-mes').value='';uiState.fatClienteBusca='';uiState.fatClienteMes='';renderFatCliente()" style="white-space:nowrap;height:42px;">✕ Limpar</button>
+        </div>
+      </div>
+
+      <!-- Ranking por cliente (barras proporcionais já mostram a comparação) -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="chd">Ranking por Cliente</div>
+        <div id="fc-ranking" class="fc-rank-list"><div class="fc-rank-loading">Carregando…</div></div>
+      </div>
+
+      <!-- Cadastro de clientes -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="chd">Gerenciar Clientes</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:flex-end;margin-bottom:16px;">
+          <div class="ff"><label>Nome do cliente *</label><input id="cliente-nome-inline" type="text" placeholder="Ex: Marca ABC" onkeydown="if(event.key==='Enter')salvarClienteInline()"/></div>
+          <div class="ff"><label>Contato / WhatsApp</label><input id="cliente-contato-inline" type="text" placeholder="Opcional"/></div>
+          <div class="ff"><label>Observações</label><input id="cliente-obs-inline" type="text" placeholder="Opcional"/></div>
+          <button class="btn-save" onclick="salvarClienteInline()" style="white-space:nowrap;height:42px;">+ Adicionar</button>
+        </div>
+        <div id="fc-clientes-lista"><div class="empty-state"><div class="ei">👤</div><p>Nenhum cliente cadastrado.</p></div></div>
+      </div>
+    </div>
+
   </main>
   </div><!-- /.app-body -->
 </div><!-- /#app-shell -->
@@ -10906,73 +10974,6 @@ input,select,textarea,button{font-size:16px;}
   </div>
 </div>
 
-<!-- FATURAMENTO POR CLIENTE -->
-<div class="page" id="page-fat-cliente">
-  <div class="phd" style="margin-bottom:22px;">
-    <div class="ptitle">Faturamento por Cliente</div>
-    <div class="psub">Análise de receita, peças e OFs separadas por cliente</div>
-  </div>
-
-  <!-- KPIs — grid 2x2 no mobile, 4 col no desktop -->
-  <div class="kpi-row fc-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
-    <div class="kpi-card kpi-noir">
-      <div class="kpi-icon-wrap">💰</div>
-      <div class="kpi-info">
-        <div class="kpi-l">Faturamento Total</div>
-        <div class="kpi-v" id="fc-kpi-fat">—</div>
-      </div>
-    </div>
-    <div class="kpi-card kpi-green">
-      <div class="kpi-icon-wrap">🧵</div>
-      <div class="kpi-info">
-        <div class="kpi-l">Total de Peças</div>
-        <div class="kpi-v" id="fc-kpi-pecas">—</div>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon-wrap">📦</div>
-      <div class="kpi-info">
-        <div class="kpi-l">Total de OFs</div>
-        <div class="kpi-v" id="fc-kpi-lotes">—</div>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon-wrap">👤</div>
-      <div class="kpi-info">
-        <div class="kpi-l">Clientes Ativos</div>
-        <div class="kpi-v" id="fc-kpi-clientes">—</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Filtros -->
-  <div class="card" style="margin-bottom:16px;">
-    <div class="chd">Filtros</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end;">
-      <div class="ff"><label>Busca por cliente</label><input id="fc-busca" type="text" placeholder="Nome do cliente..." oninput="uiState.fatClienteBusca=this.value;renderFatCliente()"/></div>
-      <div class="ff"><label>Filtrar por mês</label><input id="fc-mes" type="month" oninput="uiState.fatClienteMes=this.value;renderFatCliente()"/></div>
-      <button class="btn-outline" onclick="$('fc-busca').value='';$('fc-mes').value='';uiState.fatClienteBusca='';uiState.fatClienteMes='';renderFatCliente()" style="white-space:nowrap;height:42px;">✕ Limpar</button>
-    </div>
-  </div>
-
-  <!-- Ranking por cliente (barras proporcionais já mostram a comparação) -->
-  <div class="card" style="margin-bottom:16px;">
-    <div class="chd">Ranking por Cliente</div>
-    <div id="fc-ranking" class="fc-rank-list"><div class="fc-rank-loading">Carregando…</div></div>
-  </div>
-
-  <!-- Cadastro de clientes -->
-  <div class="card" style="margin-bottom:16px;">
-    <div class="chd">Gerenciar Clientes</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:flex-end;margin-bottom:16px;">
-      <div class="ff"><label>Nome do cliente *</label><input id="cliente-nome-inline" type="text" placeholder="Ex: Marca ABC" onkeydown="if(event.key==='Enter')salvarClienteInline()"/></div>
-      <div class="ff"><label>Contato / WhatsApp</label><input id="cliente-contato-inline" type="text" placeholder="Opcional"/></div>
-      <div class="ff"><label>Observações</label><input id="cliente-obs-inline" type="text" placeholder="Opcional"/></div>
-      <button class="btn-save" onclick="salvarClienteInline()" style="white-space:nowrap;height:42px;">+ Adicionar</button>
-    </div>
-    <div id="fc-clientes-lista"><div class="empty-state"><div class="ei">👤</div><p>Nenhum cliente cadastrado.</p></div></div>
-  </div>
-</div>
 
 <!-- MODAL EDITAR LOTE -->
 <div id="modal-editar-lote" class="modal-overlay" onclick="if(event.target===this)fecharModalEditarLote()">
