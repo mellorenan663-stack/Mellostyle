@@ -2156,6 +2156,14 @@ window.toggleLoteForm=function(force){
   if(btn) btn.innerHTML=show?'<span style="font-size:15px;line-height:0;">✕</span> Fechar':'<span style="font-size:15px;line-height:0;">+</span> Nova OF';
   if(show){ try{ card.scrollIntoView({behavior:"smooth",block:"nearest"}); }catch(_e){} setTimeout(()=>document.getElementById("lote-numero")?.focus(),80); }
 };
+window.toggleCard=function(cardId,btnId,labelAbrir){
+  const card=document.getElementById(cardId),btn=document.getElementById(btnId);
+  if(!card) return;
+  const show=card.style.display==="none";
+  card.style.display=show?"":"none";
+  if(btn) btn.innerHTML=show?'<span style="font-size:15px;line-height:0;">✕</span> Fechar':'<span style="font-size:15px;line-height:0;">+</span> '+labelAbrir;
+  if(show){ try{ card.scrollIntoView({behavior:"smooth",block:"nearest"}); }catch(_e){} const inp=card.querySelector("input,select,textarea"); setTimeout(()=>inp?.focus(),90); }
+};
 function renderLotes(){
   const c=$("lotes-list");if(!c)return;
   try{
@@ -10491,11 +10499,14 @@ input,select,textarea,button{font-size:16px;}
 
     <!-- FUNCIONÁRIOS -->
     <div class="page" id="page-funcionarios">
-      <div class="phd" style="margin-bottom:22px;">
-        <div class="ptitle">Funcionários</div>
-        <div class="psub">Equipe ordenada por produção — salários, jornada e banco de horas integrados</div>
+      <div class="phd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:22px;">
+        <div>
+          <div class="ptitle">Funcionários</div>
+          <div class="psub">Equipe ordenada por produção — salários, jornada e banco de horas integrados</div>
+        </div>
+        <button class="btn-save" id="btn-novo-func" onclick="toggleCard('func-form-card','btn-novo-func','Novo funcionário')" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="font-size:15px;line-height:0;">+</span> Novo funcionário</button>
       </div>
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" id="func-form-card" style="margin-bottom:16px;display:none;">
         <div class="chd">Novo Funcionário</div>
         <div class="fg">
           <div class="ff"><label>Nome *</label><input id="func-nome" type="text" placeholder="Nome completo"/></div>
@@ -10525,11 +10536,14 @@ input,select,textarea,button{font-size:16px;}
 
     <!-- PRODUÇÃO -->
     <div class="page" id="page-producao">
-      <div class="phd" style="margin-bottom:22px;">
-        <div class="ptitle">Registro de Produção</div>
-        <div class="psub">Registre peças por etapa, funcionária e ordem de fabricação</div>
+      <div class="phd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:22px;">
+        <div>
+          <div class="ptitle">Registro de Produção</div>
+          <div class="psub">Registre peças por etapa, funcionária e ordem de fabricação</div>
+        </div>
+        <button class="btn-save" id="btn-novo-prod" onclick="toggleCard('prod-form-card','btn-novo-prod','Novo registro')" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="font-size:15px;line-height:0;">+</span> Novo registro</button>
       </div>
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" id="prod-form-card" style="margin-bottom:16px;display:none;">
         <div class="chd">Novo Registro</div>
         <div class="fg">
           <div class="ff"><label>Funcionário *</label><select id="prod-funcionario"><option value="">— Selecione —</option></select></div>
@@ -10587,11 +10601,14 @@ input,select,textarea,button{font-size:16px;}
 
     <!-- GASTOS -->
     <div class="page" id="page-gastos">
-      <div class="phd" style="margin-bottom:22px;">
-        <div class="ptitle">Controle de Gastos</div>
-        <div class="psub">Gastos fixos e variáveis — entram automaticamente no cálculo do lucro e DRE</div>
+      <div class="phd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:22px;">
+        <div>
+          <div class="ptitle">Controle de Gastos</div>
+          <div class="psub">Gastos fixos e variáveis — entram automaticamente no cálculo do lucro e DRE</div>
+        </div>
+        <button class="btn-save" id="btn-novo-gasto" onclick="toggleCard('gasto-form-card','btn-novo-gasto','Novo gasto')" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="font-size:15px;line-height:0;">+</span> Novo gasto</button>
       </div>
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" id="gasto-form-card" style="margin-bottom:16px;display:none;">
         <div class="chd">Novo Gasto</div>
         <div class="fg">
           <div class="ff" style="grid-column:span 2"><label>Descrição *</label><input id="gasto-desc" type="text" placeholder="Ex: Aluguel do galpão, Linha de costura..."/></div>
@@ -10657,11 +10674,14 @@ input,select,textarea,button{font-size:16px;}
 
     <!-- BANCO DE HORAS -->
     <div class="page" id="page-bancohoras">
-      <div class="phd" style="margin-bottom:22px;">
-        <div class="ptitle">Banco de Horas</div>
-        <div class="psub">Faltas e horas extras por funcionária — bônus bloqueado automaticamente se saldo ficar negativo</div>
+      <div class="phd" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:22px;">
+        <div>
+          <div class="ptitle">Banco de Horas</div>
+          <div class="psub">Faltas e horas extras por funcionária — bônus bloqueado automaticamente se saldo ficar negativo</div>
+        </div>
+        <button class="btn-save" id="btn-novo-bh" onclick="toggleCard('bh-form-card','btn-novo-bh','Novo lançamento')" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="font-size:15px;line-height:0;">+</span> Novo lançamento</button>
       </div>
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" id="bh-form-card" style="margin-bottom:16px;display:none;">
         <div class="chd">Novo Registro</div>
         <div class="fg">
           <div class="ff"><label>Funcionária *</label><select id="bh-funcionario"><option value="">— Selecione —</option></select></div>
@@ -13135,6 +13155,10 @@ tr:last-child td{ border-bottom:none!important; }
 .gc-bar-fill.bad{ background:var(--danger)!important; box-shadow:none!important; }
 .gc-bar-fill.over{ background:var(--grad)!important; box-shadow:none!important; }
 .gc-bar-track{ background:var(--bg4)!important; }
+
+/* ── Formulários (grid geral) mais respirável ── */
+.fg{ grid-template-columns:repeat(auto-fill,minmax(210px,1fr))!important; gap:16px!important; }
+.fg .ff label{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 /* ── Barra de resumo dos Lotes — tiles limpos ── */
 .lotes-summary-bar{ display:grid!important; grid-template-columns:repeat(6,1fr)!important; gap:0!important; padding:18px 6px!important; align-items:stretch; }
