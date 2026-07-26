@@ -13117,8 +13117,14 @@ input,select,textarea,
   border:1px solid var(--bd)!important; border-radius:13px!important; box-shadow:none!important;
 }
 input:focus,select:focus,textarea:focus,
-.ff input:focus,.ff select:focus,.ff textarea:focus{ border-color:var(--accent)!important; box-shadow:0 0 0 3px var(--accent-soft)!important; }
-input::placeholder,textarea::placeholder{ color:var(--t4)!important; opacity:1; }
+.ff input:focus,.ff select:focus,.ff textarea:focus,
+.mf-field input:focus,.mf-field select:focus,.af input:focus{
+  background:var(--panel2)!important; color:var(--t)!important;
+  border-color:var(--accent)!important; box-shadow:0 0 0 3px var(--accent-soft)!important;
+}
+/* garante texto visível ao digitar em qualquer estado */
+input,select,textarea,.ff input,.ff select,.ff textarea{ -webkit-text-fill-color:var(--t)!important; }
+input::placeholder,textarea::placeholder{ color:var(--t4)!important; -webkit-text-fill-color:var(--t4)!important; opacity:1; }
 label{ color:var(--t3)!important; font-weight:600!important; }
 
 /* ── Tabelas ── */
