@@ -2702,6 +2702,140 @@ window.deletarGasto=async id=>{
   try{await deleteDoc(doc(db,"gastos",id));toast("Removido.");await loadData();}
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
+/* ══════════════════════════════════════════════════════════════
+   LEITOR DE NOTA — lê o valor da foto do cupom (OCR no aparelho)
+   Nada é enviado para servidor nenhum: o Tesseract roda dentro do
+   navegador. Só as bibliotecas vêm da CDN, e apenas na 1ª leitura.
+   O resultado é SEMPRE uma sugestão — quem confirma é você.
+══════════════════════════════════════════════════════════════ */
+const OCR_CDN={
+  lib:"https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js",
+  worker:"https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
+  core:"https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
+  lang:"https://cdn.jsdelivr.net/npm/@tesseract.js-data/por/4.0.0"
+};
+let __ocrWorker=null, __ocrCarregando=null;
+
+function carregarTesseract(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(__ocrCarregando) return __ocrCarregando;
+  __ocrCarregando=new Promise((ok,erro)=>{
+    const s=document.createElement("script");
+    s.src=OCR_CDN.lib; s.async=true;
+    s.onload=()=>window.Tesseract?ok(window.Tesseract):erro(new Error("Tesseract não carregou"));
+    s.onerror=()=>{ __ocrCarregando=null; erro(new Error("sem-internet")); };
+    document.head.appendChild(s);
+  });
+  return __ocrCarregando;
+}
+
+async function obterOcrWorker(onProgresso){
+  if(__ocrWorker) return __ocrWorker;
+  const T=await carregarTesseract();
+  __ocrWorker=await T.createWorker("por",1,{
+    workerPath:OCR_CDN.worker, corePath:OCR_CDN.core, langPath:OCR_CDN.lang,
+    logger:m=>{ if(onProgresso&&m&&typeof m.progress==="number") onProgresso(m); }
+  });
+  // modo "bloco uniforme de texto" — é o que melhor lê cupom fiscal
+  try{ await __ocrWorker.setParameters({tessedit_pageseg_mode:"6"}); }catch(_e){}
+  return __ocrWorker;
+}
+
+/* Cupom fotografado costuma vir torto, escuro e pequeno.
+   Cinza + contraste esticado + ampliação melhoram muito a leitura. */
+function prepararImagemNota(img,alvoLargura){
+  alvoLargura=alvoLargura||1700;
+  const escala=Math.min(3,Math.max(1,alvoLargura/(img.width||1)));
+  const W=Math.round((img.width||1)*escala), H=Math.round((img.height||1)*escala);
+  const c=document.createElement("canvas"); c.width=W; c.height=H;
+  const x=c.getContext("2d",{willReadFrequently:true});
+  x.imageSmoothingEnabled=true; x.imageSmoothingQuality="high";
+  x.drawImage(img,0,0,W,H);
+  const d=x.getImageData(0,0,W,H), p=d.data, hist=new Uint32Array(256);
+  for(let i=0;i<p.length;i+=4){
+    const g=(p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114)|0;
+    p[i]=p[i+1]=p[i+2]=g; hist[g]++;
+  }
+  const total=W*H; let acc=0, lo=0, hi=255;
+  for(let i=0;i<256;i++){ acc+=hist[i]; if(acc>total*0.01){lo=i;break;} }
+  acc=0; for(let i=255;i>=0;i--){ acc+=hist[i]; if(acc>total*0.01){hi=i;break;} }
+  const faixa=Math.max(1,hi-lo), lut=new Uint8Array(256);
+  for(let i=0;i<256;i++){
+    let v=(i-lo)/faixa*255; v=v<0?0:v>255?255:v;
+    lut[i]=(255/(1+Math.exp(-(v-128)/34)))|0;   // curva em S separa tinta do papel
+  }
+  for(let i=0;i<p.length;i+=4){ const v=lut[p[i]]; p[i]=p[i+1]=p[i+2]=v; }
+  x.putImageData(d,0,0);
+  return c;
+}
+
+/* Interpreta o texto do cupom: valor total, data e estabelecimento. */
+function lerValoresNota(txt){
+  const bruto=String(txt||"");
+  const linhas=bruto.split(/\r?\n/).map(l=>l.replace(/\s+/g," ").trim()).filter(Boolean);
+  const semAcento=s=>s.normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase();
+  const RE_BR=/\d{1,3}(?:\.\d{3})*,\d{2}/g;    // 1.234,56
+  const RE_US=/\d+\.\d{2}(?!\d)/g;             // 1234.56
+  const num=s=>String(s).includes(",")
+    ? parseFloat(String(s).replace(/\./g,"").replace(",","."))
+    : parseFloat(s);
+  const valoresDe=l=>{
+    const br=l.match(RE_BR)||[];
+    return br.length?br.map(num):(l.match(RE_US)||[]).map(num);
+  };
+  // linhas que nunca são o total da compra
+  const PROIBIDO=/TROCO|DINHEIRO|CARTAO|CREDITO|DEBITO|PIX|DESCONTO|ACRESCIMO|ITENS|ITEM|QTD|QUANT|CNPJ|CPF|TRIBUT|IMPOSTO|ICMS|PIS|COFINS/;
+  const REGRAS=[
+    {re:/VALOR\s*A\s*PAGAR|TOTAL\s*A\s*PAGAR|VL\s*A\s*PAGAR/,peso:5},
+    {re:/VALOR\s*TOTAL|TOTAL\s*GERAL|VL\s*TOTAL/,peso:4},
+    {re:/\bTOTAL\b/,peso:3},
+    {re:/SUBTOTAL|SUB\s*TOTAL/,peso:2}
+  ];
+  let melhor=null;
+  linhas.forEach(l=>{
+    const L=semAcento(l), vals=valoresDe(l);
+    if(!vals.length||PROIBIDO.test(L)) return;
+    for(const r of REGRAS){
+      if(r.re.test(L)){
+        const v=Math.max(...vals);
+        if(!melhor||r.peso>melhor.peso||(r.peso===melhor.peso&&v>melhor.valor))
+          melhor={valor:v,peso:r.peso,linha:l};
+        break;
+      }
+    }
+  });
+  if(!melhor){ // sem palavra-chave: usa o maior valor da nota
+    let m=0,ln="";
+    linhas.forEach(l=>{ if(PROIBIDO.test(semAcento(l)))return;
+      valoresDe(l).forEach(v=>{ if(v>m){m=v;ln=l;} }); });
+    if(m>0) melhor={valor:m,peso:0,linha:ln};
+  }
+  // data → competência (janela sensata; "2087" lido errado não passa)
+  let competencia="";
+  const md=bruto.match(/(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/);
+  if(md){
+    let[,dd,mes,ano]=md; ano=ano.length===2?"20"+ano:ano;
+    const mi=+mes, ai=+ano, atual=new Date().getFullYear();
+    if(mi>=1&&mi<=12&&ai>=atual-5&&ai<=atual+1&&+dd>=1&&+dd<=31)
+      competencia=`${ai}-${String(mi).padStart(2,"0")}`;
+  }
+  // estabelecimento → sugestão de descrição
+  let descricao="";
+  const RUIM=/CNPJ|CPF|CUPOM|FISCAL|NFC|NFE|DANFE|EXTRATO|RUA|AVENIDA|CEP|TEL|WWW|HTTP/;
+  for(const l of linhas.slice(0,6)){
+    if(RUIM.test(semAcento(l))) continue;
+    const letras=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
+    if(letras<5||valoresDe(l).length) continue;
+    if(letras/l.length<0.6) continue;                       // rejeita lixo de OCR
+    if(/[^A-Za-zÀ-ÿ0-9 .,&\/'-]/.test(l)) continue;
+    descricao=l.slice(0,60); break;
+  }
+  const valor=melhor&&melhor.valor>0&&melhor.valor<1000000?melhor.valor:0;
+  return { valor, competencia, descricao,
+           linhaValor:melhor?melhor.linha:"",
+           porPalavraChave:!!(melhor&&melhor.peso>=3) };
+}
+
 /* ── GASTOS · helpers de agregação ─────────────────────────────
    Categorias são texto livre (campo "Outros"), então "luz" e "Luz"
    viram lançamentos separados. Aqui elas são unificadas por chave
@@ -3019,6 +3153,109 @@ function renderGastos(){
     </div>`;
   }).join("");
 }
+
+/* ── Leitor de nota: tela e fluxo ── */
+let __notaLida=null;
+function ocrEstado(html){ const el=$("nota-estado"); if(el) el.innerHTML=html; }
+
+window.abrirLeitorNota=function(){
+  __notaLida=null;
+  const inp=$("nota-arquivo"); if(inp) inp.value="";
+  const prev=$("nota-preview"); if(prev){ prev.src=""; prev.style.display="none"; }
+  const btn=$("nota-usar"); if(btn) btn.style.display="none";
+  ocrEstado('<div class="nota-dica">Tire a foto do cupom inteiro, bem iluminado e sem dobras. A leitura acontece no seu aparelho — a imagem não é enviada para lugar nenhum.</div>');
+  $("modal-nota")?.classList.add("open");
+  document.body.style.overflow="hidden";
+};
+window.fecharLeitorNota=function(){
+  $("modal-nota")?.classList.remove("open");
+  document.body.style.overflow="";
+};
+window.escolherFotoNota=function(){ $("nota-arquivo")?.click(); };
+
+window.processarNotaImagem=async function(input){
+  const arq=input&&input.files&&input.files[0];
+  if(!arq) return;
+  if(!/^image\//.test(arq.type)){ ocrEstado('<div class="nota-erro">Selecione uma imagem (foto ou print do cupom).</div>'); return; }
+
+  const url=URL.createObjectURL(arq);
+  const prev=$("nota-preview");
+  if(prev){ prev.src=url; prev.style.display=""; }
+  const btnUsar=$("nota-usar"); if(btnUsar) btnUsar.style.display="none";
+  ocrEstado('<div class="nota-load"><span class="nota-spin"></span> Preparando a leitura…</div>');
+
+  try{
+    const img=new Image();
+    img.src=url;
+    await (img.decode?img.decode():new Promise(r=>{img.onload=r;}));
+
+    const w=await obterOcrWorker(m=>{
+      const pct=Math.round((m.progress||0)*100);
+      const fase=m.status==="recognizing text"?"Lendo a nota":"Carregando o leitor";
+      ocrEstado(`<div class="nota-load"><span class="nota-spin"></span> ${fase}… ${pct}%</div>`);
+    });
+
+    ocrEstado('<div class="nota-load"><span class="nota-spin"></span> Lendo a nota…</div>');
+    const {data}=await w.recognize(prepararImagemNota(img));
+    const r=lerValoresNota(data&&data.text);
+    r.confianca=Math.round((data&&data.confidence)||0);
+    __notaLida=r;
+
+    if(!r.valor){
+      ocrEstado(`<div class="nota-erro"><strong>Não consegui ler o valor.</strong>
+        Isso costuma acontecer com foto tremida, escura ou cortada. Tente de novo
+        mais perto do papel — ou digite o valor à mão, é rápido.</div>`);
+      return;
+    }
+    // Abaixo de 75% de nitidez o OCR erra dígito com facilidade — melhor
+    // avisar demais do que deixar passar um valor errado.
+    const fraca=r.confianca<75||!r.porPalavraChave;
+    // nome do estabelecimento só é sugerido quando a leitura está boa,
+    // senão vira lixo do tipo "de Al SL TTEEIDA"
+    if(r.confianca<75) r.descricao="";
+    ocrEstado(`
+      <div class="nota-res">
+        <div class="nota-res-lbl">Valor encontrado</div>
+        <div class="nota-res-val">${fmtMoney(r.valor)}</div>
+        ${r.linhaValor?`<div class="nota-res-src">lido de: “${escapeHtml(r.linhaValor)}”</div>`:""}
+        <div class="nota-res-extra">
+          ${r.competencia?`<span class="nota-tag">Competência ${formatMonthLabel(r.competencia)}</span>`:""}
+          ${r.descricao?`<span class="nota-tag">${escapeHtml(r.descricao)}</span>`:""}
+          <span class="nota-tag">Nitidez ${r.confianca}%</span>
+        </div>
+        ${fraca?`<div class="nota-aviso">⚠ Confira o valor antes de salvar — a leitura ficou incerta.</div>`
+               :`<div class="nota-ok">Confira e confirme: nada é salvo sem você revisar.</div>`}
+      </div>`);
+    if(btnUsar) btnUsar.style.display="";
+  }catch(e){
+    console.warn("OCR_ERRO",e);
+    const semNet=/sem-internet|Failed to fetch|NetworkError|dynamically imported/i.test(e&&e.message||"");
+    ocrEstado(`<div class="nota-erro">${semNet
+      ? "<strong>Não deu para baixar o leitor.</strong> Ele precisa de internet só na primeira vez em cada aparelho. Verifique a conexão e tente de novo."
+      : "<strong>Falha ao ler a imagem.</strong> Tente outra foto ou digite o valor à mão."}</div>`);
+  }finally{
+    setTimeout(()=>URL.revokeObjectURL(url),15000);
+  }
+};
+
+window.usarDadosNota=function(){
+  const r=__notaLida; if(!r||!r.valor) return;
+  // Abre o formulário se estiver recolhido
+  const card=$("gasto-form-card");
+  if(card&&getComputedStyle(card).display==="none")
+    try{ toggleCard("gasto-form-card","btn-novo-gasto","Novo gasto"); }catch(_e){}
+
+  if($("gasto-valor")) $("gasto-valor").value=r.valor.toFixed(2);
+  if(r.competencia&&$("gasto-competencia")) $("gasto-competencia").value=r.competencia;
+  const d=$("gasto-desc");
+  if(d&&!d.value.trim()&&r.descricao) d.value=capitalizar(r.descricao.toLowerCase());
+  try{ atualizarPreviewParcela(); }catch(_e){}
+
+  fecharLeitorNota();
+  toast("Valor preenchido — escolha a categoria e confira antes de salvar.");
+  setTimeout(()=>{ const el=$("gasto-desc")||$("gasto-valor");
+    el?.scrollIntoView({behavior:"smooth",block:"center"}); el?.focus(); },260);
+};
 
 /* ── Controles de filtro/ordenação/exportação ── */
 window.gastoSetTipo=function(v){ window._gastoTipoFiltro=v||"todos"; renderGastos(); };
@@ -4498,6 +4735,7 @@ applyTheme(getConfig().tema);
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','gastoMesNav','gastoMesToggleTodos',
+    'abrirLeitorNota','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes'
   ].forEach(expose);
@@ -10909,6 +11147,12 @@ input,select,textarea,button{font-size:16px;}
       </div>
       <div class="card" id="gasto-form-card" style="margin-bottom:16px;display:none;">
         <div class="chd">Novo Gasto</div>
+        <div class="nota-cta">
+          <button type="button" class="btn-outline nota-btn" onclick="abrirLeitorNota()">
+            📷 Ler nota fiscal pela foto
+          </button>
+          <span class="nota-cta-txt">Preenche o valor sozinho — você só confere e salva</span>
+        </div>
         <div class="fg">
           <div class="ff" style="grid-column:span 2"><label>Descrição *</label><input id="gasto-desc" type="text" placeholder="Ex: Aluguel do galpão, Linha de costura..."/></div>
           <div class="ff"><label>Valor (R$) *</label><input id="gasto-valor" type="number" step="0.01" min="0" placeholder="Ex: 1500.00" oninput="atualizarPreviewParcela()"/></div>
@@ -11415,6 +11659,29 @@ input,select,textarea,button{font-size:16px;}
 </div>
 
 <!-- MODAL EDITAR GASTO -->
+<div id="modal-nota" class="modal-overlay" onclick="if(event.target===this)fecharLeitorNota()">
+  <div class="modal-box md">
+    <div class="modal-hd">
+      <div><div class="modal-title">📷 Ler nota fiscal</div>
+           <div class="modal-lote-sub">A foto é lida aqui no aparelho, sem sair para a internet</div></div>
+      <button class="modal-close" onclick="fecharLeitorNota()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input id="nota-arquivo" type="file" accept="image/*" capture="environment"
+             style="display:none" onchange="processarNotaImagem(this)"/>
+      <button type="button" class="btn-save nota-escolher" onclick="escolherFotoNota()">
+        Tirar foto ou escolher imagem
+      </button>
+      <img id="nota-preview" class="nota-preview" alt="Pré-visualização da nota" style="display:none"/>
+      <div id="nota-estado"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="fecharLeitorNota()">Cancelar</button>
+      <button id="nota-usar" class="btn-save" style="display:none" onclick="usarDadosNota()">Usar este valor</button>
+    </div>
+  </div>
+</div>
+
 <div id="modal-editar-gasto" class="modal-overlay" onclick="if(event.target===this)fecharModalEditarGasto()">
   <div class="modal-box md">
     <div class="modal-hd">
@@ -13822,6 +14089,46 @@ tr:last-child td{ border-bottom:none!important; }
 .gx-ev-col.is-atual .gx-ev-lbl{color:var(--t);}
 .gx-ev-foot{font-size:10.5px;color:var(--t3);margin-top:12px;padding-top:11px;
   border-top:1px solid var(--bd);font-weight:600;}
+
+/* Correção: no celular o rodapé dos modais vira coluna, e a regra
+   antiga ".modal-footer button{flex:1 1 140px}" passava a valer como
+   ALTURA — os botões esticavam para 140px e empurravam o conteúdo
+   para fora. Vale para todos os modais, não só o leitor de nota. */
+@media (max-width:900px){
+  .modal-footer button{flex:0 0 auto!important;width:100%!important;}
+}
+
+/* ── Leitor de nota fiscal ── */
+.nota-cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;
+  padding:13px 15px;border:1px dashed var(--accent-line);border-radius:14px;
+  background:var(--accent-soft);}
+.nota-btn{font-size:12.5px!important;font-weight:700!important;white-space:nowrap;}
+.nota-cta-txt{font-size:11.5px;color:var(--t3);font-weight:600;}
+.nota-escolher{width:100%;margin-bottom:14px;}
+.nota-preview{display:block;width:100%;max-height:260px;object-fit:contain;
+  border-radius:14px;border:1px solid var(--bd);background:var(--bg3);margin-bottom:14px;}
+.nota-dica,.nota-erro,.nota-ok,.nota-aviso{font-size:12px;line-height:1.55;
+  border-radius:12px;padding:11px 14px;}
+.nota-dica{color:var(--t3);background:var(--bg3);border:1px solid var(--bd);}
+.nota-erro{color:var(--t2);background:var(--danger-soft);border:1px solid var(--danger-line);}
+.nota-erro strong{color:var(--danger);}
+.nota-load{display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:700;
+  color:var(--t2);padding:13px 2px;}
+.nota-spin{width:16px;height:16px;border:2px solid var(--bd2);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0;}
+.nota-res{border:1px solid var(--accent-line);background:var(--accent-soft);
+  border-radius:14px;padding:16px 18px;}
+.nota-res-lbl{font-size:10px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.7px;color:var(--t3);}
+.nota-res-val{font-size:31px;font-weight:800;color:var(--t);letter-spacing:-.6px;margin-top:4px;}
+.nota-res-src{font-size:11px;color:var(--t3);margin-top:5px;font-style:italic;
+  word-break:break-word;}
+.nota-res-extra{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px;}
+.nota-tag{font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;
+  background:var(--bg2);border:1px solid var(--bd);color:var(--t2);}
+.nota-ok{color:var(--t3);padding:10px 0 0;font-weight:600;}
+.nota-aviso{color:var(--t2);background:var(--warning-soft);
+  border:1px solid var(--warning-line);margin-top:11px;font-weight:600;}
 
 /* ── Compromissos futuros ── */
 .gx-fut-lista{display:flex;flex-direction:column;gap:9px;}
