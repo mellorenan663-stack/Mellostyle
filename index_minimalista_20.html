@@ -1763,11 +1763,50 @@ async function finalizarLoteNoFirestore(loteId,extraData={}){
   await updateDoc(doc(db,"lotes",loteId),buildLoteConclusaoPayload(loteAtual,extraData));
   return loteAtual;
 }
-async function atualizarTudoAposConclusao(msg="Lote concluído e Dashboard atualizado."){
-  await loadData();
+/* ── Atualização local, sem recarregar o app ───────────────────
+   O addDoc/updateDoc já confirmou a gravação. Chamar loadData()
+   depois relia as 8 coleções do Firestore e redesenhava tudo — era
+   isso que dava a sensação de "a página reiniciou". Agora só o
+   estado em memória é ajustado e a tela atual é redesenhada. ── */
+function aplicarLocalLote(id,campos){
+  const l=lotes.find(x=>x.id===id);
+  if(l) Object.assign(l,campos);
+  return l;
+}
+function redesenharPaginaAtual(){
+  try{
+    const fn={dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,
+      lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,
+      backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,
+      "fat-cliente":renderFatCliente}[currentPage];
+    if(typeof fn==="function") fn();
+  }catch(e){ console.warn("RERENDER_WARN",e); }
+}
+/* Redesenhar troca o innerHTML da lista e a rolagem saltaria para o
+   topo; guardar e devolver a posição mantém o usuário onde estava.
+   Atenção: quem rola no desktop é o <main>, não a janela — usar
+   window.scrollY aqui não preservaria nada. */
+function alvoRolagem(){
+  const m=document.querySelector("main");
+  if(m && m.scrollHeight>m.clientHeight+4) return m;
+  const se=document.scrollingElement||document.documentElement;
+  return (se && se.scrollHeight>se.clientHeight+4) ? se : null;
+}
+function redesenharPreservandoRolagem(){
+  const el=alvoRolagem();
+  const y=el?el.scrollTop:(window.scrollY||0);
+  redesenharPaginaAtual();
+  requestAnimationFrame(()=>{
+    const alvo=alvoRolagem();
+    if(alvo) alvo.scrollTop=y; else window.scrollTo(0,y);
+  });
+}
+async function atualizarTudoAposConclusao(msg="Lote concluído.",{loteId,novosRegistros}={}){
+  // Espelha em memória o que acabou de ser gravado, em vez de reler tudo.
+  if(loteId) aplicarLocalLote(loteId,{status:"Concluído",concluidoEm:Timestamp.now()});
+  if(novosRegistros&&novosRegistros.length) registros.unshift(...novosRegistros);
   closeAllTransientUI();
-  navigate("dashboard");
-  if(typeof renderDashboard==="function") renderDashboard();
+  redesenharPreservandoRolagem();
   toast(msg);
 }
 function tratarErroConclusaoLote(err){
@@ -1922,13 +1961,16 @@ window.salvarLote=async()=>{
   const competenciaFaturamento=$("lote-competencia")?.value||monthKeyLocal();
   if(!numeroOf||!produto||!qtdTotal){toast("Preencha OF, produto e quantidade","err");return;}
   try{
-    await addDoc(collection(db,"lotes"),withOwner({numeroOf,produto,qtdTotal,valorPeca,status,prazo:prazo||null,cliente,prioridade,tamanhos,observacoes,competenciaFaturamento,criadoEm:Timestamp.now()}));
+    const dados=withOwner({numeroOf,produto,qtdTotal,valorPeca,status,prazo:prazo||null,cliente,prioridade,tamanhos,observacoes,competenciaFaturamento,criadoEm:Timestamp.now()});
+    const ref=await addDoc(collection(db,"lotes"),dados);
+    // entra na lista em memória (ordenada por criadoEm desc, então no topo)
+    lotes.unshift({id:ref.id,...dados});
     [$("lote-numero"),$("lote-produto"),$("lote-qtd"),$("lote-valor"),$("lote-prazo"),$("lote-cliente"),$("lote-tamanhos"),$("lote-obs")].forEach(el=>{if(el)el.value="";});
     if($("lote-competencia")) $("lote-competencia").value=monthKeyLocal();
     if($("lote-prioridade")) $("lote-prioridade").value="Normal";
     $("lote-status").value="Aberto";toast("OF cadastrada!");
     try{ if(typeof toggleLoteForm==="function") toggleLoteForm(false); }catch(_e){}
-    await loadData();
+    redesenharPreservandoRolagem();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 window.atualizarStatusLote=async(id,status)=>{
@@ -1936,15 +1978,16 @@ window.atualizarStatusLote=async(id,status)=>{
     requireAuthUser();
     if(status==="Concluído"){
       await finalizarLoteNoFirestore(id);
-      await atualizarTudoAposConclusao("Lote concluído e Dashboard atualizado.");
+      await atualizarTudoAposConclusao("Lote concluído!",{loteId:id});
       return;
     }
     const lote=lotes.find(l=>l.id===id)||{};
     const originalCreated=lote.criadoEm||lote.createdAt;
     const payload=originalCreated?withOwner({status,criadoEm:originalCreated,createdAt:originalCreated}):withOwner({status});
     await updateDoc(doc(db,"lotes",id),payload);
+    aplicarLocalLote(id,{status});
     toast("Status atualizado!");
-    await loadData();
+    redesenharPreservandoRolagem();
   }catch(e){
     if(status==="Concluído") tratarErroConclusaoLote(e);
     else{console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
@@ -1953,7 +1996,13 @@ window.atualizarStatusLote=async(id,status)=>{
 };
 window.deletarLote=async id=>{
   if(!confirm("Remover este lote? Esta ação não pode ser desfeita."))return;
-  try{await deleteDoc(doc(db,"lotes",id));toast("Removido.");await loadData();}
+  try{
+    await deleteDoc(doc(db,"lotes",id));
+    const i=lotes.findIndex(l=>l.id===id);
+    if(i>=0) lotes.splice(i,1);
+    toast("Removido.");
+    redesenharPreservandoRolagem();
+  }
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 /* ── MODAL EDITAR LOTE ────────── */
@@ -2005,17 +2054,19 @@ window.salvarEdicaoLote=async()=>{
     requireAuthUser();
     if(status==="Concluído"){
       await finalizarLoteNoFirestore(id,dadosEdicao);
+      aplicarLocalLote(id,dadosEdicao);
       fecharModalEditarLote();
-      await atualizarTudoAposConclusao("Lote concluído e Dashboard atualizado.");
+      await atualizarTudoAposConclusao("Lote concluído!",{loteId:id});
       return;
     }
     const loteAtual=lotes.find(l=>l.id===id)||{};
     const originalCreated=loteAtual.criadoEm||loteAtual.createdAt;
     const payload=originalCreated?withOwner({...dadosEdicao,status,criadoEm:originalCreated,createdAt:originalCreated}):withOwner({...dadosEdicao,status});
     await updateDoc(doc(db,"lotes",id),payload);
+    aplicarLocalLote(id,{...dadosEdicao,status});
     toast("Lote atualizado!");
     fecharModalEditarLote();
-    await loadData();
+    redesenharPreservandoRolagem();
   }catch(e){
     if(status==="Concluído") tratarErroConclusaoLote(e);
     else{console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
@@ -2077,7 +2128,7 @@ window.concluirLoteSemLancar=async()=>{
     requireAuthUser();
     await finalizarLoteNoFirestore(loteId);
     fecharModalConcluir();
-    await atualizarTudoAposConclusao("Lote concluído e Dashboard atualizado.");
+    await atualizarTudoAposConclusao("Lote concluído!",{loteId});
   }catch(e){tratarErroConclusaoLote(e);}
   finally{if(btn){btn.disabled=false;btn.textContent="✓ Concluir sem lançar";}}
 };
@@ -2092,13 +2143,13 @@ window.concluirLote100pct=async(loteId)=>{
     requireAuthUser();
     const snap=await getDocs(query(collection(db,"registros"),where("loteId","==",loteId)));
     const regsExistentes=snapshotDocsForCurrentOwner(snap);
-    const promises=[];
+    const cargas=[];
     for(const etapa of ETAPAS){
       const jaLancado=regsExistentes.filter(r=>r.etapa===etapa).reduce((s,r)=>s+toNumber(r.qtd,0),0);
       const falta=toNumber(lote.qtdTotal,0)-jaLancado;
       if(falta>0){
         const funcRef=funcionarios.find(f=>f.status!=="Inativo")||funcionarios[0];
-        promises.push(addDoc(collection(db,"registros"),withOwner({
+        cargas.push(withOwner({
           funcionarioId:funcRef?.id||"sistema",
           funcionarioNome:funcRef?.nome||"Sistema",
           etapa,
@@ -2108,12 +2159,16 @@ window.concluirLote100pct=async(loteId)=>{
           loteNumeroOf:lote.numeroOf,
           loteProduto:lote.produto,
           criadoEm:Timestamp.now()
-        })));
+        }));
       }
     }
-    if(promises.length)await Promise.all(promises);
+    let novosRegistros=[];
+    if(cargas.length){
+      const refs=await Promise.all(cargas.map(c=>addDoc(collection(db,"registros"),c)));
+      novosRegistros=refs.map((ref,i)=>({id:ref.id,...cargas[i]}));
+    }
     await finalizarLoteNoFirestore(loteId);
-    await atualizarTudoAposConclusao("Lote concluído e Dashboard atualizado.");
+    await atualizarTudoAposConclusao("Lote concluído!",{loteId,novosRegistros});
   }catch(e){tratarErroConclusaoLote(e);}
   finally{if(btn){btn.disabled=false;btn.textContent="⚡ Concluir 100% o lote";}}
 };
@@ -2145,10 +2200,15 @@ window.confirmarConcluirLote=async()=>{
     if(erros.length){toast("Limite de etapa ultrapassado: "+erros.join(" | "),"err");return;}
     const btn=$("btn-confirmar-lote");if(btn){btn.disabled=true;btn.textContent="Salvando...";}
     try{
-      if(regs.length)await Promise.all(regs.map(r=>addDoc(collection(db,"registros"),withOwner(r))));
+      let novosRegistros=[];
+      if(regs.length){
+        const cargas=regs.map(r=>withOwner(r));
+        const refs=await Promise.all(cargas.map(c=>addDoc(collection(db,"registros"),c)));
+        novosRegistros=refs.map((ref,i)=>({id:ref.id,...cargas[i]}));
+      }
       await finalizarLoteNoFirestore(loteId);
       fecharModalConcluir();
-      await atualizarTudoAposConclusao("Lote concluído e Dashboard atualizado.");
+      await atualizarTudoAposConclusao("Lote concluído!",{loteId,novosRegistros});
     }finally{
       const btn2=$("btn-confirmar-lote");if(btn2){btn2.textContent="✓ Confirmar e Concluir";btn2.disabled=false;}
     }
