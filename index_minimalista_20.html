@@ -10218,16 +10218,11 @@ input,select,textarea,button{font-size:16px;}
     <div class="auth-card"><div class="auth-badge"><span class="ab-dot"></span> Plataforma premium</div>
       <div id="form-login">
         <h2>Entrar na plataforma</h2>
-        <div id="quick-login" class="hidden">
+        <div id="quick-login">
           <button id="quick-login-btn" type="button" class="btn-auth" onclick="doQuickLogin(event)">Entrar</button>
-          <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="mostrarCamposLogin(event)">Usar outra conta</a></div>
         </div>
-        <div id="login-fields">
-          <div class="af" id="login-email-wrap" style="display:none;"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" value="mellorenan663@gmail.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-          <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-          <div class="login-first-hint">🔒 Só na primeira vez neste aparelho — depois vira um clique.</div>
+        <div id="login-fields" class="hidden">
           <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
-          <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="mostrarCampoEmail(event)">Entrar com outro e-mail</a></div>
         </div>
         <div id="login-status" class="login-status" aria-live="polite"></div>
       </div>
