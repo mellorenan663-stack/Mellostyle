@@ -2796,9 +2796,76 @@ async function obterOcrWorker(onProgresso){
     workerPath:OCR_CDN.worker, corePath:OCR_CDN.core, langPath:OCR_CDN.lang,
     logger:m=>{ if(onProgresso&&m&&typeof m.progress==="number") onProgresso(m); }
   });
-  // modo "bloco uniforme de texto" — é o que melhor lê cupom fiscal
-  try{ await __ocrWorker.setParameters({tessedit_pageseg_mode:"6"}); }catch(_e){}
   return __ocrWorker;
+}
+/* O modo de segmentação muda muito o resultado, e o melhor depende do
+   documento: cupom fiscal é uma coluna estreita de texto corrido (6);
+   ficha de OF costuma ter rótulo e valor lado a lado, às vezes em
+   tabela, e aí o modo de coluna variável (4) lê bem melhor. */
+const OCR_PSM={gasto:"6",of:"4"};
+async function ocrTexto(worker,fonte,modo){
+  try{ await worker.setParameters({tessedit_pageseg_mode:OCR_PSM[modo]||"6"}); }catch(_e){}
+  const {data}=await worker.recognize(fonte);
+  return data||{};
+}
+
+/* Interpreta uma ficha de OF: número, produto, quantidade, valor,
+   cliente, prazo e tamanhos. */
+function lerDadosOF(txt,clientesConhecidos){
+  const linhas=String(txt||"").split(/\r?\n/).map(l=>l.replace(/\s+/g," ").trim()).filter(Boolean);
+  const sa=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"");
+  const SA=s=>sa(s).toUpperCase();
+  const texto=linhas.map(SA).join("\n");
+  const out={numeroOf:"",produto:"",qtdTotal:0,valorPeca:0,cliente:"",prazo:"",tamanhos:""};
+  const pega=(re,idx)=>{ const m=texto.match(re); return m?String(m[idx==null?1:idx]).trim():""; };
+
+  out.numeroOf=pega(/\bO\.?F\.?\s*(?:N[º°O]?|NUMERO|NR)?\s*[:.\-]?\s*([A-Z0-9][A-Z0-9\-\/]{0,14})/)
+            || pega(/(?:ORDEM DE FABRICACAO|FICHA DE PRODUCAO|PEDIDO)[^\n]*\n[^\n]*?([0-9]{3,10})/);
+  // O rótulo "OF" às vezes se perde no OCR (tabela com coluna de rótulos).
+  if(!out.numeroOf){
+    const solto=linhas.find(l=>/^[0-9]{3,10}$/.test(l.trim()));
+    if(solto) out.numeroOf=solto.trim();
+  }
+
+  const q=pega(/(?:QUANTIDADE|QTDE?|QT|PECAS|PCS)\s*[.:\-]*\s*([0-9][0-9.\s]{0,10})/);
+  if(q) out.qtdTotal=parseInt(q.replace(/[.\s]/g,""),10)||0;
+
+  const v=pega(/(?:VALOR|PRECO|VL)[^0-9\n]{0,22}?([0-9]{1,4}[,.][0-9]{1,2})/);
+  if(v) out.valorPeca=parseFloat(v.replace(",","."))||0;
+
+  const d=texto.match(/(?:PRAZO|ENTREGA|DATA)[^0-9\n]{0,22}?(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/);
+  if(d){
+    let[,dd,mm,aa]=d; aa=aa.length===2?"20"+aa:aa;
+    const ai=+aa,mi=+mm,di=+dd,atual=new Date().getFullYear();
+    if(mi>=1&&mi<=12&&di>=1&&di<=31&&ai>=atual-1&&ai<=atual+3) out.prazo=`${ai}-${mm}-${dd}`;
+  }
+
+  // Cliente: casar com a lista cadastrada vence o OCR trocar uma letra
+  const nomes=(clientesConhecidos||[]).map(c=>typeof c==="string"?c:c&&c.nome).filter(Boolean);
+  for(const nome of nomes){
+    const alvo=SA(nome);
+    if(alvo.length>=3 && texto.includes(alvo)){ out.cliente=nome; break; }
+  }
+  if(!out.cliente){
+    const c=pega(/CLIENTE\s*[.:\-]*\s*([A-Z0-9][A-Z0-9 &'\-]{1,38})/);
+    if(c) out.cliente=c.replace(/\s+/g," ").trim();
+  }
+
+  const iProd=linhas.findIndex(l=>/^(PRODUTO|MODELO|ARTIGO|PECA|REFERENCIA|DESCRICAO)\b/.test(SA(l)));
+  if(iProd>=0){
+    // tira o rótulo mesmo sem ":" separando (tabela: "PRODUTO Tigs meia malha")
+    let p=linhas[iProd].replace(/^(PRODUTO|MODELO|ARTIGO|PE[CÇ]A|REFER[EÊ]NCIA|DESCRI[CÇ][AÃ]O)\b[\s.:\-]*/i,"").trim();
+    if(p.length<2 && linhas[iProd+1] && !/^(VALOR|PRECO|QTD|QUANT|PRAZO|ENTREGA|CLIENTE|TAMANHO)/i.test(SA(linhas[iProd+1])))
+      p=linhas[iProd+1].trim();
+    out.produto=p.slice(0,60);
+  }
+
+  const iTam=linhas.findIndex(l=>/^TAMANHOS?\b/.test(SA(l)));
+  if(iTam>=0){
+    const m=linhas[iTam].match(/^[^:.\-]*[:.\-]+\s*(.+)$/);
+    if(m) out.tamanhos=m[1].trim().slice(0,40);
+  }
+  return out;
 }
 
 /* Cupom fotografado costuma vir torto, escuro e pequeno.
@@ -3214,19 +3281,33 @@ function renderGastos(){
   }).join("");
 }
 
-/* ── Leitor de nota: tela e fluxo ── */
-let __notaLida=null;
+/* ── Leitor por foto: tela e fluxo (cupom de gasto ou ficha de OF) ── */
+let __notaLida=null, __notaModo="gasto";
 function ocrEstado(html){ const el=$("nota-estado"); if(el) el.innerHTML=html; }
 
-window.abrirLeitorNota=function(){
+const LEITOR_TEXTOS={
+  gasto:{titulo:"📷 Ler nota fiscal", sub:"A foto é lida aqui no aparelho, sem sair para a internet",
+    dica:"Tire a foto do cupom inteiro, bem iluminado e sem dobras. A leitura acontece no seu aparelho — a imagem não é enviada para lugar nenhum.",
+    usar:"Usar este valor"},
+  of:{titulo:"📷 Ler ficha de OF", sub:"A foto é lida aqui no aparelho, sem sair para a internet",
+    dica:"Fotografe a ficha inteira, bem iluminada e sem dobras. Funciona melhor com ficha impressa; escrita à mão o leitor erra bastante.",
+    usar:"Usar estes dados"}
+};
+
+window.abrirLeitorNota=function(modo){
+  __notaModo=(modo==="of")?"of":"gasto";
   __notaLida=null;
+  const t=LEITOR_TEXTOS[__notaModo];
   const inp=$("nota-arquivo"); if(inp) inp.value="";
   const prev=$("nota-preview"); if(prev){ prev.src=""; prev.style.display="none"; }
-  const btn=$("nota-usar"); if(btn) btn.style.display="none";
-  ocrEstado('<div class="nota-dica">Tire a foto do cupom inteiro, bem iluminado e sem dobras. A leitura acontece no seu aparelho — a imagem não é enviada para lugar nenhum.</div>');
+  const btn=$("nota-usar"); if(btn){ btn.style.display="none"; btn.textContent=t.usar; }
+  if($("nota-titulo")) $("nota-titulo").textContent=t.titulo;
+  if($("nota-sub")) $("nota-sub").textContent=t.sub;
+  ocrEstado(`<div class="nota-dica">${t.dica}</div>`);
   $("modal-nota")?.classList.add("open");
   document.body.style.overflow="hidden";
 };
+window.abrirLeitorOF=function(){ window.abrirLeitorNota("of"); };
 window.fecharLeitorNota=function(){
   $("modal-nota")?.classList.remove("open");
   document.body.style.overflow="";
@@ -3255,10 +3336,14 @@ window.processarNotaImagem=async function(input){
       ocrEstado(`<div class="nota-load"><span class="nota-spin"></span> ${fase}… ${pct}%</div>`);
     });
 
-    ocrEstado('<div class="nota-load"><span class="nota-spin"></span> Lendo a nota…</div>');
-    const {data}=await w.recognize(prepararImagemNota(img));
-    const r=lerValoresNota(data&&data.text);
-    r.confianca=Math.round((data&&data.confidence)||0);
+    ocrEstado('<div class="nota-load"><span class="nota-spin"></span> Lendo…</div>');
+    const data=await ocrTexto(w,prepararImagemNota(img),__notaModo);
+    const confianca=Math.round(data.confidence||0);
+
+    if(__notaModo==="of"){ mostrarResultadoOF(data.text,confianca); return; }
+
+    const r=lerValoresNota(data.text);
+    r.confianca=confianca;
     __notaLida=r;
 
     if(!r.valor){
@@ -3298,7 +3383,84 @@ window.processarNotaImagem=async function(input){
   }
 };
 
+/* Resultado da ficha de OF: mostra campo a campo o que foi lido e o
+   que ficou faltando, para o usuário completar antes de salvar. */
+function mostrarResultadoOF(texto,confianca){
+  const r=lerDadosOF(texto,clientes);
+  r.confianca=confianca;
+  __notaLida=r;
+  const achou=["numeroOf","produto","qtdTotal","valorPeca","cliente","prazo"].filter(k=>r[k]).length;
+  if(!achou){
+    ocrEstado(`<div class="nota-erro"><strong>Não consegui ler a ficha.</strong>
+      Tente uma foto mais próxima e reta. Fichas escritas à mão o leitor
+      quase sempre erra — nesses casos é mais rápido digitar.</div>`);
+    const b=$("nota-usar"); if(b) b.style.display="none";
+    return;
+  }
+  const campos=[
+    {k:"numeroOf", rot:"Nº da OF",    v:r.numeroOf, obrig:true},
+    {k:"produto",  rot:"Produto",     v:r.produto,  obrig:true},
+    {k:"qtdTotal", rot:"Quantidade",  v:r.qtdTotal?r.qtdTotal.toLocaleString("pt-BR")+" pçs":"", obrig:true},
+    {k:"valorPeca",rot:"Valor/peça",  v:r.valorPeca?fmtMoney(r.valorPeca):""},
+    {k:"cliente",  rot:"Cliente",     v:r.cliente},
+    {k:"prazo",    rot:"Prazo",       v:r.prazo?r.prazo.split("-").reverse().join("/"):""},
+    {k:"tamanhos", rot:"Tamanhos",    v:r.tamanhos}
+  ];
+  const faltamObrig=campos.filter(c=>c.obrig&&!c.v);
+  ocrEstado(`
+    <div class="nota-res">
+      <div class="nota-res-lbl">Dados encontrados na ficha</div>
+      <div class="of-lidos">
+        ${campos.map(c=>`<div class="of-linha ${c.v?"":"is-vazio"}">
+          <span class="of-rot">${c.rot}</span>
+          <span class="of-val">${c.v?escapeHtml(String(c.v)):(c.obrig?"não encontrado":"—")}</span>
+        </div>`).join("")}
+      </div>
+      <div class="nota-res-extra"><span class="nota-tag">Nitidez ${confianca}%</span></div>
+      ${faltamObrig.length
+        ? `<div class="nota-aviso">⚠ Faltou ler: ${faltamObrig.map(c=>c.rot.toLowerCase()).join(", ")}. Preencha à mão antes de salvar.</div>`
+        : (confianca<75
+            ? `<div class="nota-aviso">⚠ Leitura incerta — confira cada campo antes de salvar.</div>`
+            : `<div class="nota-ok">Confira e confirme: nada é salvo sem você revisar.</div>`)}
+    </div>`);
+  const b=$("nota-usar"); if(b) b.style.display="";
+}
+
+function usarDadosOF(){
+  const r=__notaLida; if(!r) return;
+  const card=$("lote-form-card");
+  if(card&&getComputedStyle(card).display==="none")
+    try{ toggleLoteForm(true); }catch(_e){}
+
+  const põe=(id,v)=>{ const el=$(id); if(el&&v!==""&&v!=null&&v!==0) el.value=v; };
+  põe("lote-numero",r.numeroOf);
+  põe("lote-produto",r.produto);
+  põe("lote-qtd",r.qtdTotal||"");
+  põe("lote-valor",r.valorPeca||"");
+  põe("lote-prazo",r.prazo);
+  põe("lote-tamanhos",r.tamanhos);
+  // cliente é <select>: só marca se o nome existir na lista
+  const sel=$("lote-cliente");
+  if(sel&&r.cliente){
+    if(sel.tagName==="SELECT"){
+      const op=[...sel.options].find(o=>normalize(o.value)===normalize(r.cliente));
+      if(op) sel.value=op.value;
+    }else sel.value=r.cliente;
+  }
+  fecharLeitorNota();
+  const faltam=[!r.numeroOf&&"número",!r.produto&&"produto",!r.qtdTotal&&"quantidade"].filter(Boolean);
+  toast(faltam.length
+    ? `Preencha ${faltam.join(" e ")} antes de salvar.`
+    : "Campos preenchidos — confira antes de salvar.",
+    faltam.length?"warn":undefined);
+  setTimeout(()=>{
+    const alvo=!r.numeroOf?$("lote-numero"):!r.produto?$("lote-produto"):!r.qtdTotal?$("lote-qtd"):$("lote-numero");
+    alvo?.scrollIntoView({behavior:"smooth",block:"center"}); alvo?.focus();
+  },260);
+}
+
 window.usarDadosNota=function(){
+  if(__notaModo==="of") return usarDadosOF();
   const r=__notaLida; if(!r||!r.valor) return;
   // Abre o formulário se estiver recolhido
   const card=$("gasto-form-card");
@@ -4795,7 +4957,7 @@ applyTheme(getConfig().tema);
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','gastoMesNav','gastoMesToggleTodos',
-    'abrirLeitorNota','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota',
+    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes'
   ].forEach(expose);
@@ -11053,6 +11215,12 @@ input,select,textarea,button{font-size:16px;}
 
       <div class="card" id="lote-form-card" style="margin-bottom:16px;display:none;">
         <div class="chd">Nova Ordem de Fabricação</div>
+        <div class="nota-cta">
+          <button type="button" class="btn-outline nota-btn" onclick="abrirLeitorOF()">
+            📷 Ler ficha de OF pela foto
+          </button>
+          <span class="nota-cta-txt">Preenche os campos sozinho — você só confere e salva</span>
+        </div>
         <div class="fg fg-of">
           <div class="ff" style="grid-column:span 3"><label>Nº da OF *</label><input id="lote-numero" type="text" placeholder="Ex: 2024-001" onkeydown="if(event.key==='Enter')salvarLote()"/></div>
           <div class="ff" style="grid-column:span 5"><label>Produto *</label><input id="lote-produto" type="text" placeholder="Ex: Camiseta Básica P"/></div>
@@ -11722,8 +11890,8 @@ input,select,textarea,button{font-size:16px;}
 <div id="modal-nota" class="modal-overlay" onclick="if(event.target===this)fecharLeitorNota()">
   <div class="modal-box md">
     <div class="modal-hd">
-      <div><div class="modal-title">📷 Ler nota fiscal</div>
-           <div class="modal-lote-sub">A foto é lida aqui no aparelho, sem sair para a internet</div></div>
+      <div><div class="modal-title" id="nota-titulo">📷 Ler nota fiscal</div>
+           <div class="modal-lote-sub" id="nota-sub">A foto é lida aqui no aparelho, sem sair para a internet</div></div>
       <button class="modal-close" onclick="fecharLeitorNota()">✕</button>
     </div>
     <div class="modal-body">
@@ -14187,6 +14355,14 @@ tr:last-child td{ border-bottom:none!important; }
 .nota-tag{font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;
   background:var(--bg2);border:1px solid var(--bd);color:var(--t2);}
 .nota-ok{color:var(--t3);padding:10px 0 0;font-weight:600;}
+/* lista campo a campo da ficha de OF */
+.of-lidos{margin-top:11px;display:flex;flex-direction:column;gap:1px;}
+.of-linha{display:grid;grid-template-columns:104px 1fr;gap:10px;align-items:baseline;
+  padding:7px 0;border-bottom:1px solid var(--bd);}
+.of-linha:last-child{border-bottom:none;}
+.of-rot{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);}
+.of-val{font-size:13px;font-weight:700;color:var(--t);word-break:break-word;}
+.of-linha.is-vazio .of-val{color:var(--t4);font-weight:600;font-style:italic;}
 .nota-aviso{color:var(--t2);background:var(--warning-soft);
   border:1px solid var(--warning-line);margin-top:11px;font-weight:600;}
 
