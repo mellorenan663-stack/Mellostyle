@@ -683,7 +683,15 @@ window.mostrarCamposLogin=function(ev){
   try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
   document.getElementById("quick-login")?.classList.add("hidden");
   document.getElementById("login-fields")?.classList.remove("hidden");
-  document.getElementById("login-pass")?.focus();
+  const em=document.getElementById("login-email");
+  (em&&!em.value?em:document.getElementById("login-pass"))?.focus();
+};
+/* Volta para a tela de um botão só (sem senha). */
+window.voltarBotaoUnico=function(ev){
+  try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
+  document.getElementById("login-fields")?.classList.add("hidden");
+  document.getElementById("quick-login")?.classList.remove("hidden");
+  setLoginStatus("","");
 };
 window.mostrarCampoEmail=function(ev){
   try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
@@ -10220,9 +10228,13 @@ input,select,textarea,button{font-size:16px;}
         <h2>Entrar na plataforma</h2>
         <div id="quick-login">
           <button id="quick-login-btn" type="button" class="btn-auth" onclick="doQuickLogin(event)">Entrar</button>
+          <div class="auth-tog" style="margin-top:14px;"><a href="javascript:void(0)" onclick="mostrarCamposLogin(event)">Entrar com minha conta</a></div>
         </div>
         <div id="login-fields" class="hidden">
+          <div class="af"><label>E-mail</label><input id="login-email" type="email" placeholder="seu@email.com" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+          <div class="af"><label>Senha</label><input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
           <button id="login-btn" type="button" class="btn-auth" onclick="doLogin(event)">Entrar</button>
+          <div class="auth-tog" style="margin-top:12px;"><a href="javascript:void(0)" onclick="voltarBotaoUnico(event)">Voltar para o acesso rápido</a></div>
         </div>
         <div id="login-status" class="login-status" aria-live="polite"></div>
       </div>
