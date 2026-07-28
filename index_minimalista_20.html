@@ -3609,6 +3609,7 @@ window.setCaixaEmpresa=function(val){
   setConfigField("caixaEmpresa",n);
   persistConfigParcial({caixaEmpresa:n});
   if(typeof renderCaixaEmpresa==="function") renderCaixaEmpresa();
+  if(typeof renderFolhaPagamento==="function") renderFolhaPagamento();
 };
 window.setProvisaoMesesFunc=function(id,val){
   const cfg=getStoredConfig();
@@ -3618,6 +3619,7 @@ window.setProvisaoMesesFunc=function(id,val){
   setConfigField("provisaoMeses",pm);
   persistConfigParcial({provisaoMeses:pm});
   if(typeof renderCaixaEmpresa==="function") renderCaixaEmpresa();
+  if(typeof renderFolhaPagamento==="function") renderFolhaPagamento();
 };
 function renderCaixaEmpresa(){
   const el=document.getElementById("dash-caixa"); if(!el) return;
@@ -3681,6 +3683,94 @@ function renderCaixaEmpresa(){
 }
 window.renderCaixaEmpresa=renderCaixaEmpresa;
 window.calcCaixaEmpresa=calcCaixaEmpresa;
+
+/* ══════════════════════════════════════════════════════════════
+   FOLHA DE PAGAMENTO — quanto dá para pagar no mês
+   Usa calcBancoHoras (a mesma conta da página Banco de Horas), para
+   o Dashboard nunca mostrar um número diferente do que a funcionária
+   vai receber: base proporcional à admissão + extras − descontos e
+   bônus só quando o saldo de horas não está negativo.
+══════════════════════════════════════════════════════════════ */
+function calcFolhaPagamento(mes){
+  const mesAno=mes||uiState.dashMes||monthKeyLocal();
+  const ativas=funcionarios.filter(f=>f.status!=="Inativo");
+  const itens=ativas.map(f=>{
+    const s=calcBancoHoras(f.id,mesAno);
+    return {
+      id:f.id, nome:f.nome||"—", cargo:f.cargo||f.setor||"—",
+      base:toNumber(s.salarioBase,0),
+      extras:toNumber(s.valorExtras,0),
+      desconto:toNumber(s.desconto,0),
+      bonus:toNumber(s.bonus,0),
+      bonusBloqueado:!!s.bonusBloqueado,
+      admProporcional:!!s.admProporcional,
+      total:toNumber(s.salarioFinal,0)
+    };
+  }).sort((a,b)=>b.total-a.total);
+  const soma=k=>itens.reduce((t,i)=>t+i[k],0);
+  return {mes:mesAno, itens,
+    totalBase:soma("base"), totalExtras:soma("extras"),
+    totalDesconto:soma("desconto"), totalBonus:soma("bonus"),
+    total:soma("total"), qtd:itens.length,
+    bloqueados:itens.filter(i=>i.bonusBloqueado).length};
+}
+
+function renderFolhaPagamento(){
+  const el=document.getElementById("dash-folha"); if(!el) return;
+  const r=calcFolhaPagamento();
+  const media=r.qtd?r.total/r.qtd:0;
+  const rows=r.itens.map(i=>`<tr>
+    <td><div class="cx-nome">${escapeHtml(i.nome)}</div><div class="fp-cargo">${escapeHtml(i.cargo)}</div></td>
+    <td class="cx-num">${fmtMoney(i.base)}${i.admProporcional?'<div class="fp-tag">proporcional</div>':""}</td>
+    <td class="cx-num">${i.extras>0?fmtMoney(i.extras):"—"}</td>
+    <td class="cx-num">${i.desconto>0?"−"+fmtMoney(i.desconto):"—"}</td>
+    <td class="cx-num">${i.bonusBloqueado?'<span class="fp-bloq">bloqueado</span>':(i.bonus>0?fmtMoney(i.bonus):"—")}</td>
+    <td class="cx-num cx-total">${fmtMoney(i.total)}</td>
+  </tr>`).join("");
+  el.innerHTML=`<div class="metas-section">
+    <div class="metas-section-hd">
+      <div class="metas-section-title">👥 Folha de Pagamento</div>
+      <span class="ag-hint">${formatMonthLabel(r.mes)} · ${r.qtd} funcionária${r.qtd===1?"":"s"} ativa${r.qtd===1?"":"s"}</span>
+    </div>
+    <div class="cx-grid">
+      <div class="cx-tile cx-tile-bad">
+        <div class="cx-l">💵 Total a pagar no mês</div>
+        <div class="cx-v">${fmtMoney(r.total)}</div>
+        <div class="cx-s">média de ${fmtMoney(media)} por pessoa</div>
+      </div>
+      <div class="cx-tile">
+        <div class="cx-l">📋 Salários base</div>
+        <div class="cx-v">${fmtMoney(r.totalBase)}</div>
+        <div class="cx-s">${r.totalBonus>0?"+ "+fmtMoney(r.totalBonus)+" de bônus":"sem bônus neste mês"}</div>
+      </div>
+      <div class="cx-tile">
+        <div class="cx-l">⏱ Extras e descontos</div>
+        <div class="cx-v">${r.totalExtras-r.totalDesconto>=0?"+":"−"}${fmtMoney(Math.abs(r.totalExtras-r.totalDesconto))}</div>
+        <div class="cx-s">${fmtMoney(r.totalExtras)} em extras · ${fmtMoney(r.totalDesconto)} em faltas</div>
+      </div>
+    </div>
+    ${!r.qtd?`<div class="card" style="padding:22px;text-align:center;color:var(--t3)">Nenhuma funcionária ativa cadastrada.</div>`:`
+    <div class="card cx-table-card">
+      <div class="tbl-wrap"><table class="cx-table">
+        <thead><tr><th>Funcionária</th><th class="cx-num">Base</th><th class="cx-num">Extras</th><th class="cx-num">Faltas</th><th class="cx-num">Bônus</th><th class="cx-num">A receber</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td><strong>TOTAL</strong></td>
+          <td class="cx-num">${fmtMoney(r.totalBase)}</td>
+          <td class="cx-num">${fmtMoney(r.totalExtras)}</td>
+          <td class="cx-num">${r.totalDesconto>0?"−"+fmtMoney(r.totalDesconto):fmtMoney(0)}</td>
+          <td class="cx-num">${fmtMoney(r.totalBonus)}</td>
+          <td class="cx-num cx-total">${fmtMoney(r.total)}</td>
+        </tr></tfoot>
+      </table></div>
+      <div class="cx-nota">💡 Mesma conta da página <strong>Banco de Horas</strong>: base proporcional a quem entrou no meio do mês, mais horas extras, menos faltas.
+      ${r.bloqueados>0?`<strong>${r.bloqueados}</strong> bônus bloqueado${r.bloqueados===1?"":"s"} por saldo de horas negativo. `:""}
+      Não inclui 13º e férias — esses estão no <strong>Caixa da Empresa</strong> acima.</div>
+    </div>`}
+  </div>`;
+}
+window.renderFolhaPagamento=renderFolhaPagamento;
+window.calcFolhaPagamento=calcFolhaPagamento;
 
 /* ══════════════════════════════════════════════════════════════
    METAS MENSAIS — GAUGE VISUAL
@@ -3867,6 +3957,7 @@ function renderMetas(){
 
   // ── CAIXA DA EMPRESA — encargos de fim de ano ──
   try{ renderCaixaEmpresa(); }catch(e){ console.warn('CAIXA_WARN',e); }
+  try{ renderFolhaPagamento(); }catch(e){ console.warn('FOLHA_WARN',e); }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -4959,7 +5050,7 @@ applyTheme(getConfig().tema);
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','gastoMesNav','gastoMesToggleTodos',
     'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
-    'dashNavMes','dashSetMes'
+    'dashNavMes','dashSetMes','renderFolhaPagamento','calcFolhaPagamento'
   ].forEach(expose);
 
   function bindLoginHard(){
@@ -11169,6 +11260,9 @@ input,select,textarea,button{font-size:16px;}
       <!-- ═══ CAIXA DA EMPRESA — ENCARGOS DE FIM DE ANO ═══ -->
       <div id="dash-caixa"></div>
 
+      <!-- ═══ FOLHA DE PAGAMENTO DO MÊS ═══ -->
+      <div id="dash-folha"></div>
+
     </div>
 
     <!-- LOTES -->
@@ -14224,6 +14318,12 @@ tr:last-child td{ border-bottom:none!important; }
 .cx-table tfoot td{border-top:1px solid var(--bd2)!important;border-bottom:none!important;font-weight:700;color:var(--t2);}
 .cx-meses{width:54px!important;text-align:center!important;padding:5px 4px!important;font-size:13px!important;font-weight:700!important;border-radius:10px!important;background:var(--bg4)!important;border:1px solid var(--bd)!important;color:var(--t)!important;-moz-appearance:textfield;}
 .cx-meses:focus{border-color:var(--ink)!important;box-shadow:0 0 0 3px var(--accent-soft)!important;}
+/* ── Folha de pagamento ── */
+.fp-cargo{font-size:10.5px;color:var(--t3);font-weight:600;margin-top:2px;
+  text-transform:capitalize;}
+.fp-tag{font-size:9.5px;color:var(--t3);font-weight:700;margin-top:2px;}
+.fp-bloq{font-size:10.5px;font-weight:700;color:var(--warning);}
+
 .cx-nota{padding:13px 16px;font-size:11.5px;color:var(--t3);border-top:1px solid var(--bd);line-height:1.55;}
 .cx-nota strong{color:var(--t2);}
 @media (max-width:560px){
