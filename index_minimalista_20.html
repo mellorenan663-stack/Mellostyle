@@ -2809,6 +2809,44 @@ async function ocrTexto(worker,fonte,modo){
   return data||{};
 }
 
+/* Romaneio de facção não traz rótulo "QUANTIDADE"/"VALOR": traz uma
+   grade cor × tamanho e uma linha TOTAL, assim:
+     Cor | P | M | G | GG | G1 | Total | Preço | Valor
+   Duas checagens aritméticas acham as colunas sem depender do
+   cabeçalho, que o OCR erra com frequência:
+     soma dos tamanhos == Total   e   Total × Preço == Valor
+   Só aceita quando as duas batem, senão uma soma coincidente entre
+   tamanhos (69+138=207) seria confundida com o total. */
+function lerLinhaTotalGrade(linhas){
+  // só números que formam o token inteiro: "144,00" vale, o "1" de "1-PRETO" não
+  const numsDe=l=>String(l).split(/\s+/).map(tk=>{
+      if(!/^\d+(?:\.\d{3})*(?:,\d{1,3})?$|^\d+(?:\.\d{1,3})?$/.test(tk)) return null;
+      if(tk.includes(",")) return parseFloat(tk.replace(/\./g,"").replace(",","."));
+      if(/^\d{1,3}(?:\.\d{3})+$/.test(tk)) return parseFloat(tk.replace(/\./g,"")); // milhar
+      return parseFloat(tk);
+    }).filter(n=>Number.isFinite(n));
+  const sa=s=>String(s).normalize("NFD").replace(/[̀-ͯ]/g,"");
+  const ehTotal=l=>/^\s*TOTAL\b/i.test(sa(l));
+  const ordenadas=linhas.filter(ehTotal).concat(linhas.filter(l=>!ehTotal(l)));
+  let fraco=null;
+  for(const linha of ordenadas){
+    const n=numsDe(linha);
+    if(n.length<3) continue;
+    // da direita para a esquerda: a coluna Total fica no fim da grade.
+    // k=1 cobre grade de uma coluna só.
+    for(let k=n.length-1;k>=1;k--){
+      const soma=n.slice(0,k).reduce((s,v)=>s+v,0);
+      if(soma<=0||Math.abs(soma-n[k])>0.51) continue;
+      const qtd=Math.round(n[k]), preco=n[k+1], valor=n[k+2];
+      if(preco>0&&valor>0&&Math.abs(qtd*preco-valor)<=Math.max(0.5,valor*0.01))
+        return {qtdTotal:qtd,valorPeca:Math.round(preco*100)/100,confirmado:true};
+      if(!fraco&&k>=2) fraco={qtdTotal:qtd,
+        valorPeca:(preco>0&&preco<qtd)?Math.round(preco*100)/100:0,confirmado:false};
+    }
+  }
+  return fraco;
+}
+
 /* Interpreta uma ficha de OF: número, produto, quantidade, valor,
    cliente, prazo e tamanhos. */
 function lerDadosOF(txt,clientesConhecidos){
@@ -2833,7 +2871,9 @@ function lerDadosOF(txt,clientesConhecidos){
   const v=pega(/(?:VALOR|PRECO|VL)[^0-9\n]{0,22}?([0-9]{1,4}[,.][0-9]{1,2})/);
   if(v) out.valorPeca=parseFloat(v.replace(",","."))||0;
 
-  const d=texto.match(/(?:PRAZO|ENTREGA|DATA)[^0-9\n]{0,22}?(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/);
+  // "Retorno" é o prazo no romaneio de facção
+  const d=texto.match(/(?:PRAZO|ENTREGA|RETORNO|DEVOLUCAO)[^0-9\n]{0,22}?(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/)
+         ||texto.match(/(?:DATA)[^0-9\n]{0,22}?(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/);
   if(d){
     let[,dd,mm,aa]=d; aa=aa.length===2?"20"+aa:aa;
     const ai=+aa,mi=+mm,di=+dd,atual=new Date().getFullYear();
@@ -2851,8 +2891,21 @@ function lerDadosOF(txt,clientesConhecidos){
     if(c) out.cliente=c.replace(/\s+/g," ").trim();
   }
 
+  // Romaneio traz o produto em "Ref: STO0075 - CAMISETA DRY FIT MEZUL".
+  // Exige ":" ou "." logo após REF, senão casaria dentro de "REFORÇADA".
+  const mRef=texto.match(/\bREF[.:]\s*([^\n]{3,70})/);
+  if(mRef){
+    let p=mRef[1].trim();
+    const corte=p.split(/\s+-\s+/);              // tira o código antes do hífen
+    if(corte.length>1&&corte[0].length<=14) p=corte.slice(1).join(" - ");
+    // corta o que vier da coluna da direita da ficha, colado pelo OCR
+    p=p.split(/\s+(?:MOVIMENTO|PARTE|SETOR|OF|PAG|SEMANA|QTDE?|TOTAL)\b[.:]?/i)[0];
+    p=p.replace(/\s{2,}.*$/,"").trim();
+    if(p.length>=3) out.produto=p.slice(0,60);
+  }
+
   const iProd=linhas.findIndex(l=>/^(PRODUTO|MODELO|ARTIGO|PECA|REFERENCIA|DESCRICAO)\b/.test(SA(l)));
-  if(iProd>=0){
+  if(iProd>=0&&!out.produto){
     // tira o rótulo mesmo sem ":" separando (tabela: "PRODUTO Tigs meia malha")
     let p=linhas[iProd].replace(/^(PRODUTO|MODELO|ARTIGO|PE[CÇ]A|REFER[EÊ]NCIA|DESCRI[CÇ][AÃ]O)\b[\s.:\-]*/i,"").trim();
     if(p.length<2 && linhas[iProd+1] && !/^(VALOR|PRECO|QTD|QUANT|PRAZO|ENTREGA|CLIENTE|TAMANHO)/i.test(SA(linhas[iProd+1])))
@@ -2864,6 +2917,16 @@ function lerDadosOF(txt,clientesConhecidos){
   if(iTam>=0){
     const m=linhas[iTam].match(/^[^:.\-]*[:.\-]+\s*(.+)$/);
     if(m) out.tamanhos=m[1].trim().slice(0,40);
+  }
+
+  // Sem rótulo de quantidade/valor (romaneio usa grade cor × tamanho),
+  // lê a linha TOTAL da tabela e confere pela aritmética.
+  if(!out.qtdTotal||!out.valorPeca){
+    const g=lerLinhaTotalGrade(linhas);
+    if(g){
+      if(!out.qtdTotal&&g.qtdTotal) out.qtdTotal=g.qtdTotal;
+      if(!out.valorPeca&&g.valorPeca) out.valorPeca=g.valorPeca;
+    }
   }
   return out;
 }
