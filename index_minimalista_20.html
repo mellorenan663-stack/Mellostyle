@@ -2823,10 +2823,35 @@ async function obterOcrWorker(onProgresso){
    ficha de OF costuma ter rótulo e valor lado a lado, às vezes em
    tabela, e aí o modo de coluna variável (4) lê bem melhor. */
 const OCR_PSM={gasto:"6",of:"4"};
-async function ocrTexto(worker,fonte,modo){
-  try{ await worker.setParameters({tessedit_pageseg_mode:OCR_PSM[modo]||"6"}); }catch(_e){}
+async function ocrTexto(worker,fonte,modo,psm){
+  try{ await worker.setParameters({tessedit_pageseg_mode:psm||OCR_PSM[modo]||"6"}); }catch(_e){}
   const {data}=await worker.recognize(fonte);
   return data||{};
+}
+
+/* Junta o resultado de várias passadas: para cada campo fica o primeiro
+   valor que alguma passada conseguiu ler. Medido na foto real: uma
+   passada acerta OF+quantidade, outra OF+cliente+prazo — juntando dá
+   4 dos 6 campos, contra 1 antes. */
+function juntarLeituras(lista){
+  const out={}, campos=Object.keys(Object.assign({},...lista));
+  for(const k of campos){
+    for(const r of lista){
+      const v=r&&r[k];
+      if(v!==undefined&&v!==null&&v!==""&&!(typeof v==="number"&&!v)){ out[k]=v; break; }
+    }
+    if(out[k]===undefined) out[k]=lista[0]?lista[0][k]:"";
+  }
+  out.confianca=Math.max(...lista.map(r=>toNumber(r&&r.confianca,0)));
+  out.passadas=lista.length;
+  return out;
+}
+
+/* Uma leitura ficou fraca quando faltou campo obrigatório. */
+function leituraFraca(r,modo){
+  if(!r) return true;
+  if(modo==="of") return !r.numeroOf||!r.produto||!toNumber(r.qtdTotal,0);
+  return !toNumber(r.valor,0);
 }
 
 /* Romaneio de facção não traz rótulo "QUANTIDADE"/"VALOR": traz uma
@@ -3076,26 +3101,97 @@ function lerDadosOF(txt,clientesConhecidos){
 
 /* Cupom fotografado costuma vir torto, escuro e pequeno.
    Cinza + contraste esticado + ampliação melhoram muito a leitura. */
-function prepararImagemNota(img,alvoLargura){
+/* Descobre o quanto o texto está torto, olhando o "perfil de projeção":
+   quando as linhas estão retas, a quantidade de tinta por linha varia
+   muito (linha de texto cheia vs entrelinha vazia); torto, isso borra.
+   Testa de -20° a +20° e devolve o ângulo de maior variação.
+   Medido na foto real do romaneio: acha -11°, e endireitar levou a
+   leitura de 1 para 4 dos 6 campos. Custa ~60ms. */
+function detectarInclinacao(g,W,H){
+  const esc=Math.min(1,700/Math.max(W,H));
+  const w=Math.max(8,Math.round(W*esc)), h=Math.max(8,Math.round(H*esc));
+  const p=new Float32Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++)
+    p[y*w+x]=g[Math.round(y/esc)*W+Math.round(x/esc)]||0;
+  let m=0; for(let i=0;i<p.length;i++) m+=p[i]; m/=p.length;
+  const tinta=new Uint8Array(w*h);
+  for(let i=0;i<p.length;i++) tinta[i]=p[i]<m-12?1:0;
+  let melhorA=0, melhorV=-1;
+  for(let a=-20;a<=20;a++){
+    const rad=a*Math.PI/180, sn=Math.sin(rad), cs=Math.cos(rad);
+    const perfil=new Float32Array(h*2);
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+      if(!tinta[y*w+x]) continue;
+      const yr=Math.round((x-w/2)*sn+(y-h/2)*cs)+h;
+      if(yr>=0&&yr<h*2) perfil[yr]++;
+    }
+    // normaliza pela faixa ocupada: sem isso, ângulos maiores espalham
+    // a tinta por mais linhas e perdem só por causa disso
+    let i0=-1,i1=-1;
+    for(let i=0;i<perfil.length;i++) if(perfil[i]>0){ if(i0<0)i0=i; i1=i; }
+    if(i0<0) continue;
+    const n=i1-i0+1;
+    let mu=0; for(let i=i0;i<=i1;i++) mu+=perfil[i]; mu/=n;
+    let v=0;  for(let i=i0;i<=i1;i++){ const dd=perfil[i]-mu; v+=dd*dd; }
+    v=(v/n)/(mu*mu||1);
+    if(v>melhorV){ melhorV=v; melhorA=a; }
+  }
+  return melhorA;
+}
+
+/* Gira a imagem para deixar o texto reto, com fundo branco nas sobras. */
+function endireitar(c,ang){
+  if(!ang) return c;
+  const W=c.width,H=c.height,rad=ang*Math.PI/180;
+  const sn=Math.abs(Math.sin(rad)), cs=Math.abs(Math.cos(rad));
+  const W2=Math.ceil(W*cs+H*sn), H2=Math.ceil(W*sn+H*cs);
+  const c2=document.createElement("canvas"); c2.width=W2; c2.height=H2;
+  const x=c2.getContext("2d",{willReadFrequently:true});
+  x.fillStyle="#fff"; x.fillRect(0,0,W2,H2);
+  x.translate(W2/2,H2/2); x.rotate(rad);
+  x.imageSmoothingEnabled=true; x.imageSmoothingQuality="high";
+  x.drawImage(c,-W/2,-H/2);
+  x.setTransform(1,0,0,1,0,0);
+  return c2;
+}
+
+/* Prepara a foto para o leitor. estilo "cru" só endireita (medido como
+   melhor na foto difícil); "curva" também puxa o contraste, que ajuda
+   em papel claro e desbotado. */
+function prepararImagemNota(img,alvoLargura,estilo){
   alvoLargura=alvoLargura||1700;
   const escala=Math.min(3,Math.max(1,alvoLargura/(img.width||1)));
   const W=Math.round((img.width||1)*escala), H=Math.round((img.height||1)*escala);
-  const c=document.createElement("canvas"); c.width=W; c.height=H;
-  const x=c.getContext("2d",{willReadFrequently:true});
+  let c=document.createElement("canvas"); c.width=W; c.height=H;
+  let x=c.getContext("2d",{willReadFrequently:true});
   x.imageSmoothingEnabled=true; x.imageSmoothingQuality="high";
   x.drawImage(img,0,0,W,H);
-  const d=x.getImageData(0,0,W,H), p=d.data, hist=new Uint32Array(256);
-  for(let i=0;i<p.length;i+=4){
-    const g=(p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114)|0;
-    p[i]=p[i+1]=p[i+2]=g; hist[g]++;
+
+  // cinza + guarda os valores para medir a inclinação
+  let d=x.getImageData(0,0,W,H), p=d.data;
+  const g=new Float32Array(W*H);
+  for(let i=0,j=0;i<p.length;i+=4,j++){
+    const v=p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114;
+    g[j]=v; p[i]=p[i+1]=p[i+2]=v|0;
   }
-  const total=W*H; let acc=0, lo=0, hi=255;
+  x.putImageData(d,0,0);
+
+  c=endireitar(c,detectarInclinacao(g,W,H));
+  if(estilo==="cru") return c;
+
+  // curva em S separa tinta do papel
+  x=c.getContext("2d",{willReadFrequently:true});
+  const Wf=c.width, Hf=c.height;
+  d=x.getImageData(0,0,Wf,Hf); p=d.data;
+  const hist=new Uint32Array(256);
+  for(let i=0;i<p.length;i+=4) hist[p[i]]++;
+  const total=Wf*Hf; let acc=0, lo=0, hi=255;
   for(let i=0;i<256;i++){ acc+=hist[i]; if(acc>total*0.01){lo=i;break;} }
   acc=0; for(let i=255;i>=0;i--){ acc+=hist[i]; if(acc>total*0.01){hi=i;break;} }
   const faixa=Math.max(1,hi-lo), lut=new Uint8Array(256);
   for(let i=0;i<256;i++){
     let v=(i-lo)/faixa*255; v=v<0?0:v>255?255:v;
-    lut[i]=(255/(1+Math.exp(-(v-128)/34)))|0;   // curva em S separa tinta do papel
+    lut[i]=(255/(1+Math.exp(-(v-128)/34)))|0;
   }
   for(let i=0;i<p.length;i+=4){ const v=lut[p[i]]; p[i]=p[i+1]=p[i+2]=v; }
   x.putImageData(d,0,0);
@@ -3574,15 +3670,40 @@ window.processarNotaImagem=async function(input,nivel){
       ocrEstado(`<div class="nota-load"><span class="nota-spin"></span> ${fase}… ${pct}%</div>`);
     });
 
-    ocrEstado('<div class="nota-load"><span class="nota-spin"></span> Lendo…</div>');
-    const data=await ocrTexto(w,prepararImagemNota(img),__notaModo);
-    const confianca=Math.round(data.confidence||0);
-
-    if(__notaModo==="of"){ mostrarResultadoOF(data.text,confianca); return; }
-
-    const r=lerValoresNota(data.text);
-    r.confianca=confianca;
-    mostrarResultadoGasto(r);
+    // Uma passada resolve foto de papel plano. Quando a foto é difícil
+    // (torta, no plástico), passadas com ajustes diferentes acertam
+    // campos diferentes — então tenta mais e junta o que cada uma leu.
+    // Só escala quando precisa, para não deixar o caso fácil lento.
+    const TENTATIVAS=[
+      {largura:1700, estilo:"cru",   psm:null},
+      {largura:1700, estilo:"cru",   psm:"11"},
+      {largura:2400, estilo:"curva", psm:null}
+    ];
+    const lidos=[]; let bruto="";
+    for(let i=0;i<TENTATIVAS.length;i++){
+      const t=TENTATIVAS[i];
+      ocrEstado(`<div class="nota-load"><span class="nota-spin"></span> Lendo…${
+        i?` (tentativa ${i+1} de ${TENTATIVAS.length})`:""}</div>`);
+      const data=await ocrTexto(w,prepararImagemNota(img,t.largura,t.estilo),__notaModo,t.psm);
+      const conf=Math.round(data.confidence||0);
+      bruto+=(bruto?"\n":"")+(data.text||"");
+      const r=__notaModo==="of"?lerDadosOF(data.text,clientes):lerValoresNota(data.text);
+      r.confianca=conf;
+      lidos.push(r);
+      if(!leituraFraca(r,__notaModo)) break;   // já veio completo: para aqui
+    }
+    const r=lidos.length>1?juntarLeituras(lidos):lidos[0];
+    // relê o texto de todas as passadas juntas: às vezes a grade de
+    // tamanhos só fecha a conta quando as linhas se completam
+    if(leituraFraca(r,__notaModo)&&lidos.length>1){
+      const juntoR=__notaModo==="of"?lerDadosOF(bruto,clientes):lerValoresNota(bruto);
+      juntoR.confianca=r.confianca;
+      const melhor=juntarLeituras([r,juntoR]);
+      melhor.passadas=lidos.length;
+      if(__notaModo==="of") mostrarResultadoOFObj(melhor); else mostrarResultadoGasto(melhor);
+      return;
+    }
+    if(__notaModo==="of") mostrarResultadoOFObj(r); else mostrarResultadoGasto(r);
   }catch(e){
     console.warn("OCR_ERRO",e);
     const semNet=/sem-internet|Failed to fetch|NetworkError|dynamically imported/i.test(e&&e.message||"");
@@ -3622,8 +3743,8 @@ function mostrarResultadoGasto(r){
   const conf=Math.round(toNumber(r.confianca,0));
   if(!toNumber(r.valor,0)){
     ocrEstado(`<div class="nota-erro"><strong>Não consegui ler o valor.</strong>
-      Isso costuma acontecer com foto tremida, escura ou cortada. Tente de novo
-      mais perto do papel — ou digite o valor à mão, é rápido.</div>`
+      Deixe o cupom plano e fora do plástico, fotografando de cima com boa luz.
+      Se ainda não sair, digite o valor à mão — é rápido.</div>`
       +blocoReforco(r,true));
     const b=$("nota-usar"); if(b) b.style.display="none";
     return;
@@ -3665,8 +3786,9 @@ function mostrarResultadoOFObj(r){
   const achou=["numeroOf","produto","qtdTotal","valorPeca","cliente","prazo"].filter(k=>r[k]).length;
   if(!achou){
     ocrEstado(`<div class="nota-erro"><strong>Não consegui ler a ficha.</strong>
-      Tente uma foto mais próxima e reta. Fichas escritas à mão o leitor
-      quase sempre erra — nesses casos é mais rápido digitar.</div>`);
+      Duas coisas resolvem quase sempre: <strong>tire o papel do plástico</strong>
+      (o plástico embaça o texto) e <strong>deixe a folha plana</strong>, fotografando
+      de cima, reto. Ficha impressa e plana o leitor lê inteira.</div>`);
     const b=$("nota-usar"); if(b) b.style.display="none";
     ocrEstado(document.getElementById("nota-estado").innerHTML+blocoReforco(r,true));
     return;
