@@ -2768,6 +2768,26 @@ window.deletarGasto=async id=>{
    navegador. Só as bibliotecas vêm da CDN, e apenas na 1ª leitura.
    O resultado é SEMPRE uma sugestão — quem confirma é você.
 ══════════════════════════════════════════════════════════════ */
+/* ── Chave de IA (opcional) ───────────────────────────────────
+   Fica SÓ no aparelho, em localStorage. Nunca vai para o arquivo
+   HTML nem para o Firestore — assim quem abre o link não usa (nem
+   gasta) a sua chave. Com ela, a foto é lida por IA de visão, que
+   enxerga romaneio amassado/no plástico que o leitor local não lê.
+   Sem ela, tudo continua funcionando com o leitor local. ── */
+const IA_CHAVE_KEY="mello_ia_key";
+function getChaveIA(){
+  try{ return (localStorage.getItem(IA_CHAVE_KEY)||"").trim(); }catch(_e){ return ""; }
+}
+window.setChaveIA=function(v){
+  const k=String(v||"").trim();
+  try{
+    if(k) localStorage.setItem(IA_CHAVE_KEY,k);
+    else localStorage.removeItem(IA_CHAVE_KEY);
+  }catch(_e){}
+  if(typeof toast==="function") toast(k?"Chave salva neste aparelho.":"Chave removida deste aparelho.");
+  try{ renderConfiguracoes(); }catch(_e){}
+};
+
 const OCR_CDN={
   lib:"https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js",
   worker:"https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
@@ -2845,6 +2865,120 @@ function lerLinhaTotalGrade(linhas){
     }
   }
   return fraco;
+}
+
+/* ── Leitura por IA de visão (quando há chave configurada) ──────
+   A imagem é enviada para a API da Anthropic. Usa saída estruturada
+   (json_schema) para o retorno vir sempre no mesmo formato, sem
+   precisar interpretar texto solto. ── */
+const IA_MODELO="claude-opus-5";
+
+function imagemParaBase64(file){
+  return new Promise((ok,erro)=>{
+    const r=new FileReader();
+    r.onload=()=>{ const s=String(r.result||""); ok(s.slice(s.indexOf(",")+1)); };
+    r.onerror=()=>erro(new Error("falha ao ler o arquivo"));
+    r.readAsDataURL(file);
+  });
+}
+
+/* Reduz a foto antes de enviar: corta custo e tempo sem perder o
+   que importa para leitura de texto. */
+async function comprimirParaIA(file,maxLado){
+  maxLado=maxLado||1600;
+  try{
+    const url=URL.createObjectURL(file);
+    const img=new Image(); img.src=url;
+    await (img.decode?img.decode():new Promise(r=>{img.onload=r;}));
+    const esc=Math.min(1,maxLado/Math.max(img.width||1,img.height||1));
+    const W=Math.round((img.width||1)*esc), H=Math.round((img.height||1)*esc);
+    const c=document.createElement("canvas"); c.width=W; c.height=H;
+    c.getContext("2d").drawImage(img,0,0,W,H);
+    URL.revokeObjectURL(url);
+    const dataUrl=c.toDataURL("image/jpeg",0.85);
+    return {b64:dataUrl.slice(dataUrl.indexOf(",")+1), tipo:"image/jpeg"};
+  }catch(_e){
+    return {b64:await imagemParaBase64(file), tipo:file.type||"image/jpeg"};
+  }
+}
+
+const IA_ESQUEMA_OF={
+  type:"object",
+  properties:{
+    numeroOf:{type:"string",description:"Número da OF. String vazia se não encontrar."},
+    produto:{type:"string",description:"Nome do produto/modelo. Vazio se não encontrar."},
+    qtdTotal:{type:"integer",description:"Quantidade TOTAL de peças. 0 se não encontrar."},
+    valorPeca:{type:"number",description:"Preço unitário por peça em reais. 0 se não encontrar."},
+    cliente:{type:"string",description:"Nome do cliente. Vazio se não encontrar."},
+    prazo:{type:"string",description:"Prazo/retorno no formato AAAA-MM-DD. Vazio se não encontrar."},
+    tamanhos:{type:"string",description:"Tamanhos, ex: 'P M G GG'. Vazio se não houver."},
+    confianca:{type:"integer",description:"0 a 100: o quanto você confia na leitura."}
+  },
+  required:["numeroOf","produto","qtdTotal","valorPeca","cliente","prazo","tamanhos","confianca"],
+  additionalProperties:false
+};
+const IA_ESQUEMA_GASTO={
+  type:"object",
+  properties:{
+    valor:{type:"number",description:"Valor TOTAL pago no cupom, em reais. 0 se não encontrar."},
+    competencia:{type:"string",description:"Mês do cupom no formato AAAA-MM. Vazio se não encontrar."},
+    descricao:{type:"string",description:"Nome do estabelecimento. Vazio se não encontrar."},
+    linhaValor:{type:"string",description:"O trecho do cupom de onde tirou o valor total."},
+    confianca:{type:"integer",description:"0 a 100: o quanto você confia na leitura."}
+  },
+  required:["valor","competencia","descricao","linhaValor","confianca"],
+  additionalProperties:false
+};
+
+async function lerImagemComIA(file,modo,clientesConhecidos){
+  const chave=getChaveIA();
+  if(!chave) throw new Error("sem-chave");
+  const {b64,tipo}=await comprimirParaIA(file);
+  const lista=(clientesConhecidos||[]).map(c=>typeof c==="string"?c:c&&c.nome).filter(Boolean);
+  const instrucao = modo==="of"
+    ? `Esta é a foto de um romaneio/ficha de ordem de fabricação de uma facção de costura.
+Extraia os dados. Regras:
+- A quantidade é o TOTAL de peças de todas as cores e tamanhos somados (procure a linha TOTAL da tabela).
+- O valor por peça é o preço UNITÁRIO, não o valor total do lote.
+- O prazo costuma vir como "Retorno" ou "Entrega".
+${lista.length?`- O cliente deve ser um destes, se aparecer na ficha: ${lista.join(", ")}.`:""}
+- Se um campo não estiver legível, devolva vazio (ou 0) em vez de adivinhar.`
+    : `Esta é a foto de um cupom fiscal ou nota de compra.
+Extraia os dados. Regras:
+- O valor é o TOTAL PAGO (procure "TOTAL", "VALOR A PAGAR"), nunca o troco, o desconto ou o valor de um item isolado.
+- Se um campo não estiver legível, devolva vazio (ou 0) em vez de adivinhar.`;
+
+  const resp=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-api-key":chave,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body:JSON.stringify({
+      model:IA_MODELO,
+      max_tokens:2000,
+      output_config:{format:{type:"json_schema",schema:modo==="of"?IA_ESQUEMA_OF:IA_ESQUEMA_GASTO}},
+      messages:[{role:"user",content:[
+        {type:"image",source:{type:"base64",media_type:tipo,data:b64}},
+        {type:"text",text:instrucao}
+      ]}]
+    })
+  });
+
+  if(!resp.ok){
+    let detalhe="";
+    try{ const j=await resp.json(); detalhe=(j&&j.error&&j.error.message)||""; }catch(_e){}
+    const e=new Error(detalhe||("HTTP "+resp.status));
+    e.status=resp.status;
+    throw e;
+  }
+  const data=await resp.json();
+  if(data.stop_reason==="refusal") throw new Error("A IA recusou processar esta imagem.");
+  const bloco=(data.content||[]).find(b=>b&&b.type==="text");
+  if(!bloco) throw new Error("resposta vazia da IA");
+  return JSON.parse(bloco.text);
 }
 
 /* Interpreta uma ficha de OF: número, produto, quantidade, valor,
@@ -3348,19 +3482,27 @@ function renderGastos(){
 let __notaLida=null, __notaModo="gasto";
 function ocrEstado(html){ const el=$("nota-estado"); if(el) el.innerHTML=html; }
 
-const LEITOR_TEXTOS={
-  gasto:{titulo:"📷 Ler nota fiscal", sub:"A foto é lida aqui no aparelho, sem sair para a internet",
-    dica:"Tire a foto do cupom inteiro, bem iluminado e sem dobras. A leitura acontece no seu aparelho — a imagem não é enviada para lugar nenhum.",
-    usar:"Usar este valor"},
-  of:{titulo:"📷 Ler ficha de OF", sub:"A foto é lida aqui no aparelho, sem sair para a internet",
-    dica:"Fotografe a ficha inteira, bem iluminada e sem dobras. Funciona melhor com ficha impressa; escrita à mão o leitor erra bastante.",
-    usar:"Usar estes dados"}
-};
+/* Os textos mudam conforme a leitura seja local ou por IA — com chave
+   configurada a foto SAI do aparelho, e isso precisa estar escrito. */
+function leitorTextos(modo){
+  const comIA=!!getChaveIA();
+  const sub=comIA
+    ? "A foto é enviada para a IA da Anthropic para leitura"
+    : "A foto é lida aqui no aparelho, sem sair para a internet";
+  if(modo==="of") return {titulo:"📷 Ler ficha de OF", sub, usar:"Usar estes dados",
+    dica:comIA
+      ? "Fotografe a ficha inteira. A IA lê até foto torta, amassada ou dentro do plástico. A imagem é enviada para a Anthropic e cobrada na sua chave."
+      : "Fotografe a ficha inteira, bem iluminada e sem dobras. Funciona melhor com ficha impressa; escrita à mão ou dentro do plástico o leitor erra bastante."};
+  return {titulo:"📷 Ler nota fiscal", sub, usar:"Usar este valor",
+    dica:comIA
+      ? "Tire a foto do cupom inteiro. A IA lê até foto torta ou amassada. A imagem é enviada para a Anthropic e cobrada na sua chave."
+      : "Tire a foto do cupom inteiro, bem iluminado e sem dobras. A leitura acontece no seu aparelho — a imagem não é enviada para lugar nenhum."};
+}
 
 window.abrirLeitorNota=function(modo){
   __notaModo=(modo==="of")?"of":"gasto";
   __notaLida=null;
-  const t=LEITOR_TEXTOS[__notaModo];
+  const t=leitorTextos(__notaModo);
   const inp=$("nota-arquivo"); if(inp) inp.value="";
   const prev=$("nota-preview"); if(prev){ prev.src=""; prev.style.display="none"; }
   const btn=$("nota-usar"); if(btn){ btn.style.display="none"; btn.textContent=t.usar; }
@@ -3388,6 +3530,27 @@ window.processarNotaImagem=async function(input){
   const btnUsar=$("nota-usar"); if(btnUsar) btnUsar.style.display="none";
   ocrEstado('<div class="nota-load"><span class="nota-spin"></span> Preparando a leitura…</div>');
 
+  // Com chave configurada, a IA lê primeiro — ela enxerga foto torta,
+  // amassada ou no plástico, que o leitor local não consegue ler.
+  if(getChaveIA()){
+    ocrEstado('<div class="nota-load"><span class="nota-spin"></span> Lendo com IA…</div>');
+    try{
+      const r=await lerImagemComIA(arq,__notaModo,clientes);
+      r.confianca=Math.max(0,Math.min(100,Math.round(toNumber(r.confianca,0))));
+      r.viaIA=true;
+      if(__notaModo==="of"){ mostrarResultadoOFObj(r); }
+      else{ r.valor=toNumber(r.valor,0); r.porPalavraChave=true; mostrarResultadoGasto(r); }
+      return;
+    }catch(e){
+      console.warn("IA_ERRO",e);
+      const msg=/sem-chave/.test(e.message)?"":
+        e.status===401?"Chave de IA inválida — confira em Configurações.":
+        e.status===429?"Limite da API atingido. Tente daqui a pouco.":
+        (e.message||"falha");
+      if(msg) ocrEstado(`<div class="nota-aviso">⚠ ${escapeHtml(msg)} Tentando com o leitor do aparelho…</div>`);
+    }
+  }
+
   try{
     const img=new Image();
     img.src=url;
@@ -3407,34 +3570,7 @@ window.processarNotaImagem=async function(input){
 
     const r=lerValoresNota(data.text);
     r.confianca=confianca;
-    __notaLida=r;
-
-    if(!r.valor){
-      ocrEstado(`<div class="nota-erro"><strong>Não consegui ler o valor.</strong>
-        Isso costuma acontecer com foto tremida, escura ou cortada. Tente de novo
-        mais perto do papel — ou digite o valor à mão, é rápido.</div>`);
-      return;
-    }
-    // Abaixo de 75% de nitidez o OCR erra dígito com facilidade — melhor
-    // avisar demais do que deixar passar um valor errado.
-    const fraca=r.confianca<75||!r.porPalavraChave;
-    // nome do estabelecimento só é sugerido quando a leitura está boa,
-    // senão vira lixo do tipo "de Al SL TTEEIDA"
-    if(r.confianca<75) r.descricao="";
-    ocrEstado(`
-      <div class="nota-res">
-        <div class="nota-res-lbl">Valor encontrado</div>
-        <div class="nota-res-val">${fmtMoney(r.valor)}</div>
-        ${r.linhaValor?`<div class="nota-res-src">lido de: “${escapeHtml(r.linhaValor)}”</div>`:""}
-        <div class="nota-res-extra">
-          ${r.competencia?`<span class="nota-tag">Competência ${formatMonthLabel(r.competencia)}</span>`:""}
-          ${r.descricao?`<span class="nota-tag">${escapeHtml(r.descricao)}</span>`:""}
-          <span class="nota-tag">Nitidez ${r.confianca}%</span>
-        </div>
-        ${fraca?`<div class="nota-aviso">⚠ Confira o valor antes de salvar — a leitura ficou incerta.</div>`
-               :`<div class="nota-ok">Confira e confirme: nada é salvo sem você revisar.</div>`}
-      </div>`);
-    if(btnUsar) btnUsar.style.display="";
+    mostrarResultadoGasto(r);
   }catch(e){
     console.warn("OCR_ERRO",e);
     const semNet=/sem-internet|Failed to fetch|NetworkError|dynamically imported/i.test(e&&e.message||"");
@@ -3446,11 +3582,50 @@ window.processarNotaImagem=async function(input){
   }
 };
 
+/* Resultado do cupom de gasto. Serve tanto para o leitor local
+   quanto para a leitura por IA. */
+function mostrarResultadoGasto(r){
+  __notaLida=r;
+  const conf=Math.round(toNumber(r.confianca,0));
+  if(!toNumber(r.valor,0)){
+    ocrEstado(`<div class="nota-erro"><strong>Não consegui ler o valor.</strong>
+      Isso costuma acontecer com foto tremida, escura ou cortada. Tente de novo
+      mais perto do papel — ou digite o valor à mão, é rápido.</div>`);
+    const b=$("nota-usar"); if(b) b.style.display="none";
+    return;
+  }
+  // Abaixo de 75% a leitura erra dígito com facilidade — melhor
+  // avisar demais do que deixar passar um valor errado.
+  const fraca=conf<75||!r.porPalavraChave;
+  // nome do estabelecimento só é sugerido quando a leitura está boa,
+  // senão vira lixo do tipo "de Al SL TTEEIDA"
+  if(conf<75) r.descricao="";
+  ocrEstado(`
+    <div class="nota-res">
+      <div class="nota-res-lbl">Valor encontrado</div>
+      <div class="nota-res-val">${fmtMoney(r.valor)}</div>
+      ${r.linhaValor?`<div class="nota-res-src">lido de: “${escapeHtml(r.linhaValor)}”</div>`:""}
+      <div class="nota-res-extra">
+        ${r.competencia?`<span class="nota-tag">Competência ${formatMonthLabel(r.competencia)}</span>`:""}
+        ${r.descricao?`<span class="nota-tag">${escapeHtml(r.descricao)}</span>`:""}
+        <span class="nota-tag">${r.viaIA?"Confiança":"Nitidez"} ${conf}%</span>
+        ${r.viaIA?'<span class="nota-tag">lido por IA</span>':""}
+      </div>
+      ${fraca?`<div class="nota-aviso">⚠ Confira o valor antes de salvar — a leitura ficou incerta.</div>`
+             :`<div class="nota-ok">Confira e confirme: nada é salvo sem você revisar.</div>`}
+    </div>`);
+  const b=$("nota-usar"); if(b) b.style.display="";
+}
+
 /* Resultado da ficha de OF: mostra campo a campo o que foi lido e o
    que ficou faltando, para o usuário completar antes de salvar. */
 function mostrarResultadoOF(texto,confianca){
   const r=lerDadosOF(texto,clientes);
   r.confianca=confianca;
+  mostrarResultadoOFObj(r);
+}
+function mostrarResultadoOFObj(r){
+  const confianca=Math.round(toNumber(r.confianca,0));
   __notaLida=r;
   const achou=["numeroOf","produto","qtdTotal","valorPeca","cliente","prazo"].filter(k=>r[k]).length;
   if(!achou){
@@ -3463,8 +3638,8 @@ function mostrarResultadoOF(texto,confianca){
   const campos=[
     {k:"numeroOf", rot:"Nº da OF",    v:r.numeroOf, obrig:true},
     {k:"produto",  rot:"Produto",     v:r.produto,  obrig:true},
-    {k:"qtdTotal", rot:"Quantidade",  v:r.qtdTotal?r.qtdTotal.toLocaleString("pt-BR")+" pçs":"", obrig:true},
-    {k:"valorPeca",rot:"Valor/peça",  v:r.valorPeca?fmtMoney(r.valorPeca):""},
+    {k:"qtdTotal", rot:"Quantidade",  v:toNumber(r.qtdTotal,0)?toNumber(r.qtdTotal,0).toLocaleString("pt-BR")+" pçs":"", obrig:true},
+    {k:"valorPeca",rot:"Valor/peça",  v:toNumber(r.valorPeca,0)?fmtMoney(r.valorPeca):""},
     {k:"cliente",  rot:"Cliente",     v:r.cliente},
     {k:"prazo",    rot:"Prazo",       v:r.prazo?r.prazo.split("-").reverse().join("/"):""},
     {k:"tamanhos", rot:"Tamanhos",    v:r.tamanhos}
@@ -3479,7 +3654,10 @@ function mostrarResultadoOF(texto,confianca){
           <span class="of-val">${c.v?escapeHtml(String(c.v)):(c.obrig?"não encontrado":"—")}</span>
         </div>`).join("")}
       </div>
-      <div class="nota-res-extra"><span class="nota-tag">Nitidez ${confianca}%</span></div>
+      <div class="nota-res-extra">
+        <span class="nota-tag">${r.viaIA?"Confiança":"Nitidez"} ${confianca}%</span>
+        ${r.viaIA?'<span class="nota-tag">lido por IA</span>':""}
+      </div>
       ${faltamObrig.length
         ? `<div class="nota-aviso">⚠ Faltou ler: ${faltamObrig.map(c=>c.rot.toLowerCase()).join(", ")}. Preencha à mão antes de salvar.</div>`
         : (confianca<75
@@ -4369,6 +4547,16 @@ function renderConfiguracoes(){
     <div class="ff"><label>Meta de margem (%)</label><input id="cfg-meta-margem" type="number" min="0" max="100" step="0.1" value="${cfg.metaMargem}"/></div>
     <div class="ff"><label>Teto de custo/mês (R$)</label><input id="cfg-meta-custo" type="number" min="0" step="0.01" value="${cfg.metaCusto}"/></div>
   </div>
+  <div class="ia-box">
+    <div class="ia-hd">🤖 Leitura de foto por IA <span class="ia-status ${getChaveIA()?"is-on":""}">${getChaveIA()?"ativa neste aparelho":"desligada"}</span></div>
+    <div class="ia-txt">Sem chave, a foto é lida pelo leitor do próprio aparelho — funciona bem em papel impresso e plano, mas erra em foto torta, amassada ou dentro do plástico. Com uma chave da Anthropic, a foto é lida por IA e acerta esses casos. Custa alguns centavos por leitura, cobrados na sua conta.</div>
+    <div class="ia-linha">
+      <input id="cfg-ia-chave" type="password" placeholder="${getChaveIA()?"•••••••• (chave salva)":"cole aqui sua chave sk-ant-..."}" autocomplete="off"/>
+      <button type="button" class="btn-save" onclick="setChaveIA(document.getElementById('cfg-ia-chave').value)">Salvar chave</button>
+      ${getChaveIA()?`<button type="button" class="btn-outline" onclick="setChaveIA('')">Remover</button>`:""}
+    </div>
+    <div class="ia-nota">🔒 A chave fica salva <strong>só neste aparelho</strong> — nunca entra no arquivo do sistema nem no Firebase, então quem abre o link não usa a sua chave. Crie a sua em <strong>console.anthropic.com</strong>. Com a chave ativa, a foto sai do aparelho e vai para a Anthropic; sem ela, nada sai.</div>
+  </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
     ${THEME_OPTIONS.map(t=>`<button type="button" class="theme-swatch ${cfg.tema===t.id?"active":""}" onclick="applyTheme('${t.id}');document.getElementById('cfg-tema').value='${t.id}'">${t.icon} ${t.label}</button>`).join("")}
   </div>
@@ -5111,7 +5299,7 @@ applyTheme(getConfig().tema);
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','gastoMesNav','gastoMesToggleTodos',
-    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota',
+    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes','renderFolhaPagamento','calcFolhaPagamento'
   ].forEach(expose);
@@ -14518,6 +14706,21 @@ tr:last-child td{ border-bottom:none!important; }
 .nota-tag{font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;
   background:var(--bg2);border:1px solid var(--bd);color:var(--t2);}
 .nota-ok{color:var(--t3);padding:10px 0 0;font-weight:600;}
+/* caixa da chave de IA em Configurações */
+.ia-box{margin-top:16px;padding:16px 18px;border:1px solid var(--bd);border-radius:16px;
+  background:var(--bg3);}
+.ia-hd{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13.5px;
+  font-weight:800;color:var(--t);margin-bottom:8px;}
+.ia-status{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+  padding:3px 9px;border-radius:20px;background:var(--bg4);color:var(--t3);border:1px solid var(--bd);}
+.ia-status.is-on{background:var(--success-soft);color:var(--success);border-color:var(--success-line);}
+.ia-txt{font-size:12px;color:var(--t3);line-height:1.6;margin-bottom:12px;}
+.ia-linha{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.ia-linha input{flex:1 1 260px;min-width:0;}
+.ia-nota{font-size:11.5px;color:var(--t3);line-height:1.6;margin-top:11px;
+  padding-top:11px;border-top:1px solid var(--bd);}
+.ia-nota strong{color:var(--t2);}
+
 /* lista campo a campo da ficha de OF */
 .of-lidos{margin-top:11px;display:flex;flex-direction:column;gap:1px;}
 .of-linha{display:grid;grid-template-columns:104px 1fr;gap:10px;align-items:baseline;
