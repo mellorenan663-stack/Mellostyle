@@ -2727,6 +2727,49 @@ async function autoPropagarFixos(){
     toast(paraIncluir.length+" gasto(s) fixo(s) lançado(s) automaticamente em "+formatMonthLabel(mesAtual));
   }catch(e){ __autoPropFixosRunning=false; console.warn("AUTOPROP_FIXOS_WARN",e); }
 }
+/* Encargos das funcionárias (INSS e FGTS), informados pela dona.
+   Ficam como gasto fixo: uma linha por funcionária e por encargo, para
+   dar para conferir e para mexer em uma sem afetar as outras. Depois de
+   lançados, a propagação automática de fixos repete todo mês sozinha. */
+const ENCARGOS_FUNCIONARIAS=[
+  {nome:"Liliane", salario:3000.00, inss:248.60, fgts:240.00},
+  {nome:"Bruna",   salario:3500.00, inss:308.60, fgts:280.00},
+  {nome:"Amanda",  salario:2200.00, inss:173.69, fgts:176.00},
+  {nome:"Lidiane", salario:2400.00, inss:191.69, fgts:192.00}
+];
+function linhasEncargos(){
+  const l=[];
+  ENCARGOS_FUNCIONARIAS.forEach(f=>{
+    if(f.inss>0) l.push({descricao:`INSS ${f.nome}`, valor:f.inss});
+    if(f.fgts>0) l.push({descricao:`FGTS ${f.nome}`, valor:f.fgts});
+  });
+  return l;
+}
+window.lancarEncargos=async function(){
+  const mes=monthKeyLocal();
+  const linhas=linhasEncargos();
+  // não duplica: pula o que já existe com a mesma descrição no mês
+  const jaTem=new Set(gastos.filter(g=>(g.competencia||"")===mes).map(g=>normalize(g.descricao)));
+  const novas=linhas.filter(l=>!jaTem.has(normalize(l.descricao)));
+  if(!novas.length){
+    toast("Os encargos já estão lançados em "+formatMonthLabel(mes)+".","warn");
+    return;
+  }
+  const total=novas.reduce((s,l)=>s+l.valor,0);
+  if(!confirm(`Lançar ${novas.length} encargo(s) como gasto fixo de ${formatMonthLabel(mes)}?\n\n`
+    +novas.map(l=>`• ${l.descricao}: ${fmtMoney(l.valor)}`).join("\n")
+    +`\n\nTotal: ${fmtMoney(total)}\n\nA partir do mês que vem eles se repetem sozinhos.`)) return;
+  try{
+    requireAuthUser();
+    await Promise.all(novas.map(l=>addDoc(collection(db,"gastos"),withOwner({
+      descricao:l.descricao, valor:l.valor, tipo:"fixo", categoria:"Encargos",
+      competencia:mes, data:mes+"-01", criadoEm:Timestamp.now()
+    }))));
+    toast(`${novas.length} encargo(s) lançado(s): ${fmtMoney(total)}`);
+    await loadData();
+  }catch(e){ console.error("ENCARGOS_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
+};
+
 window.propagarGastosFixos=async function(){
   const mesAtual=monthKeyLocal();
   const mesAnterior=calcMesAnterior(mesAtual);
@@ -5459,7 +5502,7 @@ applyTheme(getConfig().tema);
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','gastoMesNav','gastoMesToggleTodos',
-    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA',
+    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes','renderFolhaPagamento','calcFolhaPagamento'
   ].forEach(expose);
@@ -11899,6 +11942,7 @@ input,select,textarea,button{font-size:16px;}
               <option value="Empréstimo">💳 Empréstimo</option>
               <option value="Mercado">🛒 Mercado</option>
               <option value="Mecânico">🔧 Mecânico</option>
+              <option value="Encargos">👥 Encargos</option>
               <option value="Outros">✏️ Outros</option>
             </select>
           </div>
@@ -11978,6 +12022,7 @@ input,select,textarea,button{font-size:16px;}
           <button class="btn-outline" onclick="gastoLimparFiltros()">Limpar filtros</button>
           <button class="btn-outline" onclick="exportarGastosCSV()" title="Baixa os gastos visíveis em CSV">⭳ Exportar CSV</button>
           <button class="btn-outline" onclick="propagarGastosFixos()" title="Copia gastos fixos do mês anterior para o mês atual (sem duplicar)">📋 Propagar fixos do mês anterior</button>
+          <button class="btn-outline" onclick="lancarEncargos()" title="Lança INSS e FGTS das funcionárias como gasto fixo do mês (não duplica)">👥 Lançar encargos (INSS + FGTS)</button>
         </div>
       </div>
 
@@ -12435,7 +12480,7 @@ input,select,textarea,button{font-size:16px;}
             <option value="Aluguel">🏠 Aluguel</option><option value="Linha">🧵 Linha</option>
             <option value="Café">☕ Café</option><option value="Empréstimo">💳 Empréstimo</option>
             <option value="Mercado">🛒 Mercado</option><option value="Mecânico">🔧 Mecânico</option>
-            <option value="Outros">✏️ Outros</option>
+            <option value="Encargos">👥 Encargos</option><option value="Outros">✏️ Outros</option>
           </select>
         </div>
         <div class="ff" id="edit-wrap-categoria-outros" style="display:none">
