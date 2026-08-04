@@ -364,13 +364,20 @@ function aplicarMigracaoDesignPaper(){
 async function carregarConfiguracoesFirebase(){
   const user=auth.currentUser;
   if(!user?.uid) return getConfig();
+  // O tema é preferência DO APARELHO, não da empresa: dá para querer
+  // claro no celular e escuro no computador. A config da empresa vinha
+  // por cima e desfazia a escolha a cada recarga — por isso a cor
+  // "voltava sozinha". Guarda o que já foi escolhido aqui e mantém.
+  let temaLocal="";
+  try{ temaLocal=localStorage.getItem("mello_theme")||""; }catch(_e){}
+  const manterTema=cfg=>{ if(temaLocal) cfg.tema=normalizeThemeId(temaLocal); return cfg; };
   try{
     // Config agora é da empresa (documento fixo), não do uid — assim as
     // metas ficam iguais em qualquer aparelho com o login de um botão.
     const ref=doc(db,"configuracoes",CONFIG_DOC_ID);
     const snap=await getDoc(ref);
     if(snap.exists()){
-      const cfg=sanitizeConfigPayload(snap.data()||{});
+      const cfg=manterTema(sanitizeConfigPayload(snap.data()||{}));
       saveStoredConfig(cfg);
       window.__melloConfigLoadedFromCloud=true;
       aplicarMigracaoDesignPaper();
@@ -387,7 +394,7 @@ async function carregarConfiguracoesFirebase(){
         if(dados.metaFaturamento!==undefined||dados.empresa){ if(ts>=antigoTs){antigo=dados;antigoTs=ts;} }
       });
       if(antigo){
-        const cfg=sanitizeConfigPayload(antigo);
+        const cfg=manterTema(sanitizeConfigPayload(antigo));
         saveStoredConfig(cfg);
         window.__melloConfigLoadedFromCloud=true;
         try{ await setDoc(ref,withOwner({...cfg}),{merge:true}); }catch(_e){}
