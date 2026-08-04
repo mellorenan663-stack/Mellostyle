@@ -97,6 +97,10 @@ function minutosDeHora(hhmm){
   if(Number.isNaN(h)||Number.isNaN(m)) return null;
   return h*60+m;
 }
+/* Teto de um lançamento: 9h30, a jornada de um dia. Acima disso é
+   quase sempre engano de digitação (ex: "30" pensando em 30 minutos). */
+const MAX_MIN_PONTO=570;
+
 /* Converte o que a pessoa digitou em minutos. Aceita os formatos que
    saem naturalmente: "2" (2h), "2:30", "2h30", "2,5", "1h", "45m",
    ":30". Devolve null quando não dá para entender. */
@@ -141,10 +145,10 @@ window.previewHoras=function(idCampo,idAviso){
   }else{
     const h=Math.floor(min/60), mm=min%60;
     const legivel=(h?h+"h":"")+(mm?(h?" ":"")+mm+"min":(h?"":"0min"));
-    if(min>24*60){
+    if(min>MAX_MIN_PONTO){
       // número solto grande costuma ser engano: quem digita "30" pensando
       // em 30 minutos receberia 30 horas. Avisa antes de salvar.
-      av.textContent="= "+legivel+" — mais de 24h em um dia. Para minutos escreva 0:30 ou 30m.";
+      av.textContent="= "+legivel+" — passa de 9h30 (um dia). Para minutos escreva 0:30 ou 30m.";
       av.className="bh-preview is-erro";
     }else{
       av.textContent="= "+legivel+"  ("+min+" minutos)";
@@ -1357,7 +1361,7 @@ window.salvarPonto=async()=>{
   if(!tipo){toast("Selecione o tipo","err");return;}
   if(minutos===null){toast("Não entendi as horas. Escreva 2, 2:30 ou 1h45.","err");return;}
   if(minutos<1){toast("Informe quantas horas","err");return;}
-  if(minutos>24*60){toast("Mais de 24h em um dia? Confira o valor.","err");return;}
+  if(minutos>MAX_MIN_PONTO){toast("Máximo 9h30 por lançamento. Para minutos escreva 0:30 ou 30m.","err");return;}
   const f=funcionarios.find(x=>x.id===funcId);
   if(!f){toast("Funcionária não encontrada","err");return;}
   const jaExiste=pontos.find(p=>p.funcionarioId===funcId&&p.data===data&&getPontoNatureza(p)===tipo&&getPontoMinutos(p,getJornadaMinForDate(f,data))===minutos);
@@ -2613,7 +2617,7 @@ window.salvarEdicaoPonto=async()=>{
   if(!funcId||!data){toast("Selecione funcionária e data","err");return;}
   if(minutos===null){toast("Não entendi as horas. Escreva 2, 2:30 ou 1h45.","err");return;}
   if(minutos<1){toast("Informe quantas horas","err");return;}
-  if(minutos>24*60){toast("Mais de 24h em um dia? Confira o valor.","err");return;}
+  if(minutos>MAX_MIN_PONTO){toast("Máximo 9h30 por lançamento. Para minutos escreva 0:30 ou 30m.","err");return;}
   const f=funcionarios.find(x=>x.id===funcId);
   const btn=$("btn-salvar-edit-ponto");btn.disabled=true;btn.textContent="Salvando...";
   try{
@@ -12106,7 +12110,7 @@ input,select,textarea,button{font-size:16px;}
           </div>
           <div class="ff"><label>Horas *</label>
             <input id="bh-horas" type="text" inputmode="decimal" autocomplete="off"
-              placeholder="ex: 2  ou  1:30" oninput="previewHoras('bh-horas','bh-horas-preview')"/>
+              placeholder="ex: 2  ou  1:30  (até 9:30)" oninput="previewHoras('bh-horas','bh-horas-preview')"/>
             <div id="bh-horas-preview" class="bh-preview"></div>
           </div>
           <div class="ff"><label>Observações</label><input id="bh-obs" type="text" placeholder="Opcional — ex: atestado, sábado..."/></div>
@@ -12572,7 +12576,7 @@ input,select,textarea,button{font-size:16px;}
         </div>
         <div class="ff"><label>Horas *</label>
           <input id="edit-bh-horas" type="text" inputmode="decimal" autocomplete="off"
-            placeholder="ex: 2  ou  1:30" oninput="previewHoras('edit-bh-horas','edit-bh-horas-preview')"/>
+            placeholder="ex: 2  ou  1:30  (até 9:30)" oninput="previewHoras('edit-bh-horas','edit-bh-horas-preview')"/>
           <div id="edit-bh-horas-preview" class="bh-preview"></div>
         </div>
         <div class="ff" style="grid-column:1/-1"><label>Observações</label><input id="edit-bh-obs" type="text" placeholder="Opcional"/></div>
