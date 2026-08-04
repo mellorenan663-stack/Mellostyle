@@ -97,6 +97,62 @@ function minutosDeHora(hhmm){
   if(Number.isNaN(h)||Number.isNaN(m)) return null;
   return h*60+m;
 }
+/* Converte o que a pessoa digitou em minutos. Aceita os formatos que
+   saem naturalmente: "2" (2h), "2:30", "2h30", "2,5", "1h", "45m",
+   ":30". Devolve null quando não dá para entender. */
+function minutosDoTexto(txt){
+  let t=String(txt||"").trim().toLowerCase().replace(/\s+/g,"");
+  if(!t) return null;
+  t=t.replace(/horas?|hrs?/g,"h").replace(/minutos?|mins?/g,"m");
+  let m;
+  // 2:30 | 2h30 | 2h | :30 | 2h30m
+  if((m=t.match(/^(\d*)[:h](\d{0,2})m?$/))){
+    const h=m[1]===""?0:parseInt(m[1],10);
+    const mi=m[2]===""?0:parseInt(m[2],10);
+    if(mi>59) return null;
+    return h*60+mi;
+  }
+  // 45m
+  if((m=t.match(/^(\d+)m$/))) return parseInt(m[1],10);
+  // 2,5 | 2.5 | 2
+  if((m=t.match(/^(\d+)(?:[.,](\d+))?$/))){
+    const dec=parseFloat(m[1]+(m[2]?"."+m[2]:""));
+    return Math.round(dec*60);
+  }
+  return null;
+}
+/* Volta de minutos para o texto do campo, no mesmo formato que o
+   parser entende — assim editar e salvar não deforma o valor. */
+function textoDeMinutos(min){
+  const t=Math.max(0,Math.round(toNumber(min,0)));
+  return Math.floor(t/60)+":"+String(t%60).padStart(2,"0");
+}
+/* Mostra embaixo do campo o que o sistema entendeu, para a pessoa
+   conferir antes de salvar. */
+window.previewHoras=function(idCampo,idAviso){
+  const el=document.getElementById(idCampo), av=document.getElementById(idAviso);
+  if(!el||!av) return;
+  const bruto=el.value.trim();
+  if(!bruto){ av.textContent=""; av.className="bh-preview"; return; }
+  const min=minutosDoTexto(bruto);
+  if(min===null||min<=0){
+    av.textContent="Não entendi. Escreva assim: 2 · 2:30 · 1h45 · 0:30";
+    av.className="bh-preview is-erro";
+  }else{
+    const h=Math.floor(min/60), mm=min%60;
+    const legivel=(h?h+"h":"")+(mm?(h?" ":"")+mm+"min":(h?"":"0min"));
+    if(min>24*60){
+      // número solto grande costuma ser engano: quem digita "30" pensando
+      // em 30 minutos receberia 30 horas. Avisa antes de salvar.
+      av.textContent="= "+legivel+" — mais de 24h em um dia. Para minutos escreva 0:30 ou 30m.";
+      av.className="bh-preview is-erro";
+    }else{
+      av.textContent="= "+legivel+"  ("+min+" minutos)";
+      av.className="bh-preview is-ok";
+    }
+  }
+};
+
 function buildHourOptions(maxHoras=12){
   const out=[];
   // Controle fino: 1 a 10 minutos
@@ -1294,11 +1350,14 @@ window.salvarPonto=async()=>{
   const funcId=$("bh-funcionario").value;
   const data=$("bh-data").value;
   const tipo=$("bh-tipo").value;
-  const minutos=parseInt($("bh-horas")?.value||"0",10);
+  const brutoHoras=$("bh-horas")?.value||"";
+  const minutos=minutosDoTexto(brutoHoras);
   const obs=$("bh-obs").value.trim();
   if(!funcId||!data){toast("Selecione funcionária e data","err");return;}
   if(!tipo){toast("Selecione o tipo","err");return;}
-  if(!minutos||minutos<1){toast("Selecione a quantidade de horas","err");return;}
+  if(minutos===null){toast("Não entendi as horas. Escreva 2, 2:30 ou 1h45.","err");return;}
+  if(minutos<1){toast("Informe quantas horas","err");return;}
+  if(minutos>24*60){toast("Mais de 24h em um dia? Confira o valor.","err");return;}
   const f=funcionarios.find(x=>x.id===funcId);
   if(!f){toast("Funcionária não encontrada","err");return;}
   const jaExiste=pontos.find(p=>p.funcionarioId===funcId&&p.data===data&&getPontoNatureza(p)===tipo&&getPontoMinutos(p,getJornadaMinForDate(f,data))===minutos);
@@ -1307,7 +1366,8 @@ window.salvarPonto=async()=>{
     await addDoc(collection(db,"pontos"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,minutos,obs,criadoEm:Timestamp.now()}));
     [$("bh-data"),$("bh-obs")].forEach(el=>{if(el)el.value="";});
     $("bh-tipo").value="falta";
-    if($("bh-horas")) $("bh-horas").value="60";
+    if($("bh-horas")) $("bh-horas").value="";
+    previewHoras("bh-horas","bh-horas-preview");
     toast(tipo==="falta"?"Falta registrada!":"Hora extra registrada!");
     await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
@@ -1320,12 +1380,6 @@ window.deletarPonto=async id=>{
 };
 
 function renderBancoHoras(){
-  const horasEl=$("bh-horas");
-  if(horasEl&&!horasEl.dataset.ready){
-    horasEl.innerHTML=buildHourOptions(12);
-    horasEl.value="60";
-    horasEl.dataset.ready="1";
-  }
   const mesEl=$("bh-mes");
   if(mesEl&&!mesEl.value){mesEl.value=monthKeyLocal();}
   const mes=mesEl?.value||monthKeyLocal();
@@ -2540,11 +2594,10 @@ window.editarPonto=function(id){
   if($("edit-bh-tipo"))$("edit-bh-tipo").value=getPontoNatureza(p);
   const horasEl=$("edit-bh-horas");
   if(horasEl){
-    horasEl.innerHTML=buildHourOptions(12);
-    const mins=getPontoMinutos(p);
-    let best=null,bestDiff=Infinity;
-    Array.from(horasEl.options).forEach(o=>{const d=Math.abs(parseInt(o.value)-mins);if(d<bestDiff){bestDiff=d;best=o.value;}});
-    if(best)horasEl.value=best;
+    // valor exato do registro — antes o campo puxava para a opção mais
+    // próxima da lista e deformava, por exemplo, 37min em 30min
+    horasEl.value=textoDeMinutos(getPontoMinutos(p));
+    previewHoras("edit-bh-horas","edit-bh-horas-preview");
   }
   if($("edit-bh-obs"))$("edit-bh-obs").value=p.obs||"";
   $("modal-editar-ponto").classList.add("open");document.body.style.overflow="hidden";
@@ -2555,10 +2608,12 @@ window.salvarEdicaoPonto=async()=>{
   const funcId=$("edit-bh-funcionario").value;
   const data=$("edit-bh-data").value;
   const tipo=$("edit-bh-tipo").value;
-  const minutos=parseInt($("edit-bh-horas")?.value||"0",10);
+  const minutos=minutosDoTexto($("edit-bh-horas")?.value||"");
   const obs=$("edit-bh-obs")?.value.trim()||"";
   if(!funcId||!data){toast("Selecione funcionária e data","err");return;}
-  if(!minutos){toast("Selecione as horas","err");return;}
+  if(minutos===null){toast("Não entendi as horas. Escreva 2, 2:30 ou 1h45.","err");return;}
+  if(minutos<1){toast("Informe quantas horas","err");return;}
+  if(minutos>24*60){toast("Mais de 24h em um dia? Confira o valor.","err");return;}
   const f=funcionarios.find(x=>x.id===funcId);
   const btn=$("btn-salvar-edit-ponto");btn.disabled=true;btn.textContent="Salvando...";
   try{
@@ -5502,7 +5557,7 @@ applyTheme(getConfig().tema);
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','gastoMesNav','gastoMesToggleTodos',
-    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos',
+    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos','previewHoras',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes','renderFolhaPagamento','calcFolhaPagamento'
   ].forEach(expose);
@@ -12049,7 +12104,11 @@ input,select,textarea,button{font-size:16px;}
               <option value="extra">Hora extra</option>
             </select>
           </div>
-          <div class="ff"><label>Horas *</label><select id="bh-horas"></select></div>
+          <div class="ff"><label>Horas *</label>
+            <input id="bh-horas" type="text" inputmode="decimal" autocomplete="off"
+              placeholder="ex: 2  ou  1:30" oninput="previewHoras('bh-horas','bh-horas-preview')"/>
+            <div id="bh-horas-preview" class="bh-preview"></div>
+          </div>
           <div class="ff"><label>Observações</label><input id="bh-obs" type="text" placeholder="Opcional — ex: atestado, sábado..."/></div>
         </div>
         <button type="button" class="btn-save" onclick="salvarPonto()">+ Registrar</button>
@@ -12511,7 +12570,11 @@ input,select,textarea,button{font-size:16px;}
         <div class="ff"><label>Tipo *</label>
           <select id="edit-bh-tipo"><option value="falta">Falta</option><option value="extra">Hora extra</option></select>
         </div>
-        <div class="ff"><label>Horas *</label><select id="edit-bh-horas"></select></div>
+        <div class="ff"><label>Horas *</label>
+          <input id="edit-bh-horas" type="text" inputmode="decimal" autocomplete="off"
+            placeholder="ex: 2  ou  1:30" oninput="previewHoras('edit-bh-horas','edit-bh-horas-preview')"/>
+          <div id="edit-bh-horas-preview" class="bh-preview"></div>
+        </div>
         <div class="ff" style="grid-column:1/-1"><label>Observações</label><input id="edit-bh-obs" type="text" placeholder="Opcional"/></div>
       </div>
     </div>
@@ -14911,6 +14974,11 @@ tr:last-child td{ border-bottom:none!important; }
 .nota-tag{font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;
   background:var(--bg2);border:1px solid var(--bd);color:var(--t2);}
 .nota-ok{color:var(--t3);padding:10px 0 0;font-weight:600;}
+/* aviso embaixo do campo de horas digitadas */
+.bh-preview{min-height:15px;margin-top:5px;font-size:11.5px;font-weight:600;line-height:1.4;}
+.bh-preview.is-ok{color:var(--success);}
+.bh-preview.is-erro{color:var(--red);}
+
 /* oferta de releitura reforçada (custa mais, então é opt-in) */
 .ia-reforco{margin-top:11px;padding:11px 13px;border:1px dashed var(--bd);border-radius:12px;
   background:var(--bg4);font-size:11.5px;color:var(--t3);line-height:1.6;
