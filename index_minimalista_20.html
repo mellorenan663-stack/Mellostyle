@@ -586,6 +586,178 @@ function calcResumoMensal(mes){
   const categorias=getFinanceiroCategorias(mes);
   return {mes,regsM,lotesDoMes,totalPecas,faturamento,gastosM,fixo,variavel,folha,folhaBase,extrasTotal,descontosTotal,custo,lucro,margem,custoPorPeca,ticketMedioPeca,clientes,topCliente,categorias};
 }
+/* ── Excel de verdade (.xlsx), sem biblioteca externa ──────────
+   Um .xlsx é um ZIP com XMLs dentro. Aqui o ZIP é gravado sem
+   compressão (método "store"), que dispensa deflate e mantém o
+   arquivo válido para o Excel, LibreOffice e Google Planilhas. */
+const __crcTab=(()=>{const t=new Uint32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}
+  return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=__crcTab[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function zipStore(arquivos){
+  const enc=new TextEncoder(), partes=[], central=[];
+  let desloc=0;
+  const u16=v=>[v&255,(v>>8)&255];
+  const u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>24)&255];
+  arquivos.forEach(f=>{
+    const nome=enc.encode(f.nome), dados=typeof f.dados==="string"?enc.encode(f.dados):f.dados;
+    const crc=crc32(dados);
+    const cab=[...u32(0x04034b50),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),
+      ...u32(crc),...u32(dados.length),...u32(dados.length),...u16(nome.length),...u16(0)];
+    partes.push(new Uint8Array(cab),nome,dados);
+    central.push({nome,crc,tam:dados.length,desloc});
+    desloc+=cab.length+nome.length+dados.length;
+  });
+  const dirPartes=[]; let dirTam=0;
+  central.forEach(c=>{
+    const cab=[...u32(0x02014b50),...u16(20),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),
+      ...u32(c.crc),...u32(c.tam),...u32(c.tam),...u16(c.nome.length),
+      ...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(c.desloc)];
+    dirPartes.push(new Uint8Array(cab),c.nome);
+    dirTam+=cab.length+c.nome.length;
+  });
+  const fim=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),
+    ...u16(central.length),...u16(central.length),...u32(dirTam),...u32(desloc),...u16(0)]);
+  const total=desloc+dirTam+fim.length, saida=new Uint8Array(total);
+  let p=0;
+  [...partes,...dirPartes,fim].forEach(b=>{saida.set(b,p);p+=b.length;});
+  return saida;
+}
+function xmlEsc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,"");}
+function colLetra(n){let s="";while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
+
+/* estilos: 0 normal · 1 título · 2 cabeçalho · 3 texto · 4 dinheiro
+            5 inteiro · 6 total texto · 7 total dinheiro · 8 total inteiro
+            9 percentual · 10 data */
+const XLSX_ESTILOS=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="2">
+<numFmt numFmtId="164" formatCode="&quot;R$&quot;\\ #,##0.00"/>
+<numFmt numFmtId="165" formatCode="#,##0"/>
+</numFmts>
+<fonts count="4">
+<font><sz val="11"/><name val="Calibri"/></font>
+<font><b/><sz val="15"/><color rgb="FF1F2937"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><color rgb="FF1F2937"/><name val="Calibri"/></font>
+</fonts>
+<fills count="4">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF4F46E5"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFEEF2FF"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left/><right/><top style="thin"><color rgb="FF4F46E5"/></top><bottom/><diagonal/></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="12">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+<xf numFmtId="164" fontId="3" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>
+<xf numFmtId="165" fontId="3" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>
+<xf numFmtId="10" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="10" fontId="3" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+<dxfs count="0"/>
+</styleSheet>`;
+
+/* Monta uma aba. col: {rot, larg, tipo: texto|dinheiro|inteiro|pct} */
+function xlsxAba(aba){
+  const cols=aba.colunas, nc=cols.length;
+  const linhas=[]; let r=0;
+  const cel=(c,lin,val,estilo,numero)=>
+    numero
+      ? `<c r="${colLetra(c)}${lin}" s="${estilo}"><v>${val}</v></c>`
+      : `<c r="${colLetra(c)}${lin}" s="${estilo}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(val)}</t></is></c>`;
+  // título
+  r++; linhas.push(`<row r="${r}" ht="21" customHeight="1">${cel(1,r,aba.titulo||"",1,false)}</row>`);
+  if(aba.subtitulo){ r++; linhas.push(`<row r="${r}">${cel(1,r,aba.subtitulo,10,false)}</row>`); }
+  r++; linhas.push(`<row r="${r}"/>`);        // linha em branco
+  const linCab=++r;
+  linhas.push(`<row r="${r}" ht="20" customHeight="1">${cols.map((c,i)=>cel(i+1,r,c.rot,2,false)).join("")}</row>`);
+  const estiloDe=t=>t==="dinheiro"?4:t==="inteiro"?5:t==="pct"?9:3;
+  const ehNum=t=>t==="dinheiro"||t==="inteiro"||t==="pct";
+  (aba.linhas||[]).forEach(l=>{
+    r++;
+    linhas.push(`<row r="${r}">${l.map((v,i)=>{
+      const t=cols[i]?.tipo||"texto";
+      return ehNum(t)?cel(i+1,r,(Number(v)||0),estiloDe(t),true):cel(i+1,r,v,3,false);
+    }).join("")}</row>`);
+  });
+  const linUlt=r;
+  if(aba.totais){
+    r++;
+    linhas.push(`<row r="${r}" ht="19" customHeight="1">${aba.totais.map((v,i)=>{
+      const t=cols[i]?.tipo||"texto";
+      if(v===null||v===undefined||v==="") return cel(i+1,r,"",6,false);
+      return (t==="dinheiro")?cel(i+1,r,Number(v)||0,7,true)
+           :(t==="inteiro")?cel(i+1,r,Number(v)||0,8,true)
+           :(t==="pct")?cel(i+1,r,Number(v)||0,11,true)
+           :cel(i+1,r,v,6,false);
+    }).join("")}</row>`);
+  }
+  const largs=cols.map((c,i)=>`<col min="${i+1}" max="${i+1}" width="${c.larg||16}" customWidth="1"/>`).join("");
+  const filtro=(aba.linhas||[]).length?`<autoFilter ref="A${linCab}:${colLetra(nc)}${linUlt}"/>`:"";
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView workbookViewId="0"${aba.destaque?' tabSelected="1"':''}>
+<pane ySplit="${linCab}" topLeftCell="A${linCab+1}" activePane="bottomLeft" state="frozen"/>
+</sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="15"/>
+<cols>${largs}</cols>
+<sheetData>${linhas.join("")}</sheetData>
+${filtro}
+<pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
+</worksheet>`;
+}
+
+function gerarXlsx(abas){
+  const n=abas.length;
+  const arquivos=[
+    {nome:"[Content_Types].xml",dados:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+${abas.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`},
+    {nome:"_rels/.rels",dados:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`},
+    {nome:"xl/workbook.xml",dados:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets>${abas.map((a,i)=>`<sheet name="${xmlEsc(a.nome)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")}</sheets>
+</workbook>`},
+    {nome:"xl/_rels/workbook.xml.rels",dados:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${abas.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")}
+<Relationship Id="rId${n+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`},
+    {nome:"xl/styles.xml",dados:XLSX_ESTILOS}
+  ];
+  abas.forEach((a,i)=>arquivos.push({nome:`xl/worksheets/sheet${i+1}.xml`,dados:xlsxAba(a)}));
+  return zipStore(arquivos);
+}
+function baixarXlsx(nomeArquivo,abas){
+  const blob=new Blob([gerarXlsx(abas)],
+    {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download=nomeArquivo; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+
 function exportCsv(filename,csv){
   const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);const a=document.createElement("a");
@@ -4001,6 +4173,159 @@ window.gastoLimparFiltros=function(){
   uiState.gastoBusca=""; if($("gasto-busca")) $("gasto-busca").value="";
   renderGastos();
 };
+/* Exporta o faturamento por cliente em Excel: uma aba com o ranking
+   e outra com as OFs que formaram cada valor, para dar para conferir. */
+window.exportarFatClienteExcel=function(){
+  const mes=uiState.fatClienteMes||"";
+  const busca=uiState.fatClienteBusca||"";
+  const resumo=getClientesResumo(mes||"");
+  const lista=busca?resumo.filter(r=>normalize(r.cliente).includes(normalize(busca))):resumo;
+  if(!lista.length){ toast("Nada para exportar com os filtros atuais.","warn"); return; }
+  const totalFat=lista.reduce((s,r)=>s+toNumber(r.faturamento,0),0);
+  const totalPec=lista.reduce((s,r)=>s+toNumber(r.pecas,0),0);
+  const totalOfs=lista.reduce((s,r)=>s+toNumber(r.lotes,0),0);
+  const periodo=mes?formatMonthLabel(mes):"Todos os meses";
+
+  const abaRanking={
+    nome:"Faturamento", destaque:true,
+    titulo:"Faturamento por Cliente",
+    subtitulo:periodo+(busca?"  ·  filtro: "+busca:"")+"  ·  gerado em "+new Date().toLocaleDateString("pt-BR"),
+    colunas:[
+      {rot:"#",           larg:5,  tipo:"inteiro"},
+      {rot:"Cliente",     larg:32, tipo:"texto"},
+      {rot:"Faturamento", larg:16, tipo:"dinheiro"},
+      {rot:"Peças",       larg:12, tipo:"inteiro"},
+      {rot:"OFs",         larg:8,  tipo:"inteiro"},
+      {rot:"R$ por peça", larg:14, tipo:"dinheiro"},
+      {rot:"% do total",  larg:12, tipo:"pct"}
+    ],
+    linhas:lista.map((r,i)=>[
+      i+1, r.cliente, toNumber(r.faturamento,0), toNumber(r.pecas,0), toNumber(r.lotes,0),
+      toNumber(r.pecas,0)>0?toNumber(r.faturamento,0)/toNumber(r.pecas,0):0,
+      totalFat>0?toNumber(r.faturamento,0)/totalFat:0
+    ]),
+    totais:["","TOTAL",totalFat,totalPec,totalOfs,
+      totalPec>0?totalFat/totalPec:0, totalFat>0?1:0]
+  };
+
+  // Detalhe: as OFs por trás de cada cliente
+  const nomes=new Set(lista.map(r=>normalize(r.cliente)));
+  const ofs=(lotes||[])
+    .filter(l=>nomes.has(normalize(l.cliente||"")))
+    .filter(l=>!mes||String(l.dataCadastro||l.criadoEm||"").slice(0,7)===mes||String(l.prazo||"").slice(0,7)===mes)
+    .map(l=>{
+      const q=toNumber(l.qtdTotal,0), v=toNumber(l.valorPeca,0);
+      return [l.cliente||"—", l.numeroOf||"—", l.produto||"—", q, v, q*v, l.status||"—", l.prazo||""];
+    })
+    .sort((a,b)=>String(a[0]).localeCompare(String(b[0]),"pt-BR")||String(b[7]).localeCompare(String(a[7])));
+  const abaOfs={
+    nome:"OFs por cliente",
+    titulo:"Ordens de fabricação",
+    subtitulo:periodo+"  ·  detalhe do que formou o faturamento",
+    colunas:[
+      {rot:"Cliente",  larg:26, tipo:"texto"},
+      {rot:"OF",       larg:12, tipo:"texto"},
+      {rot:"Produto",  larg:34, tipo:"texto"},
+      {rot:"Peças",    larg:11, tipo:"inteiro"},
+      {rot:"R$/peça",  larg:12, tipo:"dinheiro"},
+      {rot:"Total",    larg:15, tipo:"dinheiro"},
+      {rot:"Situação", larg:14, tipo:"texto"},
+      {rot:"Prazo",    larg:12, tipo:"texto"}
+    ],
+    linhas:ofs,
+    totais:["","","",ofs.reduce((s,l)=>s+l[3],0),"",ofs.reduce((s,l)=>s+l[5],0),"",""]
+  };
+
+  baixarXlsx(`faturamento_por_cliente_${mes||"todos"}.xlsx`,[abaRanking,abaOfs]);
+  toast(`${lista.length} cliente(s) e ${ofs.length} OF(s) exportados para Excel.`);
+};
+
+/* Exporta os gastos em Excel: lançamentos, resumo por categoria e
+   resumo por mês — as três perguntas que a lista não responde sozinha. */
+window.exportarGastosExcel=function(){
+  const lista=window._gastosFiltrados||[];
+  if(!lista.length){ toast("Nada para exportar com os filtros atuais.","warn"); return; }
+  const mesF=window._gastoMesFiltro||"";
+  const ehMes=/^\d{4}-\d{2}$/.test(mesF);
+  const periodo=ehMes?formatMonthLabel(mesF):"Todos os meses";
+  // usa a grafia bonita da categoria, a mesma que aparece na tela
+  // (senão sai "emprestimo" em vez de "Empréstimo")
+  const rotCat=new Map(agruparGastosPorCategoria(gastos).map(c=>[c.chave,c.rotulo]));
+  const nomeCat=g=>rotCat.get(normalize(safeText(g.categoria))||"sem categoria")
+    ||safeText(g.categoria)||"Sem categoria";
+  const total=lista.reduce((s,g)=>s+toNumber(g.valor,0),0);
+
+  const abaLanc={
+    nome:"Lançamentos", destaque:true,
+    titulo:"Controle de Gastos",
+    subtitulo:periodo+"  ·  gerado em "+new Date().toLocaleDateString("pt-BR"),
+    colunas:[
+      {rot:"Competência", larg:14, tipo:"texto"},
+      {rot:"Descrição",   larg:38, tipo:"texto"},
+      {rot:"Categoria",   larg:20, tipo:"texto"},
+      {rot:"Tipo",        larg:11, tipo:"texto"},
+      {rot:"Parcela",     larg:10, tipo:"texto"},
+      {rot:"Valor",       larg:15, tipo:"dinheiro"}
+    ],
+    linhas:lista.slice().sort((a,b)=>
+        String(b.competencia||"").localeCompare(String(a.competencia||""))
+        ||toNumber(b.valor,0)-toNumber(a.valor,0))
+      .map(g=>[
+        formatMonthLabel(g.competencia||"")||"—", capitalizar(g.descricao)||"—", nomeCat(g),
+        gastoEhFixo(g)?"Fixo":"Variável",
+        toNumber(g.parcelaTotal,0)>1?`${g.parcelaNum}/${g.parcelaTotal}`:"",
+        toNumber(g.valor,0)
+      ]),
+    totais:["",`${lista.length} lançamento(s)`,"","","",total]
+  };
+
+  const porCat={};
+  lista.forEach(g=>{
+    const k=nomeCat(g);
+    porCat[k]=porCat[k]||{v:0,n:0};
+    porCat[k].v+=toNumber(g.valor,0); porCat[k].n++;
+  });
+  const cats=Object.entries(porCat).sort((a,b)=>b[1].v-a[1].v);
+  const abaCat={
+    nome:"Por categoria",
+    titulo:"Gastos por categoria", subtitulo:periodo,
+    colunas:[
+      {rot:"Categoria",    larg:26, tipo:"texto"},
+      {rot:"Lançamentos",  larg:14, tipo:"inteiro"},
+      {rot:"Valor",        larg:16, tipo:"dinheiro"},
+      {rot:"% do total",   larg:12, tipo:"pct"}
+    ],
+    linhas:cats.map(([k,o])=>[k,o.n,o.v,total>0?o.v/total:0]),
+    totais:["TOTAL",lista.length,total,total>0?1:0]
+  };
+
+  const porMes={};
+  lista.forEach(g=>{
+    const k=g.competencia||"—";
+    porMes[k]=porMes[k]||{f:0,v:0,n:0};
+    porMes[k].n++;
+    if(gastoEhFixo(g)) porMes[k].f+=toNumber(g.valor,0); else porMes[k].v+=toNumber(g.valor,0);
+  });
+  const meses=Object.entries(porMes).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  const abaMes={
+    nome:"Por mês",
+    titulo:"Gastos por mês", subtitulo:periodo,
+    colunas:[
+      {rot:"Competência",  larg:16, tipo:"texto"},
+      {rot:"Lançamentos",  larg:14, tipo:"inteiro"},
+      {rot:"Fixos",        larg:15, tipo:"dinheiro"},
+      {rot:"Variáveis",    larg:15, tipo:"dinheiro"},
+      {rot:"Total do mês", larg:16, tipo:"dinheiro"}
+    ],
+    linhas:meses.map(([k,o])=>[formatMonthLabel(k)||k,o.n,o.f,o.v,o.f+o.v]),
+    totais:["TOTAL",lista.length,
+      meses.reduce((s,[,o])=>s+o.f,0), meses.reduce((s,[,o])=>s+o.v,0), total]
+  };
+
+  baixarXlsx(`gastos_${ehMes?mesF:"todos"}.xlsx`,[abaLanc,abaCat,abaMes]);
+  toast(`${lista.length} gasto(s) exportado(s) para Excel.`);
+};
+
 window.exportarGastosCSV=function(){
   const lista=window._gastosFiltrados||[];
   if(!lista.length){ toast("Nada para exportar com os filtros atuais.","warn"); return; }
@@ -5567,7 +5892,7 @@ applyTheme(getConfig().tema);
     'renderDashboard','renderFuncionarios','renderLotes','renderProducao','renderHistorico','renderGastos','renderBancoHoras','renderRelatorio','renderBackup','renderControleProducaoHora',
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
-    'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','gastoMesNav','gastoMesToggleTodos',
+    'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','exportarGastosExcel','exportarFatClienteExcel','gastoMesNav','gastoMesToggleTodos',
     'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos','previewHoras',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes','renderFolhaPagamento','calcFolhaPagamento'
@@ -12085,10 +12410,20 @@ input,select,textarea,button{font-size:16px;}
           </div>
         </div>
         <div class="gx-filtros-acoes">
-          <button class="btn-outline" onclick="gastoLimparFiltros()">Limpar filtros</button>
-          <button class="btn-outline" onclick="exportarGastosCSV()" title="Baixa os gastos visíveis em CSV">⭳ Exportar CSV</button>
-          <button class="btn-outline" onclick="propagarGastosFixos()" title="Copia gastos fixos do mês anterior para o mês atual (sem duplicar)">📋 Propagar fixos do mês anterior</button>
-          <button class="btn-outline" onclick="lancarEncargos()" title="Lança INSS e FGTS das funcionárias como gasto fixo do mês (não duplica)">👥 Lançar encargos (INSS + FGTS)</button>
+          <div class="gx-acoes-grupo">
+            <span class="gx-acoes-rot">Ver</span>
+            <button class="btn-outline" onclick="gastoLimparFiltros()">Limpar filtros</button>
+          </div>
+          <div class="gx-acoes-grupo">
+            <span class="gx-acoes-rot">Baixar</span>
+            <button class="btn-save" onclick="exportarGastosExcel()" title="Planilha do Excel: lançamentos, resumo por categoria e por mês">📊 Excel</button>
+            <button class="btn-outline" onclick="exportarGastosCSV()" title="Baixa os gastos visíveis em CSV">⭳ CSV</button>
+          </div>
+          <div class="gx-acoes-grupo">
+            <span class="gx-acoes-rot">Lançar no mês</span>
+            <button class="btn-outline" onclick="propagarGastosFixos()" title="Copia os gastos fixos do mês anterior para o mês atual, sem duplicar">📋 Fixos do mês anterior</button>
+            <button class="btn-outline" onclick="lancarEncargos()" title="Lança INSS e FGTS das funcionárias como gasto fixo do mês, sem duplicar">👥 Encargos</button>
+          </div>
         </div>
       </div>
 
@@ -12351,6 +12686,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Busca por cliente</label><input id="fc-busca" type="text" placeholder="Nome do cliente..." oninput="uiState.fatClienteBusca=this.value;renderFatCliente()"/></div>
           <div class="ff"><label>Filtrar por mês</label><input id="fc-mes" type="month" oninput="uiState.fatClienteMes=this.value;renderFatCliente()"/></div>
           <button class="btn-outline" onclick="$('fc-busca').value='';$('fc-mes').value='';uiState.fatClienteBusca='';uiState.fatClienteMes='';renderFatCliente()" style="white-space:nowrap;height:42px;">✕ Limpar</button>
+          <button class="btn-save" onclick="exportarFatClienteExcel()" title="Baixa uma planilha do Excel com o ranking e as OFs de cada cliente" style="white-space:nowrap;height:42px;">📊 Exportar Excel</button>
         </div>
       </div>
 
@@ -15041,6 +15377,17 @@ tr:last-child td{ border-bottom:none!important; }
 .gx-filtros-acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px;
   padding-top:13px;border-top:1px solid var(--bd);}
 .gx-filtros-acoes .btn-outline{font-size:11.5px;padding:7px 13px;}
+.gx-filtros-acoes .btn-save{font-size:11.5px;padding:7px 13px;}
+/* agrupa as ações por intenção: ver, baixar, lançar */
+.gx-acoes-grupo{display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  padding-right:14px;margin-right:4px;border-right:1px solid var(--bd);}
+.gx-acoes-grupo:last-child{border-right:0;padding-right:0;margin-right:0;}
+.gx-acoes-rot{font-size:9.5px;font-weight:800;letter-spacing:.7px;
+  text-transform:uppercase;color:var(--t3);}
+@media(max-width:760px){
+  .gx-acoes-grupo{border-right:0;padding-right:0;margin-right:0;width:100%;}
+  .gx-acoes-grupo .btn-outline,.gx-acoes-grupo .btn-save{flex:1 1 auto;}
+}
 
 /* ── Lista ── */
 .gx-tbl-wrap{overflow-x:auto;}
