@@ -4,7 +4,14 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Mello Style / FacçãoOS — Estável Premium</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<!-- Fontes sem travar a tela: media="print" faz o navegador buscar sem
+     bloquear a exibição, e o onload libera assim que chegam. Antes esta
+     linha segurava a tela inteira até a resposta do Google — medido em
+     13 segundos quando a internet falha, que é o pior caso no celular. -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" media="print" onload="this.media='all';this.onload=null" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=DM+Mono:wght@400;500;600&display=swap"/>
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=DM+Mono:wght@400;500;600&display=swap"/></noscript>
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin/>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin/>
 <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin/>
@@ -67,7 +74,13 @@ function dateFmt(ts,short=false){
   if(short)return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
   return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
 }
-function fmtMoney(v){return toNumber(v,0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});}
+/* Formatadores criados UMA vez. toLocaleString monta um formatador
+   novo a cada chamada, e essas funções rodam milhares de vezes por
+   tela — medido em 29ms só de fmtMoney na lista de lotes. */
+const __fmtBRL=new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"});
+const __fmtNum=new Intl.NumberFormat("pt-BR");
+function fmtMoney(v){return __fmtBRL.format(toNumber(v,0));}
+function fmtNum(v){return __fmtNum.format(toNumber(v,0));}
 function fmtHoras(min){const h=Math.floor(Math.abs(min)/60),m=Math.abs(min)%60;const s=(min<0?"-":"")+(h>0?h+"h ":"")+(m>0?m+"min":"");return s||"0min";}
 function fmtHorasCompact(min){const sinal=min<0?'-':'';const total=Math.abs(min||0);const h=Math.floor(total/60),m=total%60;return `${sinal}${h}:${String(m).padStart(2,'0')}`;}
 function getPontoMinutos(p,jornadaMin=480){
@@ -477,11 +490,32 @@ function nextMonthKeyLocal(){
   d.setMonth(d.getMonth()+1);
   return monthKeyLocal(d);
 }
+/* Rótulo do dia ("segunda-feira, 03 de agosto de 2026") reaproveitando
+   um formatador só e guardando por dia — antes era montado por registro. */
+const __fmtDia=new Intl.DateTimeFormat("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+const __cacheDia=new Map();
+function __rotuloDia(d){
+  const k=d.getFullYear()*10000+d.getMonth()*100+d.getDate();
+  let v=__cacheDia.get(k);
+  if(v===undefined){ v=__fmtDia.format(d); __cacheDia.set(k,v); }
+  return v;
+}
+
+/* Guarda o rótulo já montado: são poucos meses distintos, mas a
+   função é chamada uma vez por linha em várias listas. */
+const __fmtMes=new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"});
+const __cacheMes=new Map();
 function formatMonthLabel(mes=""){
-  if(!/^\d{4}-\d{2}$/.test(String(mes||""))) return "Sem mês definido";
-  const [ano,mm]=String(mes).split("-").map(Number);
-  const label=new Date(ano,mm-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
-  return label.charAt(0).toUpperCase()+label.slice(1);
+  const k=String(mes||"");
+  if(!/^\d{4}-\d{2}$/.test(k)) return "Sem mês definido";
+  let v=__cacheMes.get(k);
+  if(v===undefined){
+    const [ano,mm]=k.split("-").map(Number);
+    const label=__fmtMes.format(new Date(ano,mm-1,1));
+    v=label.charAt(0).toUpperCase()+label.slice(1);
+    __cacheMes.set(k,v);
+  }
+  return v;
 }
 function getLoteCompetencia(lote={}){
   return safeText(lote.competenciaFaturamento||lote.competencia||lote.mesCompetencia||lote.mesCaixa||"");
@@ -1239,6 +1273,7 @@ async function _loadDataReal(){
     // Só grava/aguarda quando há divergência; a memória já sai atualizada.
     try{ await aplicarEscalaPadraoFuncionarios(); }catch(e){ console.warn('APLICAR_ESCALA_WARN',e); }
 
+    __dadosVersao++;
     try{ populateSelects(); }catch(e){ console.error('POPULATE_SELECTS_ERROR',e); }
     try{ applyTheme(getConfig().tema); }catch(e){ console.warn('THEME_APPLY_WARN',e); }
     try{ if(typeof renderConfiguracoes==="function") renderConfiguracoes(); }catch(e){ console.warn('CONFIG_RENDER_WARN',e); }
@@ -1267,7 +1302,7 @@ async function _loadDataReal(){
     ]).then(([cphDocs,cliDocs])=>{
       controleProducaoHora=cphDocs;
       clientes=cliDocs;
-      try{ populateSelects(); }catch(_e){}
+      __dadosVersao++; try{ populateSelects(); }catch(_e){}
       if(["controlehora","clientes","fat-cliente","relatorio","backup","bancohoras"].includes(currentPage)){
         try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); }
       }
@@ -1287,13 +1322,20 @@ async function _loadDataReal(){
     console.error("LOAD_DATA_FATAL_ERROR",e);
     funcionarios=previous.funcionarios;registros=previous.registros;lotes=previous.lotes;gastos=previous.gastos;pontos=previous.pontos;controleProducaoHora=previous.controleProducaoHora;clientes=previous.clientes;
     toast("Erro ao carregar dados: "+(e?.message||e),"err");
-    try{ populateSelects(); }catch(_e){}
+    __dadosVersao++; try{ populateSelects(); }catch(_e){}
     try{ ({dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,'fat-cliente':renderFatCliente}[currentPage])?.(); }catch(_e){}
   }
 }
 
 
+/* Estas listas chegam a 1.500 opções cada. Reconstruir a cada visita à
+   tela custava 127ms de travada — agora só refaz quando os dados mudam
+   (loadData avisa incrementando a versão). */
+let __dadosVersao=0, __selectsVersao=-1;
 function populateSelects(){
+  const jaMontado=$("prod-lote")?.options.length||$("cph-lote")?.options.length;
+  if(__selectsVersao===__dadosVersao && jaMontado) return;
+  __selectsVersao=__dadosVersao;
   const sf=$("prod-funcionario");
   if(sf)sf.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
   const sl=$("prod-lote");
@@ -2833,7 +2875,14 @@ function renderProducao(){
 /* ══════════════════════════════════════════════════════════════
    HISTÓRICO
 ══════════════════════════════════════════════════════════════ */
-window.aplicarFiltros=function(){
+/* Quantos registros o Histórico desenha de uma vez. Montar tudo trava
+   a tela: com ~1.900 registros o navegador levava 2,3s só para
+   processar o HTML. O resto vem no botão "ver mais". */
+const HIST_POR_VEZ=250;
+window.histLimite=HIST_POR_VEZ;
+window.histVerMais=function(){ window.histLimite+=HIST_POR_VEZ*2; aplicarFiltros(true); };
+window.aplicarFiltros=function(manterLimite){
+  if(!manterLimite) window.histLimite=HIST_POR_VEZ;
   const dia=$("filtro-dia").value,mes=$("filtro-mes").value,loteF=$("filtro-lote").value;
   const busca=normalize(uiState.histBusca||$("hist-busca")?.value||"");
   let dados=[...registros];
@@ -2842,20 +2891,30 @@ window.aplicarFiltros=function(){
   else if(mes)dados=dados.filter(r=>{const d=r.criadoEm?.toDate?r.criadoEm.toDate():new Date(r.criadoEm);return monthKeyLocal(d)===mes;});
   if(loteF)dados=dados.filter(r=>r.loteId===loteF);
   if(busca)dados=dados.filter(r=>normalize([r.funcionarioNome,r.etapa,r.loteNumeroOf,r.loteProduto,r.obs].join(" ")).includes(busca));
-  const lotesNoFiltro=[...new Set(dados.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>lotes.find(l=>l.id===id)).filter(Boolean);
+  // índice por id: antes cada linha varria a lista inteira de lotes
+  const idxLote=new Map(lotes.map(l=>[l.id,l]));
+  const faturaCache=new Map();
+  const faturaDe=l=>{ let v=faturaCache.get(l.id);
+    if(v===undefined){ v=calcFaturamentoLote(l); faturaCache.set(l.id,v); } return v; };
+  const lotesNoFiltro=[...new Set(dados.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>idxLote.get(id)).filter(Boolean);
   const tQ=lotesNoFiltro.reduce((s,l)=>s+(l.qtdTotal||0),0);
-  const tF=lotesNoFiltro.reduce((s,l)=>s+calcFaturamentoLote(l),0);
+  const tF=lotesNoFiltro.reduce((s,l)=>s+faturaDe(l),0);
   if($("hr-reg"))$("hr-reg").textContent=dados.length.toLocaleString("pt-BR");
   if($("hr-qtd"))$("hr-qtd").textContent=tQ.toLocaleString("pt-BR");
   if($("hr-fat"))$("hr-fat").textContent=fmtMoney(tF);
-  const grupos={};
-  dados.forEach(r=>{const d=r.criadoEm?.toDate?r.criadoEm.toDate():new Date(r.criadoEm);const k=d.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
   const cont=$("hist-cont");if(!cont)return;
   if(!dados.length){cont.innerHTML='<div class="empty-state"><div class="ei">🔍</div><p>Nenhum registro encontrado</p></div>';return;}
+  // desenha só um pedaço; o resto entra pelo botão "ver mais"
+  const totalReg=dados.length;
+  const limite=Math.min(totalReg,Math.max(HIST_POR_VEZ,window.histLimite||HIST_POR_VEZ));
+  const visiveis=dados.slice(0,limite);
+  const grupos={};
+  visiveis.forEach(r=>{const d=r.criadoEm?.toDate?r.criadoEm.toDate():new Date(r.criadoEm);
+    const k=__rotuloDia(d); if(!grupos[k])grupos[k]=[]; grupos[k].push(r);});
   cont.innerHTML=Object.entries(grupos).map(([dk,regs])=>{
-    const lotesGrupo=[...new Set(regs.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>lotes.find(l=>l.id===id)).filter(Boolean);
+    const lotesGrupo=[...new Set(regs.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>idxLote.get(id)).filter(Boolean);
     const dQ=lotesGrupo.reduce((s,l)=>s+(l.qtdTotal||0),0);
-    const dF=lotesGrupo.reduce((s,l)=>s+calcFaturamentoLote(l),0);
+    const dF=lotesGrupo.reduce((s,l)=>s+faturaDe(l),0);
     return`<div class="hg"><div class="hg-hd"><span class="hg-dia">${dk}</span><div class="hg-pills"><span class="hpill">${dQ.toLocaleString("pt-BR")} pçs</span><span class="hpill g">${fmtMoney(dF)}</span></div></div>
     <table class="htbl"><thead><tr><th>Hora</th><th>Funcionário</th><th>Etapa</th><th>Qtd</th><th>Lote</th><th>Obs</th></tr></thead>
     <tbody>${regs.map(r=>`<tr>
@@ -2866,7 +2925,11 @@ window.aplicarFiltros=function(){
       <td>${r.loteNumeroOf?`<span class="chip co sm">OF ${r.loteNumeroOf}</span>`:"—"}</td>
       <td class="td-obs">${r.obs||"—"}</td>
     </tr>`).join("")}</tbody></table></div>`;
-  }).join("");
+  }).join("")
+  +(limite<totalReg?`<div class="hist-mais">
+      <div class="hist-mais-txt">Mostrando ${fmtNum(limite)} de ${fmtNum(totalReg)} registros</div>
+      <button type="button" class="btn-outline" onclick="histVerMais()">Ver mais ${fmtNum(Math.min(HIST_POR_VEZ*2,totalReg-limite))}</button>
+    </div>`:"");
 };
 window.limparFiltros=()=>{[$("filtro-dia"),$("filtro-mes"),$("filtro-lote"),$("hist-busca")].forEach(el=>{if(el)el.value="";});uiState.histBusca="";aplicarFiltros();};
 function renderHistorico(){
@@ -5891,7 +5954,7 @@ applyTheme(getConfig().tema);
     'salvarPonto','editarPonto','salvarEdicaoPonto','deletarPonto',
     'renderDashboard','renderFuncionarios','renderLotes','renderProducao','renderHistorico','renderGastos','renderBancoHoras','renderRelatorio','renderBackup','renderControleProducaoHora',
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
-    'aplicarFiltros','limparFiltros','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
+    'aplicarFiltros','limparFiltros','histVerMais','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','exportarGastosExcel','exportarFatClienteExcel','gastoMesNav','gastoMesToggleTodos',
     'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos','previewHoras',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
@@ -6206,8 +6269,8 @@ window.loadData=async function(){
   --t4: #71717A;
 
   /* ── Tipografia ── */
-  --fh: 'DM Sans', sans-serif;
-  --fm: 'DM Mono', monospace;
+  --fh: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --fm: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace;
 
   /* ── Raios ── */
   --r:  14px;
@@ -15321,6 +15384,11 @@ tr:last-child td{ border-bottom:none!important; }
 .nota-tag{font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;
   background:var(--bg2);border:1px solid var(--bd);color:var(--t2);}
 .nota-ok{color:var(--t3);padding:10px 0 0;font-weight:600;}
+/* rodapé do histórico com o botão de carregar mais registros */
+.hist-mais{display:flex;flex-direction:column;align-items:center;gap:9px;
+  padding:18px;margin-top:6px;border:1px dashed var(--bd);border-radius:14px;background:var(--bg3);}
+.hist-mais-txt{font-size:12px;color:var(--t3);font-weight:600;}
+
 /* aviso embaixo do campo de horas digitadas */
 .bh-preview{min-height:15px;margin-top:5px;font-size:11.5px;font-weight:600;line-height:1.4;}
 .bh-preview.is-ok{color:var(--success);}
