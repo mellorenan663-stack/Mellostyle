@@ -4457,7 +4457,9 @@ function renderDashboard(){
 /* ══════════════════════════════════════════════════════════════
    CAIXA DA EMPRESA — encargos de fim de ano (13º + férias)
 ══════════════════════════════════════════════════════════════ */
-const CAIXA_NOMES_12=["renan","sabrina","ketelen","alessandra","junior","nicole"];
+const CAIXA_NOMES_12=["ketelen"];
+// Funcionárias removidas do cálculo de encargos (a pedido): não entram no 13º/férias
+const CAIXA_EXCLUIR=["renan","nicole","sabrina","junior","alessandra"];
 function mesesProvisaoFunc(f,cfg){
   // 1) ajuste manual salvo por funcionária tem prioridade
   const ov=(cfg.provisaoMeses||{})[f.id];
@@ -4476,12 +4478,16 @@ function mesesProvisaoFunc(f,cfg){
 function calcCaixaEmpresa(){
   const cfg=getConfig();
   const caixa=Number(cfg.caixaEmpresa)||0;
-  const ativos=funcionarios.filter(f=>f.status!=="Inativo");
+  const ativos=funcionarios.filter(f=>{
+    if(f.status==="Inativo") return false;
+    const nn=normalize(f.nome||"");
+    return !CAIXA_EXCLUIR.some(x=>nn.includes(x));   // remove Renan, Nicole, Sabrina, Júnior, Alessandra
+  });
   const itens=ativos.map(f=>{
     const remun=(Number(f.salario)||0)+(Number(f.bonus)||0);
     const meses=mesesProvisaoFunc(f,cfg);
-    const decimo=remun*(meses/12);          // 13º proporcional (avos)
-    const ferias=remun*(1+1/3)*(meses/12);  // férias + 1/3 proporcional
+    const decimo=remun*(meses/12);              // 13º proporcional (avos)
+    const ferias=remun*(1+1/3)*(20/30)*(meses/12); // férias (20 dias) + 1/3 proporcional
     return {id:f.id,nome:f.nome||"—",remun,meses,decimo,ferias,total:decimo+ferias};
   }).sort((a,b)=>b.total-a.total);
   const totalDecimo=itens.reduce((s,x)=>s+x.decimo,0);
@@ -4574,7 +4580,7 @@ function renderCaixaEmpresa(){
           <td class="cx-num cx-total">${fmtMoney(r.totalEncargos)}</td>
         </tr></tfoot>
       </table></div>
-      <div class="cx-nota">💡 Os <strong>meses de casa</strong> são editáveis — clique no número para ajustar qualquer funcionária. Regra atual: <strong>12 meses</strong> para Renan, Sabrina, Ketelen, Alessandra, Júnior e Nicole; quem tem data de admissão conta a partir dela; as demais desde fevereiro. Valores projetados para dezembro.</div>
+      <div class="cx-nota">💡 Os <strong>meses de casa</strong> são editáveis — clique no número para ajustar qualquer funcionária. Regra atual: <strong>12 meses</strong> para Ketelen; quem tem data de admissão conta a partir dela; as demais desde fevereiro. As <strong>férias</strong> são calculadas sobre <strong>20 dias</strong> (+ 1/3 constitucional). Valores projetados para dezembro.</div>
     </div>`}
   </div>`;
 }
