@@ -7,16 +7,48 @@ Firebase que o resto do app já usa.
 
 ## Telas
 
-Uma seção **Financeiro** foi adicionada ao menu lateral, com três telas:
+Uma seção **Financeiro** foi adicionada ao menu lateral, com quatro telas:
 
 | Tela | O que faz |
 |---|---|
-| **Painel Financeiro** | Saldo consolidado, entradas e saídas do mês, resultado, contas a pagar e a receber, gráfico de fluxo de caixa dos últimos 6 meses, próximos vencimentos e para onde o dinheiro foi por categoria. |
+| **Painel Financeiro** | Mês navegável (◀ ▶), saldo consolidado, entradas e saídas, resultado, contas a pagar e a receber, fluxo de caixa dos últimos 6 meses, balanço do mês, faturas dos cartões, gráfico de rosca das despesas por categoria, próximos vencimentos e planejamento por categoria. |
 | **Contas Bancárias** | Cadastro de cada conta (banco, agência, conta, tipo, saldo inicial). O saldo atual é calculado a partir dos lançamentos, nunca digitado. |
+| **Cartões de Crédito** | Cadastro de cartões com limite, fechamento e vencimento; compras parceladas; limite comprometido; fatura por mês e pagamento da fatura. |
 | **Extrato & Conciliação** | Importação do extrato do banco, lançamento manual, filtros, conciliação e exportação para CSV. |
+
+Um botão flutuante **+** aparece nas telas financeiras e abre o lançamento
+rápido: alterna entre despesa e receita, com o valor em destaque.
 
 O acesso segue os perfis já existentes: `admin`, `gerente` e `financeiro` veem
 as telas; `operador` não.
+
+Cada categoria tem ícone e cor próprios, usados na lista de lançamentos, na
+rosca de despesas e nas barras de planejamento.
+
+## Cartões de crédito e faturas
+
+A compra no cartão **não sai do caixa na hora**. Ela entra na fatura de um mês
+e só vira saída de dinheiro quando a fatura é paga. Por isso as compras de
+cartão ficam fora do saldo das contas e fora do extrato bancário.
+
+- A fatura de uma compra é definida pelo **dia de fechamento**: comprou depois
+  do fechamento, cai na fatura do mês seguinte.
+- Compras parceladas geram uma parcela por fatura, em meses seguidos. A divisão
+  é feita em centavos, então a soma das parcelas bate exatamente com o total
+  (R$ 100 em 3× vira 33,34 + 33,33 + 33,33).
+- Datas são presas ao último dia do mês: uma compra dia 31 parcelada não gera
+  "31 de fevereiro".
+- O **limite comprometido** conta tudo que ainda não foi pago, inclusive
+  parcelas de faturas futuras.
+- **Pagar a fatura** cria uma saída real na conta vinculada ao cartão e marca
+  as parcelas daquele mês como pagas. Esse pagamento fica de fora do gráfico
+  por categoria, senão a mesma compra seria contada duas vezes.
+
+## Planejamento por categoria
+
+Um limite mensal por categoria mostra quanto já foi gasto, quanto resta e
+quanto passou, com barra de progresso. O gasto considerado junta o que saiu da
+conta com o que foi comprado no cartão, que é onde o dinheiro realmente foi.
 
 ## Como funciona a conexão com o banco
 
@@ -93,23 +125,29 @@ para os vencidos. O botão ✓ confirma o pagamento e aí sim afeta o caixa.
 
 ## Dados no Firestore
 
-Duas coleções novas, seguindo o mesmo padrão de `ownerId` das demais:
+Quatro coleções novas, seguindo o mesmo padrão de `ownerId` das demais:
 
 **`contasBancarias`** — `nome`, `codigoBanco` (COMPE), `banco`, `tipo`,
 `agencia`, `conta`, `saldoInicial`, `dataSaldoInicial`, `ativa`,
 `conexao:{tipo,provedor,ultimaSync}`.
 
-**`lancamentos`** — `contaId`, `data` (`AAAA-MM-DD`), `descricao`, `valor`
-(sempre positivo), `tipo` (`entrada`/`saida`), `categoria`, `status`
+**`lancamentos`** — `contaId`, `cartaoId`, `data` (`AAAA-MM-DD`), `descricao`,
+`valor` (sempre positivo), `tipo` (`entrada`/`saida`), `categoria`, `status`
 (`realizado`/`previsto`), `competencia`, `conciliado`, `origem`
-(`manual`/`ofx`/`csv`), `fitid`, `gastoId`.
+(`manual`/`ofx`/`csv`/`cartao`/`fatura`), `fitid`, `gastoId`. Nas compras de
+cartão: `faturaMes`, `compraId`, `parcela`, `totalParcelas`, `pagoFatura`.
+
+**`cartoes`** — `nome`, `limite`, `diaFechamento`, `diaVencimento`,
+`contaPagamentoId`, `cor`, `ativo`.
+
+**`orcamentos`** — `categoria`, `valor`.
 
 O saldo de uma conta é sempre `saldoInicial` mais entradas realizadas menos
-saídas realizadas. Nunca é gravado — assim não há como o saldo divergir dos
-lançamentos.
+saídas realizadas, contando só lançamentos sem `cartaoId`. Nunca é gravado —
+assim não há como o saldo divergir dos lançamentos.
 
-> **Regras do Firestore:** as duas coleções novas precisam entrar nas regras de
-> segurança do projeto, no mesmo modelo das existentes (leitura e escrita
+> **Regras do Firestore:** as quatro coleções novas precisam entrar nas regras
+> de segurança do projeto, no mesmo modelo das existentes (leitura e escrita
 > apenas para `request.auth.uid == resource.data.ownerId`). Sem isso a
 > importação falha com erro de permissão.
 
@@ -119,9 +157,12 @@ Os parsers e o fluxo completo foram testados:
 
 - **33 testes de parser** cobrindo OFX 1.x e 2.x, CSV em cinco variações,
   deduplicação por FITID e por hash, e conversão de datas e números.
-- **17 verificações ponta a ponta** em Chromium com o Firebase substituído por
+- **50 verificações ponta a ponta** em Chromium com o Firebase substituído por
   stubs em memória: cadastro de conta, lançamento manual, importação de OFX,
-  deduplicação na reimportação, saldo consolidado e envio para o DRE.
+  deduplicação na reimportação, saldo consolidado, envio para o DRE, cadastro
+  de cartão, parcelamento (soma exata e datas presas ao fim do mês), fatura
+  pelo dia de fechamento, pagamento de fatura, limite comprometido, navegação
+  de mês, planejamento e lançamento rápido.
 - As telas já existentes (Dashboard, Gastos, Lotes, Produção, Relatório,
-  Faturamento por Cliente, Funcionários, Histórico) continuam navegáveis sem
-  erro de JavaScript.
+  Faturamento por Cliente, Funcionários, Histórico, Banco de Horas, Controle
+  por Hora, Backup) continuam navegáveis sem erro de JavaScript.
