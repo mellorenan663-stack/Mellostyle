@@ -3010,10 +3010,23 @@ async function autoPropagarFixos(){
     const mesAtual=monthKeyLocal();
     if(localStorage.getItem("mello_autoprop_fixos")===mesAtual) return; // já processado neste mês
     if(__autoPropFixosRunning) return;
-    const mesAnterior=calcMesAnterior(mesAtual);
-    const fixosAnt=gastos.filter(g=>g.tipo==="fixo" && (g.competencia||"")===mesAnterior && !(g.parcelaTotal>1));
-    const nomesAtual=new Set(gastos.filter(g=>g.tipo==="fixo" && (g.competencia||"")===mesAtual).map(g=>normalize(g.descricao)));
-    const paraIncluir=fixosAnt.filter(g=>!nomesAtual.has(normalize(g.descricao)));
+    // Gasto fixo à vista = recorrente. Parcelamento (parcelaTotal>1) NÃO recorre:
+    // ele já foi lançado mês a mês na criação e termina sozinho na última parcela.
+    const ehFixoRecorrente=g=>g.tipo==="fixo" && !(g.parcelaTotal>1);
+    // Descrições de fixos que JÁ existem no mês atual (para não duplicar).
+    const nomesAtual=new Set(gastos.filter(g=>ehFixoRecorrente(g) && (g.competencia||"")===mesAtual).map(g=>normalize(g.descricao)));
+    // Robusto a meses pulados: procura o mês mais recente ANTES do atual que
+    // tenha fixos recorrentes e usa ele como fonte (não só o mês anterior).
+    const mesesComFixo=[...new Set(gastos.filter(g=>ehFixoRecorrente(g) && (g.competencia||"") && (g.competencia||"")<mesAtual).map(g=>g.competencia))].sort();
+    const mesFonte=mesesComFixo.length?mesesComFixo[mesesComFixo.length-1]:null;
+    const fixosAnt=mesFonte?gastos.filter(g=>ehFixoRecorrente(g) && (g.competencia||"")===mesFonte):[];
+    // Deduplica por descrição (a fonte pode ter linhas repetidas em teoria).
+    const vistos=new Set();
+    const paraIncluir=fixosAnt.filter(g=>{
+      const n=normalize(g.descricao);
+      if(nomesAtual.has(n)||vistos.has(n)) return false;
+      vistos.add(n); return true;
+    });
     // Marca como processado ANTES de criar: se você excluir um fixo no mês, ele NÃO é recriado
     try{ localStorage.setItem("mello_autoprop_fixos", mesAtual); }catch(_e){}
     if(!paraIncluir.length) return;
@@ -3073,16 +3086,19 @@ window.lancarEncargos=async function(){
 
 window.propagarGastosFixos=async function(){
   const mesAtual=monthKeyLocal();
-  const mesAnterior=calcMesAnterior(mesAtual);
-  // Gastos fixos do mês anterior
-  const fixosAnt=gastos.filter(g=>g.tipo==="fixo"&&(g.competencia||"")===mesAnterior);
-  if(!fixosAnt.length){toast("Nenhum gasto fixo encontrado no mês anterior ("+formatMonthLabel(mesAnterior)+").","warn");return;}
+  // Só recorrem os fixos à vista; parcelamentos (parcelaTotal>1) não.
+  const ehFixoRecorrente=g=>g.tipo==="fixo" && !(g.parcelaTotal>1);
+  // Busca o mês mais recente antes do atual que tenha fixos (robusto a meses pulados).
+  const mesesComFixo=[...new Set(gastos.filter(g=>ehFixoRecorrente(g) && (g.competencia||"") && (g.competencia||"")<mesAtual).map(g=>g.competencia))].sort();
+  const mesFonte=mesesComFixo.length?mesesComFixo[mesesComFixo.length-1]:null;
+  const fixosAnt=mesFonte?gastos.filter(g=>ehFixoRecorrente(g)&&(g.competencia||"")===mesFonte):[];
+  if(!fixosAnt.length){toast("Nenhum gasto fixo encontrado em meses anteriores.","warn");return;}
   // Gastos fixos já existentes no mês atual (para não duplicar)
-  const fixosAtual=gastos.filter(g=>g.tipo==="fixo"&&(g.competencia||"")===mesAtual);
-  const nomesAtual=new Set(fixosAtual.map(g=>normalize(g.descricao)));
-  const paraIncluir=fixosAnt.filter(g=>!nomesAtual.has(normalize(g.descricao)));
-  if(!paraIncluir.length){toast("Todos os gastos fixos do mês anterior já existem em "+formatMonthLabel(mesAtual)+".","warn");return;}
-  if(!confirm(`Propagar ${paraIncluir.length} gasto(s) fixo(s) de ${formatMonthLabel(mesAnterior)} para ${formatMonthLabel(mesAtual)}?`))return;
+  const nomesAtual=new Set(gastos.filter(g=>ehFixoRecorrente(g)&&(g.competencia||"")===mesAtual).map(g=>normalize(g.descricao)));
+  const vistos=new Set();
+  const paraIncluir=fixosAnt.filter(g=>{const n=normalize(g.descricao);if(nomesAtual.has(n)||vistos.has(n))return false;vistos.add(n);return true;});
+  if(!paraIncluir.length){toast("Todos os gastos fixos já existem em "+formatMonthLabel(mesAtual)+".","warn");return;}
+  if(!confirm(`Propagar ${paraIncluir.length} gasto(s) fixo(s) de ${formatMonthLabel(mesFonte)} para ${formatMonthLabel(mesAtual)}?`))return;
   try{
     requireAuthUser();
     await Promise.all(paraIncluir.map(g=>addDoc(collection(db,"gastos"),withOwner({
