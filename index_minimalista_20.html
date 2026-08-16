@@ -4169,9 +4169,9 @@ function getCollectionSnapshot(collectionName,id){
 function hasPageAccess(page){
   const perfil=(getConfig().perfil||'admin').toLowerCase();
   const allowed={
-    admin:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
-    gerente:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria'],
-    financeiro:['dashboard','controlehora','gastos','historico','relatorio','backup','fat-cliente','clientes','auditoria'],
+    admin:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria','financeiro','fin-contas','fin-extrato'],
+    gerente:['dashboard','lotes','funcionarios','producao','controlehora','gastos','historico','bancohoras','relatorio','backup','fat-cliente','clientes','lixeira','auditoria','financeiro','fin-contas','fin-extrato'],
+    financeiro:['dashboard','controlehora','gastos','historico','relatorio','backup','fat-cliente','clientes','auditoria','financeiro','fin-contas','fin-extrato'],
     operador:['dashboard','lotes','funcionarios','producao','controlehora','historico','bancohoras','fat-cliente','clientes']
   };
   return (allowed[perfil]||allowed.admin).includes(page);
@@ -4886,6 +4886,1040 @@ window.loadData=async function(){
 };
 
 })();
+
+/* ══════════════════════════════════════════════════════════════════════
+   MÓDULO FINANCEIRO — Gestor financeiro com integração bancária
+   ----------------------------------------------------------------------
+   Contas bancárias, extrato, contas a pagar/receber, conciliação e
+   fluxo de caixa.
+
+   SOBRE A "CONEXÃO COM OS BANCOS":
+   Este app roda 100% no navegador (HTML estático + Firebase). Por isso a
+   integração bancária usa o caminho que funciona sem servidor próprio:
+   importação do extrato em OFX (o formato que todo banco brasileiro
+   exporta) ou CSV, com deduplicação automática por FITID.
+
+   Conexão automática (Open Finance Brasil, API do Inter/Itaú/Sicoob, ou
+   agregadores como Pluggy/Belvo) exige backend com certificado mTLS e
+   segredos que NUNCA podem ficar no navegador. O ponto de extensão para
+   isso é a função `finSincronizarConta()` abaixo — veja FINANCEIRO.md.
+   ══════════════════════════════════════════════════════════════════════ */
+
+let contasBancarias=[],lancamentos=[];
+let finUi={extratoBusca:"",extratoConta:"",extratoTipo:"",extratoStatus:"",extratoConcil:"",extratoMes:"",painelMeses:6};
+let finImportBuffer=null;
+window.finUi=finUi;
+
+const BANCOS_BR=[
+  {c:"001",n:"Banco do Brasil"},{c:"033",n:"Santander"},{c:"041",n:"Banrisul"},
+  {c:"070",n:"BRB"},{c:"077",n:"Banco Inter"},{c:"104",n:"Caixa Econômica Federal"},
+  {c:"136",n:"Unicred"},{c:"197",n:"Stone"},{c:"208",n:"BTG Pactual"},
+  {c:"212",n:"Banco Original"},{c:"237",n:"Bradesco"},{c:"260",n:"Nubank"},
+  {c:"290",n:"PagBank"},{c:"323",n:"Mercado Pago"},{c:"336",n:"C6 Bank"},
+  {c:"341",n:"Itaú Unibanco"},{c:"380",n:"PicPay"},{c:"403",n:"Cora"},
+  {c:"422",n:"Banco Safra"},{c:"461",n:"Asaas"},{c:"629",n:"Banco Pan"},
+  {c:"637",n:"Banco Sofisa"},{c:"655",n:"Votorantim / Neon"},{c:"748",n:"Sicredi"},
+  {c:"756",n:"Sicoob"},{c:"999",n:"Outro / Dinheiro em caixa"}
+];
+
+const CATEGORIAS_ENTRADA=["Faturamento de lotes","Adiantamento de cliente","Empréstimo recebido","Rendimento de aplicação","Estorno / Devolução","Aporte do sócio","Outras entradas"];
+const CATEGORIAS_SAIDA=["Salários e encargos","Pró-labore","Aluguel","Fornecedores / Insumos","Energia e água","Internet e telefone","Impostos e taxas","Manutenção de máquinas","Transporte / Frete","Parcela de empréstimo","Tarifas bancárias","Marketing","Outras saídas"];
+
+/* ── HELPERS ─────────────────────────────────────────────────────── */
+function finHoje(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function finMesDe(dataIso){ return String(dataIso||"").slice(0,7); }
+function finDataBr(dataIso){
+  const p=String(dataIso||"").split("-");
+  return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:"—";
+}
+function finBancoNome(codigo){
+  const b=BANCOS_BR.find(x=>x.c===String(codigo));
+  return b?b.n:"Banco";
+}
+function finConta(id){ return contasBancarias.find(c=>c.id===id)||null; }
+function finContaLabel(id){
+  const c=finConta(id);
+  if(!c) return "Conta removida";
+  return `${c.nome} · ${finBancoNome(c.codigoBanco)}`;
+}
+/* Chave usada para não importar a mesma transação duas vezes. */
+function finChaveDedupe(l){
+  if(l.fitid) return `${l.contaId}::fit::${l.fitid}`;
+  return `${l.contaId}::hash::${l.data}|${toNumber(l.valor,0).toFixed(2)}|${normalize(l.descricao).slice(0,40)}`;
+}
+
+/* Saldo da conta = saldo inicial + entradas realizadas − saídas realizadas.
+   Lançamentos "previstos" ficam de fora: eles são projeção, não caixa. */
+function finSaldoConta(contaId){
+  const c=finConta(contaId);
+  if(!c) return 0;
+  return lancamentos
+    .filter(l=>l.contaId===contaId && l.status==="realizado")
+    .reduce((s,l)=>s+(l.tipo==="entrada"?toNumber(l.valor,0):-toNumber(l.valor,0)),toNumber(c.saldoInicial,0));
+}
+function finSaldoTotal(){
+  return contasBancarias.filter(c=>c.ativa!==false).reduce((s,c)=>s+finSaldoConta(c.id),0);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   PARSER OFX — formato exportado por todos os bancos brasileiros
+   Cobre OFX 1.x (SGML, tags de folha sem fechamento) e OFX 2.x (XML).
+   ══════════════════════════════════════════════════════════════════ */
+function ofxNumero(v){
+  let s=String(v||"").trim().replace(/\s/g,"");
+  if(!s) return 0;
+  // OFX usa ponto decimal, mas alguns bancos exportam vírgula.
+  if(s.includes(",") && s.includes(".")) s=s.replace(/\./g,"").replace(",",".");
+  else if(s.includes(",")) s=s.replace(",",".");
+  const n=parseFloat(s);
+  return Number.isFinite(n)?n:0;
+}
+function ofxData(v){
+  const s=String(v||"").trim();
+  const m=/^(\d{4})(\d{2})(\d{2})/.exec(s);
+  return m?`${m[1]}-${m[2]}-${m[3]}`:"";
+}
+function parseOFX(texto){
+  const t=String(texto||"");
+  const pegar=(tag,escopo)=>{
+    const r=new RegExp("<"+tag+">\\s*([^<\\r\\n]*)","i").exec(escopo);
+    return r?r[1].trim():"";
+  };
+  const res={bankId:pegar("BANKID",t),acctId:pegar("ACCTID",t),saldo:null,dataSaldo:"",transacoes:[]};
+
+  const blocoSaldo=/<LEDGERBAL>([\s\S]*?)<\/LEDGERBAL>/i.exec(t);
+  if(blocoSaldo){
+    res.saldo=ofxNumero(pegar("BALAMT",blocoSaldo[1]));
+    res.dataSaldo=ofxData(pegar("DTASOF",blocoSaldo[1]));
+  }
+
+  const re=/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi;
+  let m;
+  while((m=re.exec(t))!==null){
+    const b=m[1];
+    const valor=ofxNumero(pegar("TRNAMT",b));
+    const data=ofxData(pegar("DTPOSTED",b));
+    if(!data) continue;
+    const memo=pegar("MEMO",b),nome=pegar("NAME",b);
+    const descricao=(nome&&memo&&normalize(nome)!==normalize(memo))?`${nome} — ${memo}`:(nome||memo||pegar("TRNTYPE",b)||"Lançamento");
+    res.transacoes.push({
+      data,
+      descricao:descricao.replace(/\s+/g," ").trim(),
+      valor:Math.abs(valor),
+      tipo:valor<0?"saida":"entrada",
+      fitid:pegar("FITID",b),
+      trnType:pegar("TRNTYPE",b)
+    });
+  }
+  return res;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   PARSER CSV — tolerante a formatos de extrato brasileiros
+   ══════════════════════════════════════════════════════════════════ */
+function csvDetectarSeparador(linha){
+  const cands=[";","\t",","];
+  let melhor=";",max=-1;
+  cands.forEach(c=>{
+    const n=linha.split(c).length;
+    if(n>max){max=n;melhor=c;}
+  });
+  return melhor;
+}
+function csvQuebrarLinha(linha,sep){
+  const out=[];let atual="",aspas=false;
+  for(let i=0;i<linha.length;i++){
+    const ch=linha[i];
+    if(ch==='"'){
+      if(aspas && linha[i+1]==='"'){atual+='"';i++;}
+      else aspas=!aspas;
+    } else if(ch===sep && !aspas){ out.push(atual);atual=""; }
+    else atual+=ch;
+  }
+  out.push(atual);
+  return out.map(s=>s.trim().replace(/^"|"$/g,""));
+}
+function csvNumero(v){
+  let s=String(v||"").trim().replace(/R\$/gi,"").replace(/\s/g,"");
+  if(!s) return NaN;
+  const negativoParenteses=/^\(.*\)$/.test(s);
+  s=s.replace(/[()]/g,"");
+  if(s.includes(",") && s.includes(".")) s=s.replace(/\./g,"").replace(",",".");
+  else if(s.includes(",")) s=s.replace(",",".");
+  const n=parseFloat(s);
+  if(!Number.isFinite(n)) return NaN;
+  return negativoParenteses?-n:n;
+}
+function csvData(v){
+  const s=String(v||"").trim();
+  let m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m=/^(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})/.exec(s);
+  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  m=/^(\d{2})[\/\-.](\d{2})[\/\-.](\d{2})$/.exec(s);
+  if(m) return `20${m[3]}-${m[2]}-${m[1]}`;
+  return "";
+}
+function parseCSVExtrato(texto){
+  const linhas=String(texto||"").split(/\r?\n/).filter(l=>l.trim());
+  if(!linhas.length) return {transacoes:[],erro:"Arquivo vazio."};
+
+  // Cabeçalho = primeira linha que contenha uma coluna reconhecível de data.
+  let idxCab=-1,sep=";";
+  for(let i=0;i<Math.min(linhas.length,12);i++){
+    const s=csvDetectarSeparador(linhas[i]);
+    const cols=csvQuebrarLinha(linhas[i],s).map(normalize);
+    if(cols.some(c=>/^(data|date|data lancamento|data do lancamento|data mov)/.test(c))){
+      idxCab=i;sep=s;break;
+    }
+  }
+  if(idxCab<0) return {transacoes:[],erro:"Não encontrei a coluna de data. Use um CSV com cabeçalho contendo Data, Descrição e Valor."};
+
+  const cab=csvQuebrarLinha(linhas[idxCab],sep).map(normalize);
+  const achar=(...pads)=>cab.findIndex(c=>pads.some(p=>c.includes(p)));
+  const iData=achar("data","date");
+  const iDesc=achar("descricao","historico","description","memo","lancamento","detalhe","titulo");
+  const iValor=achar("valor","value","amount","montante","quantia");
+  const iCred=achar("credito","entrada","receita");
+  const iDeb=achar("debito","saida","despesa");
+  const iTipo=achar("tipo","type","d/c","natureza");
+
+  if(iData<0) return {transacoes:[],erro:"Coluna de data não identificada."};
+  if(iValor<0 && iCred<0 && iDeb<0) return {transacoes:[],erro:"Coluna de valor não identificada."};
+
+  const transacoes=[],ignoradas=[];
+  for(let i=idxCab+1;i<linhas.length;i++){
+    const cols=csvQuebrarLinha(linhas[i],sep);
+    const data=csvData(cols[iData]);
+    if(!data){ if(linhas[i].replace(/[;,\t\s]/g,"")) ignoradas.push(linhas[i]); continue; }
+
+    let valor=NaN,tipo="";
+    if(iValor>=0){
+      valor=csvNumero(cols[iValor]);
+      if(Number.isFinite(valor)) tipo=valor<0?"saida":"entrada";
+    }
+    if(!Number.isFinite(valor) && (iCred>=0||iDeb>=0)){
+      const cr=iCred>=0?csvNumero(cols[iCred]):NaN;
+      const db=iDeb>=0?csvNumero(cols[iDeb]):NaN;
+      if(Number.isFinite(cr)&&cr!==0){valor=cr;tipo="entrada";}
+      else if(Number.isFinite(db)&&db!==0){valor=db;tipo="saida";}
+    }
+    if(!Number.isFinite(valor)||valor===0){ ignoradas.push(linhas[i]); continue; }
+
+    // Coluna explícita de tipo (D/C) tem prioridade sobre o sinal do valor.
+    if(iTipo>=0){
+      const t=normalize(cols[iTipo]);
+      if(/^(d|debito|saida|despesa)/.test(t)) tipo="saida";
+      else if(/^(c|credito|entrada|receita)/.test(t)) tipo="entrada";
+    }
+
+    transacoes.push({
+      data,
+      descricao:(iDesc>=0?String(cols[iDesc]||""):"").replace(/\s+/g," ").trim()||"Lançamento importado",
+      valor:Math.abs(valor),
+      tipo:tipo||"saida",
+      fitid:""
+    });
+  }
+  return {transacoes,ignoradas:ignoradas.length};
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   CARGA DE DADOS
+   ══════════════════════════════════════════════════════════════════ */
+async function carregarFinanceiro(){
+  try{
+    const [cDocs,lDocs]=await Promise.all([
+      getOwnedDocs("contasBancarias",{sortField:"nome",dir:"asc"}).catch(e=>{console.warn("FIN_CONTAS",e);return contasBancarias;}),
+      getOwnedDocs("lancamentos",{sortField:"data",dir:"desc"}).catch(e=>{console.warn("FIN_LANC",e);return lancamentos;})
+    ]);
+    contasBancarias=Array.isArray(cDocs)?cDocs:[];
+    lancamentos=Array.isArray(lDocs)?lDocs:[];
+  }catch(e){
+    console.error("CARREGAR_FINANCEIRO_ERROR",e);
+  }
+}
+window.carregarFinanceiro=carregarFinanceiro;
+
+function finPopularSelects(){
+  const optContas=contasBancarias.filter(c=>c.ativa!==false)
+    .map(c=>`<option value="${c.id}">${escapeHtml(c.nome)} · ${escapeHtml(finBancoNome(c.codigoBanco))}</option>`).join("");
+  ["lanc-conta","imp-conta"].forEach(id=>{
+    const el=$(id);
+    if(!el) return;
+    const atual=el.value;
+    el.innerHTML=(optContas||'<option value="">— Cadastre uma conta primeiro —</option>');
+    if(atual) el.value=atual;
+  });
+  const filtro=$("extrato-conta");
+  if(filtro){
+    const atual=filtro.value;
+    filtro.innerHTML='<option value="">Todas as contas</option>'+optContas;
+    filtro.value=atual||"";
+  }
+  const selBanco=$("conta-banco");
+  if(selBanco && !selBanco.dataset.ready){
+    selBanco.innerHTML=BANCOS_BR.map(b=>`<option value="${b.c}">${b.c} — ${b.n}</option>`).join("");
+    selBanco.dataset.ready="1";
+  }
+  const selCat=$("lanc-categoria");
+  if(selCat) finAtualizarCategorias();
+}
+window.finAtualizarCategorias=function(){
+  const tipo=$("lanc-tipo")?.value||"saida";
+  const sel=$("lanc-categoria");
+  if(!sel) return;
+  const lista=tipo==="entrada"?CATEGORIAS_ENTRADA:CATEGORIAS_SAIDA;
+  const atual=sel.value;
+  sel.innerHTML=lista.map(c=>`<option value="${c}">${c}</option>`).join("");
+  if(lista.includes(atual)) sel.value=atual;
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   CONTAS BANCÁRIAS — CRUD
+   ══════════════════════════════════════════════════════════════════ */
+window.salvarConta=async function(){
+  const nome=$("conta-nome")?.value.trim()||"";
+  const codigoBanco=$("conta-banco")?.value||"999";
+  const tipo=$("conta-tipo")?.value||"corrente";
+  const agencia=$("conta-agencia")?.value.trim()||"";
+  const conta=$("conta-numero")?.value.trim()||"";
+  const saldoInicial=toNumber($("conta-saldo")?.value,0);
+  const dataSaldoInicial=$("conta-saldo-data")?.value||finHoje();
+  if(!nome){toast("Dê um nome para a conta (ex: Itaú Principal)","err");return;}
+
+  const btn=$("btn-salvar-conta");
+  if(btn) btn.disabled=true;
+  try{
+    await addDoc(collection(db,"contasBancarias"),withOwner({
+      nome,codigoBanco,banco:finBancoNome(codigoBanco),tipo,agencia,conta,
+      saldoInicial,dataSaldoInicial,ativa:true,
+      conexao:{tipo:"manual",provedor:"",ultimaSync:null},
+      criadoEm:Timestamp.now()
+    }));
+    ["conta-nome","conta-agencia","conta-numero","conta-saldo"].forEach(id=>{ if($(id)) $(id).value=""; });
+    toast("Conta cadastrada!");
+    await carregarFinanceiro();
+    finPopularSelects();
+    renderContas();
+  }catch(e){
+    console.error("SALVAR_CONTA_ERROR",e);
+    toast(firebaseErrorMessage(e),"err");
+  }finally{
+    if(btn) btn.disabled=false;
+  }
+};
+
+window.alternarContaAtiva=async function(id){
+  const c=finConta(id);
+  if(!c) return;
+  try{
+    await updateDoc(doc(db,"contasBancarias",id),{ativa:c.ativa===false});
+    await carregarFinanceiro();
+    finPopularSelects();
+    renderContas();
+    toast(c.ativa===false?"Conta reativada.":"Conta arquivada.");
+  }catch(e){ toast(firebaseErrorMessage(e),"err"); }
+};
+
+window.deletarConta=async function(id){
+  const usados=lancamentos.filter(l=>l.contaId===id).length;
+  if(usados){
+    toast(`Esta conta tem ${usados} lançamento(s). Arquive-a em vez de excluir.`,"warn");
+    return;
+  }
+  if(!confirm("Excluir esta conta bancária?")) return;
+  try{
+    const snap=finConta(id);
+    if(snap && typeof addLixeira==="function") addLixeira("Conta bancária","contasBancarias",snap);
+    await deleteDoc(doc(db,"contasBancarias",id));
+    toast("Conta removida.");
+    await carregarFinanceiro();
+    finPopularSelects();
+    renderContas();
+  }catch(e){ toast(firebaseErrorMessage(e),"err"); }
+};
+
+/* Ponto de extensão para conexão automática. Sem backend, orienta o
+   usuário para o caminho que realmente funciona hoje (OFX/CSV). */
+window.finSincronizarConta=async function(id){
+  const c=finConta(id);
+  if(!c) return;
+  const provedor=c.conexao?.provedor||"";
+  if(!provedor){
+    toast("Sincronização automática exige backend (Open Finance). Use Importar extrato OFX.","warn");
+    navigate("fin-extrato");
+    return;
+  }
+  toast("Provedor configurado mas sem backend ativo. Veja FINANCEIRO.md.","warn");
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   LANÇAMENTOS — CRUD
+   ══════════════════════════════════════════════════════════════════ */
+window.salvarLancamento=async function(){
+  const contaId=$("lanc-conta")?.value||"";
+  const data=$("lanc-data")?.value||"";
+  const descricao=$("lanc-desc")?.value.trim()||"";
+  const valor=toNumber($("lanc-valor")?.value,0);
+  const tipo=$("lanc-tipo")?.value||"saida";
+  const categoria=$("lanc-categoria")?.value||"";
+  const status=$("lanc-status")?.value||"realizado";
+
+  if(!contaId){toast("Selecione a conta bancária","err");return;}
+  if(!descricao){toast("Descreva o lançamento","err");return;}
+  if(!(valor>0)){toast("O valor precisa ser maior que zero","err");return;}
+  if(!data){toast("Informe a data","err");return;}
+
+  const btn=$("btn-salvar-lanc");
+  if(btn) btn.disabled=true;
+  try{
+    await addDoc(collection(db,"lancamentos"),withOwner({
+      contaId,data,descricao,valor,tipo,categoria,status,
+      competencia:finMesDe(data),
+      conciliado:false,origem:"manual",fitid:"",gastoId:null,
+      criadoEm:Timestamp.now()
+    }));
+    if($("lanc-desc")) $("lanc-desc").value="";
+    if($("lanc-valor")) $("lanc-valor").value="";
+    toast("Lançamento registrado!");
+    await carregarFinanceiro();
+    renderExtrato();
+  }catch(e){
+    console.error("SALVAR_LANCAMENTO_ERROR",e);
+    toast(firebaseErrorMessage(e),"err");
+  }finally{
+    if(btn) btn.disabled=false;
+  }
+};
+
+window.deletarLancamento=async function(id){
+  if(!confirm("Excluir este lançamento?")) return;
+  try{
+    const snap=lancamentos.find(l=>l.id===id);
+    if(snap && typeof addLixeira==="function") addLixeira("Lançamento","lancamentos",snap);
+    await deleteDoc(doc(db,"lancamentos",id));
+    toast("Lançamento removido.");
+    await carregarFinanceiro();
+    renderExtrato();
+  }catch(e){ toast(firebaseErrorMessage(e),"err"); }
+};
+
+window.alternarConciliado=async function(id){
+  const l=lancamentos.find(x=>x.id===id);
+  if(!l) return;
+  try{
+    await updateDoc(doc(db,"lancamentos",id),{conciliado:!l.conciliado});
+    await carregarFinanceiro();
+    renderExtrato();
+  }catch(e){ toast(firebaseErrorMessage(e),"err"); }
+};
+
+window.confirmarPagamento=async function(id){
+  const l=lancamentos.find(x=>x.id===id);
+  if(!l) return;
+  try{
+    await updateDoc(doc(db,"lancamentos",id),{status:"realizado"});
+    await carregarFinanceiro();
+    renderExtrato();
+    if(currentPage==="financeiro") renderFinanceiro();
+    toast(l.tipo==="entrada"?"Recebimento confirmado!":"Pagamento confirmado!");
+  }catch(e){ toast(firebaseErrorMessage(e),"err"); }
+};
+
+/* Espelha uma saída no módulo de Gastos, para entrar no DRE/lucro. */
+window.lancamentoParaGasto=async function(id){
+  const l=lancamentos.find(x=>x.id===id);
+  if(!l) return;
+  if(l.tipo!=="saida"){toast("Só saídas viram gasto.","warn");return;}
+  if(l.gastoId){toast("Este lançamento já foi enviado para Gastos.","warn");return;}
+  const fixas=["Aluguel","Salários e encargos","Pró-labore","Parcela de empréstimo","Internet e telefone"];
+  try{
+    const ref=await addDoc(collection(db,"gastos"),withOwner({
+      descricao:l.descricao,
+      valor:toNumber(l.valor,0),
+      tipo:fixas.includes(l.categoria)?"fixo":"variavel",
+      categoria:l.categoria||"Outros",
+      competencia:finMesDe(l.data),
+      data:l.data,
+      origemLancamentoId:l.id,
+      criadoEm:Timestamp.now()
+    }));
+    await updateDoc(doc(db,"lancamentos",id),{gastoId:ref.id,conciliado:true});
+    toast("Enviado para Gastos e conciliado!");
+    await loadData();
+    renderExtrato();
+  }catch(e){
+    console.error("LANC_PARA_GASTO_ERROR",e);
+    toast(firebaseErrorMessage(e),"err");
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   IMPORTAÇÃO DE EXTRATO (OFX / CSV)
+   ══════════════════════════════════════════════════════════════════ */
+window.finArquivoSelecionado=async function(input){
+  const file=input?.files?.[0];
+  if(!file) return;
+  const contaId=$("imp-conta")?.value||"";
+  if(!contaId){
+    toast("Selecione a conta de destino antes de escolher o arquivo","err");
+    input.value="";
+    return;
+  }
+
+  const box=$("imp-preview");
+  if(box) box.innerHTML='<div class="fin-imp-load">Lendo arquivo…</div>';
+
+  try{
+    const texto=await file.text();
+    const ehOfx=/\.ofx$/i.test(file.name)||/<STMTTRN>/i.test(texto);
+    let transacoes=[],meta={};
+
+    if(ehOfx){
+      const r=parseOFX(texto);
+      transacoes=r.transacoes;
+      meta={banco:r.bankId,conta:r.acctId,saldo:r.saldo,dataSaldo:r.dataSaldo,formato:"OFX"};
+    }else{
+      const r=parseCSVExtrato(texto);
+      if(r.erro){
+        if(box) box.innerHTML=`<div class="fin-imp-erro">⚠ ${escapeHtml(r.erro)}</div>`;
+        input.value="";
+        return;
+      }
+      transacoes=r.transacoes;
+      meta={formato:"CSV",ignoradas:r.ignoradas};
+    }
+
+    if(!transacoes.length){
+      if(box) box.innerHTML='<div class="fin-imp-erro">⚠ Nenhuma transação encontrada no arquivo.</div>';
+      input.value="";
+      return;
+    }
+
+    // Marca o que já existe no sistema para não duplicar.
+    const existentes=new Set(lancamentos.map(finChaveDedupe));
+    const analisadas=transacoes.map(t=>{
+      const cand={...t,contaId};
+      return {...cand,duplicada:existentes.has(finChaveDedupe(cand))};
+    }).sort((a,b)=>a.data.localeCompare(b.data));
+
+    finImportBuffer={contaId,meta,transacoes:analisadas,arquivo:file.name};
+    finRenderPreviewImportacao();
+  }catch(e){
+    console.error("IMPORT_ERROR",e);
+    if(box) box.innerHTML=`<div class="fin-imp-erro">⚠ Falha ao ler o arquivo: ${escapeHtml(e?.message||String(e))}</div>`;
+  }finally{
+    input.value="";
+  }
+};
+
+function finRenderPreviewImportacao(){
+  const box=$("imp-preview");
+  if(!box||!finImportBuffer) return;
+  const {transacoes,meta,arquivo,contaId}=finImportBuffer;
+  const novas=transacoes.filter(t=>!t.duplicada);
+  const dups=transacoes.length-novas.length;
+  const entradas=novas.filter(t=>t.tipo==="entrada").reduce((s,t)=>s+t.valor,0);
+  const saidas=novas.filter(t=>t.tipo==="saida").reduce((s,t)=>s+t.valor,0);
+
+  const linhas=transacoes.map((t,i)=>`
+    <tr class="${t.duplicada?"fin-dup":""}">
+      <td><input type="checkbox" ${t.duplicada?"":"checked"} data-imp-idx="${i}" class="fin-imp-chk"/></td>
+      <td class="td-mono">${finDataBr(t.data)}</td>
+      <td>${escapeHtml(t.descricao)}</td>
+      <td><span class="chip ${t.tipo==="entrada"?"fin-chip-in":"fin-chip-out"}">${t.tipo==="entrada"?"↑ Entrada":"↓ Saída"}</span></td>
+      <td class="td-mono" style="text-align:right;font-weight:700">${fmtMoney(t.valor)}</td>
+      <td>${t.duplicada?'<span class="fin-tag-dup">já existe</span>':""}</td>
+    </tr>`).join("");
+
+  box.innerHTML=`
+    <div class="fin-imp-hd">
+      <div>
+        <div class="fin-imp-title">${escapeHtml(arquivo)} · ${meta.formato}</div>
+        <div class="fin-imp-sub">Destino: ${escapeHtml(finContaLabel(contaId))}${meta.conta?` · extrato da conta ${escapeHtml(meta.conta)}`:""}</div>
+      </div>
+      ${meta.saldo!==null&&meta.saldo!==undefined?`<div class="fin-imp-saldo"><span>Saldo no extrato</span><strong>${fmtMoney(meta.saldo)}</strong></div>`:""}
+    </div>
+    <div class="fin-imp-stats">
+      <div><span>Novas</span><strong>${novas.length}</strong></div>
+      <div><span>Duplicadas</span><strong>${dups}</strong></div>
+      <div><span>Entradas</span><strong class="fin-pos">${fmtMoney(entradas)}</strong></div>
+      <div><span>Saídas</span><strong class="fin-neg">${fmtMoney(saidas)}</strong></div>
+    </div>
+    <div class="fin-imp-tbl-wrap">
+      <table class="gtbl fin-imp-tbl">
+        <thead><tr><th style="width:34px"></th><th>Data</th><th>Descrição</th><th>Tipo</th><th style="text-align:right">Valor</th><th></th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <div class="fin-imp-actions">
+      <button class="btn-outline" onclick="finCancelarImportacao()">Cancelar</button>
+      <button class="btn-save" id="btn-confirmar-import" onclick="finConfirmarImportacao()">Importar selecionados</button>
+    </div>`;
+}
+
+window.finCancelarImportacao=function(){
+  finImportBuffer=null;
+  const box=$("imp-preview");
+  if(box) box.innerHTML="";
+};
+
+window.finConfirmarImportacao=async function(){
+  if(!finImportBuffer){toast("Nada para importar.","warn");return;}
+  const marcados=[...document.querySelectorAll(".fin-imp-chk")]
+    .filter(c=>c.checked)
+    .map(c=>finImportBuffer.transacoes[Number(c.dataset.impIdx)])
+    .filter(Boolean);
+  if(!marcados.length){toast("Selecione ao menos uma transação.","warn");return;}
+
+  const btn=$("btn-confirmar-import");
+  if(btn){btn.disabled=true;btn.textContent="Importando…";}
+  try{
+    // Grava em blocos para não estourar limite de conexões do Firestore.
+    const lote=25;
+    for(let i=0;i<marcados.length;i+=lote){
+      await Promise.all(marcados.slice(i,i+lote).map(t=>addDoc(collection(db,"lancamentos"),withOwner({
+        contaId:finImportBuffer.contaId,
+        data:t.data,
+        descricao:t.descricao,
+        valor:toNumber(t.valor,0),
+        tipo:t.tipo,
+        categoria:finCategoriaAutomatica(t.descricao,t.tipo),
+        status:"realizado",
+        competencia:finMesDe(t.data),
+        conciliado:false,
+        origem:finImportBuffer.meta.formato==="OFX"?"ofx":"csv",
+        fitid:t.fitid||"",
+        gastoId:null,
+        criadoEm:Timestamp.now()
+      }))));
+    }
+    try{
+      await updateDoc(doc(db,"contasBancarias",finImportBuffer.contaId),{
+        conexao:{tipo:finImportBuffer.meta.formato==="OFX"?"ofx":"csv",provedor:"",ultimaSync:Timestamp.now()}
+      });
+    }catch(e){ console.warn("SYNC_STAMP_WARN",e); }
+
+    toast(`${marcados.length} lançamento(s) importado(s)!`);
+    finCancelarImportacao();
+    await carregarFinanceiro();
+    finPopularSelects();
+    renderExtrato();
+  }catch(e){
+    console.error("CONFIRMAR_IMPORT_ERROR",e);
+    toast(firebaseErrorMessage(e),"err");
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent="Importar selecionados";}
+  }
+};
+
+/* Classifica pelo texto do extrato — chute inicial, editável depois. */
+function finCategoriaAutomatica(descricao,tipo){
+  const d=normalize(descricao);
+  if(tipo==="entrada"){
+    if(/pix|ted|doc|transf/.test(d)) return "Faturamento de lotes";
+    if(/rendiment|aplicac|cdb|poupanc/.test(d)) return "Rendimento de aplicação";
+    if(/estorno|devoluc/.test(d)) return "Estorno / Devolução";
+    return "Outras entradas";
+  }
+  if(/salario|folha|fgts|inss|rescis/.test(d)) return "Salários e encargos";
+  if(/aluguel|locac/.test(d)) return "Aluguel";
+  if(/energia|cemig|enel|copel|light|cpfl|agua|sabesp|saneam/.test(d)) return "Energia e água";
+  if(/internet|vivo|claro|tim|oi |telefon/.test(d)) return "Internet e telefone";
+  if(/darf|das |simples|imposto|iss|icms|tribut/.test(d)) return "Impostos e taxas";
+  if(/tarifa|cesta|anuidade|manutencao de conta|iof|juros/.test(d)) return "Tarifas bancárias";
+  if(/emprestim|financiam|parcela|consign/.test(d)) return "Parcela de empréstimo";
+  if(/frete|transport|correio|uber|combustivel|posto/.test(d)) return "Transporte / Frete";
+  if(/manutenc|conserto|mecanic|peca/.test(d)) return "Manutenção de máquinas";
+  return "Outras saídas";
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER — CONTAS
+   ══════════════════════════════════════════════════════════════════ */
+function renderContas(){
+  finPopularSelects();
+  const dataEl=$("conta-saldo-data");
+  if(dataEl && !dataEl.value) dataEl.value=finHoje();
+
+  const cont=$("contas-lista");
+  if(!cont) return;
+
+  if(!contasBancarias.length){
+    cont.innerHTML='<div class="empty-state"><div class="ei">🏦</div><p>Nenhuma conta cadastrada. Cadastre a primeira acima para começar.</p></div>';
+    if($("contas-saldo-total")) $("contas-saldo-total").textContent=fmtMoney(0);
+    if($("contas-qtd")) $("contas-qtd").textContent="0";
+    return;
+  }
+
+  if($("contas-saldo-total")) $("contas-saldo-total").textContent=fmtMoney(finSaldoTotal());
+  if($("contas-qtd")) $("contas-qtd").textContent=String(contasBancarias.filter(c=>c.ativa!==false).length);
+
+  cont.innerHTML=contasBancarias.map(c=>{
+    const saldo=finSaldoConta(c.id);
+    const qtd=lancamentos.filter(l=>l.contaId===c.id).length;
+    const conx=c.conexao||{};
+    const sync=conx.ultimaSync?.toDate?conx.ultimaSync.toDate():null;
+    const rotuloConexao=conx.tipo==="ofx"?"Extrato OFX":conx.tipo==="csv"?"Extrato CSV":"Manual";
+    return `
+      <div class="fin-conta-card ${c.ativa===false?"fin-conta-off":""}">
+        <div class="fin-conta-top">
+          <div class="fin-conta-ident">
+            <div class="fin-conta-badge">${escapeHtml(String(c.codigoBanco||"999"))}</div>
+            <div>
+              <div class="fin-conta-nome">${escapeHtml(c.nome||"Conta")}</div>
+              <div class="fin-conta-sub">${escapeHtml(finBancoNome(c.codigoBanco))} · ${escapeHtml(c.tipo||"corrente")}${c.agencia?` · Ag. ${escapeHtml(c.agencia)}`:""}${c.conta?` · C/C ${escapeHtml(c.conta)}`:""}</div>
+            </div>
+          </div>
+          <div class="fin-conta-saldo ${saldo<0?"fin-neg":"fin-pos"}">${fmtMoney(saldo)}</div>
+        </div>
+        <div class="fin-conta-meta">
+          <span class="fin-tag">${rotuloConexao}</span>
+          <span class="fin-tag">${qtd} lançamento(s)</span>
+          <span class="fin-tag">Saldo inicial ${fmtMoney(c.saldoInicial)}</span>
+          ${sync?`<span class="fin-tag">Última importação ${sync.toLocaleDateString("pt-BR")}</span>`:""}
+          ${c.ativa===false?'<span class="fin-tag fin-tag-off">Arquivada</span>':""}
+        </div>
+        <div class="fin-conta-acts">
+          <button class="btn-outline" onclick="navigate('fin-extrato')">Ver extrato</button>
+          <button class="btn-outline" onclick="finSincronizarConta('${c.id}')">Sincronizar</button>
+          <button class="btn-outline" onclick="alternarContaAtiva('${c.id}')">${c.ativa===false?"Reativar":"Arquivar"}</button>
+          <button class="btn-x" onclick="deletarConta('${c.id}')" title="Excluir">✕</button>
+        </div>
+      </div>`;
+  }).join("");
+}
+window.renderContas=renderContas;
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER — EXTRATO / LANÇAMENTOS
+   ══════════════════════════════════════════════════════════════════ */
+function finLancamentosFiltrados(){
+  const busca=normalize(finUi.extratoBusca||"");
+  return lancamentos.filter(l=>{
+    if(finUi.extratoConta && l.contaId!==finUi.extratoConta) return false;
+    if(finUi.extratoTipo && l.tipo!==finUi.extratoTipo) return false;
+    if(finUi.extratoStatus && (l.status||"realizado")!==finUi.extratoStatus) return false;
+    if(finUi.extratoConcil==="nao" && l.conciliado) return false;
+    if(finUi.extratoConcil==="sim" && !l.conciliado) return false;
+    if(finUi.extratoMes && finMesDe(l.data)!==finUi.extratoMes) return false;
+    if(busca && !normalize([l.descricao,l.categoria,finContaLabel(l.contaId)].join(" ")).includes(busca)) return false;
+    return true;
+  }).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+}
+
+function renderExtrato(){
+  finPopularSelects();
+  const dl=$("lanc-data");
+  if(dl && !dl.value) dl.value=finHoje();
+
+  const dados=finLancamentosFiltrados();
+  const entradas=dados.filter(l=>l.tipo==="entrada"&&l.status==="realizado").reduce((s,l)=>s+toNumber(l.valor,0),0);
+  const saidas=dados.filter(l=>l.tipo==="saida"&&l.status==="realizado").reduce((s,l)=>s+toNumber(l.valor,0),0);
+  const naoConc=dados.filter(l=>!l.conciliado).length;
+
+  if($("ext-entradas")) $("ext-entradas").textContent=fmtMoney(entradas);
+  if($("ext-saidas")) $("ext-saidas").textContent=fmtMoney(saidas);
+  if($("ext-resultado")){
+    const el=$("ext-resultado");
+    el.textContent=fmtMoney(entradas-saidas);
+    el.classList.toggle("fin-neg",entradas-saidas<0);
+    el.classList.toggle("fin-pos",entradas-saidas>=0);
+  }
+  if($("ext-naoconc")) $("ext-naoconc").textContent=String(naoConc);
+
+  const cont=$("extrato-lista");
+  if(!cont) return;
+
+  if(!contasBancarias.length){
+    cont.innerHTML='<div class="empty-state"><div class="ei">🏦</div><p>Cadastre uma conta bancária antes de lançar ou importar movimentações.</p><button class="btn-outline" style="margin-top:12px" onclick="navigate(\'fin-contas\')">Cadastrar conta</button></div>';
+    return;
+  }
+  if(!dados.length){
+    cont.innerHTML='<div class="empty-state"><div class="ei">📄</div><p>Nenhum lançamento com os filtros atuais.</p></div>';
+    return;
+  }
+
+  // Agrupa por dia para o extrato ficar parecido com o do banco.
+  const grupos={};
+  dados.forEach(l=>{ (grupos[l.data]=grupos[l.data]||[]).push(l); });
+
+  cont.innerHTML=Object.keys(grupos).sort((a,b)=>b.localeCompare(a)).map(dia=>{
+    const itens=grupos[dia];
+    const ent=itens.filter(l=>l.tipo==="entrada").reduce((s,l)=>s+toNumber(l.valor,0),0);
+    const sai=itens.filter(l=>l.tipo==="saida").reduce((s,l)=>s+toNumber(l.valor,0),0);
+    return `
+      <div class="fin-dia">
+        <div class="fin-dia-hd">
+          <span class="fin-dia-data">${finDataBr(dia)}</span>
+          <span class="fin-dia-tot">
+            <span class="fin-pos">+${fmtMoney(ent)}</span>
+            <span class="fin-neg">−${fmtMoney(sai)}</span>
+          </span>
+        </div>
+        ${itens.map(l=>{
+          const previsto=(l.status||"realizado")==="previsto";
+          return `
+          <div class="fin-lanc ${previsto?"fin-lanc-prev":""}">
+            <div class="fin-lanc-icone ${l.tipo==="entrada"?"fin-in":"fin-out"}">${l.tipo==="entrada"?"↑":"↓"}</div>
+            <div class="fin-lanc-corpo">
+              <div class="fin-lanc-desc">${escapeHtml(l.descricao||"—")}</div>
+              <div class="fin-lanc-meta">
+                ${escapeHtml(finContaLabel(l.contaId))}
+                ${l.categoria?` · ${escapeHtml(l.categoria)}`:""}
+                ${l.origem&&l.origem!=="manual"?` · importado (${escapeHtml(l.origem.toUpperCase())})`:""}
+              </div>
+            </div>
+            <div class="fin-lanc-tags">
+              ${previsto?'<span class="fin-tag fin-tag-prev">Previsto</span>':""}
+              ${l.conciliado?'<span class="fin-tag fin-tag-ok">Conciliado</span>':'<span class="fin-tag fin-tag-warn">A conciliar</span>'}
+              ${l.gastoId?'<span class="fin-tag">No DRE</span>':""}
+            </div>
+            <div class="fin-lanc-valor ${l.tipo==="entrada"?"fin-pos":"fin-neg"}">${l.tipo==="entrada"?"+":"−"}${fmtMoney(l.valor)}</div>
+            <div class="fin-lanc-acts">
+              ${previsto?`<button class="btn-edit" title="Confirmar" onclick="confirmarPagamento('${l.id}')">✓</button>`:""}
+              <button class="btn-edit" title="${l.conciliado?"Desconciliar":"Conciliar"}" onclick="alternarConciliado('${l.id}')">⇄</button>
+              ${l.tipo==="saida"&&!l.gastoId?`<button class="btn-edit" title="Enviar para Gastos/DRE" onclick="lancamentoParaGasto('${l.id}')">💸</button>`:""}
+              <button class="btn-x" title="Excluir" onclick="deletarLancamento('${l.id}')">✕</button>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>`;
+  }).join("");
+}
+window.renderExtrato=renderExtrato;
+
+window.finFiltrarExtrato=function(){
+  finUi.extratoBusca=$("extrato-busca")?.value||"";
+  finUi.extratoConta=$("extrato-conta")?.value||"";
+  finUi.extratoTipo=$("extrato-tipo")?.value||"";
+  finUi.extratoStatus=$("extrato-status")?.value||"";
+  finUi.extratoConcil=$("extrato-concil")?.value||"";
+  finUi.extratoMes=$("extrato-filtro-mes")?.value||"";
+  renderExtrato();
+};
+window.finLimparFiltros=function(){
+  ["extrato-busca","extrato-conta","extrato-tipo","extrato-status","extrato-concil","extrato-filtro-mes"].forEach(id=>{ if($(id)) $(id).value=""; });
+  finFiltrarExtrato();
+};
+window.finExportarExtrato=function(){
+  const dados=finLancamentosFiltrados();
+  if(!dados.length){toast("Nada para exportar com os filtros atuais.","warn");return;}
+  const linhas=[["Data","Conta","Descrição","Categoria","Tipo","Status","Conciliado","Valor"].join(";")];
+  dados.forEach(l=>{
+    linhas.push([
+      finDataBr(l.data),
+      finContaLabel(l.contaId),
+      String(l.descricao||"").replace(/;/g,","),
+      l.categoria||"",
+      l.tipo==="entrada"?"Entrada":"Saída",
+      l.status||"realizado",
+      l.conciliado?"Sim":"Não",
+      toNumber(l.valor,0).toFixed(2).replace(".",",")
+    ].join(";"));
+  });
+  exportCsv(`extrato-${finHoje()}.csv`,linhas.join("\n"));
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER — PAINEL FINANCEIRO
+   ══════════════════════════════════════════════════════════════════ */
+function renderFinanceiro(){
+  const hoje=finHoje(),mesAtual=finMesDe(hoje);
+  const doMes=lancamentos.filter(l=>finMesDe(l.data)===mesAtual);
+  const entradas=doMes.filter(l=>l.tipo==="entrada"&&l.status==="realizado").reduce((s,l)=>s+toNumber(l.valor,0),0);
+  const saidas=doMes.filter(l=>l.tipo==="saida"&&l.status==="realizado").reduce((s,l)=>s+toNumber(l.valor,0),0);
+  const previstos=lancamentos.filter(l=>(l.status||"realizado")==="previsto");
+  const aPagar=previstos.filter(l=>l.tipo==="saida").reduce((s,l)=>s+toNumber(l.valor,0),0);
+  const aReceber=previstos.filter(l=>l.tipo==="entrada").reduce((s,l)=>s+toNumber(l.valor,0),0);
+
+  const set=(id,v,neg)=>{
+    const el=$(id);
+    if(!el) return;
+    el.textContent=v;
+    if(neg!==undefined){ el.classList.toggle("fin-neg",neg); el.classList.toggle("fin-pos",!neg); }
+  };
+  set("fin-saldo-total",fmtMoney(finSaldoTotal()),finSaldoTotal()<0);
+  set("fin-entradas-mes",fmtMoney(entradas));
+  set("fin-saidas-mes",fmtMoney(saidas));
+  set("fin-resultado-mes",fmtMoney(entradas-saidas),entradas-saidas<0);
+  set("fin-apagar",fmtMoney(aPagar));
+  set("fin-areceber",fmtMoney(aReceber));
+  if($("fin-mes-label")) $("fin-mes-label").textContent=formatMonthLabel(mesAtual);
+
+  finRenderSaldosPorConta();
+  finRenderVencimentos();
+  finRenderGraficoFluxo();
+  finRenderTopCategorias(mesAtual);
+}
+window.renderFinanceiro=renderFinanceiro;
+
+function finRenderSaldosPorConta(){
+  const cont=$("fin-saldos-contas");
+  if(!cont) return;
+  const ativas=contasBancarias.filter(c=>c.ativa!==false);
+  if(!ativas.length){
+    cont.innerHTML='<div class="fin-vazio">Nenhuma conta ativa. <a href="javascript:void(0)" onclick="navigate(\'fin-contas\')">Cadastrar conta</a></div>';
+    return;
+  }
+  cont.innerHTML=ativas.map(c=>{
+    const s=finSaldoConta(c.id);
+    return `<div class="fin-saldo-row">
+      <div class="fin-saldo-ident">
+        <span class="fin-conta-badge sm">${escapeHtml(String(c.codigoBanco||"999"))}</span>
+        <div>
+          <div class="fin-saldo-nome">${escapeHtml(c.nome||"Conta")}</div>
+          <div class="fin-saldo-sub">${escapeHtml(finBancoNome(c.codigoBanco))}</div>
+        </div>
+      </div>
+      <div class="fin-saldo-val ${s<0?"fin-neg":"fin-pos"}">${fmtMoney(s)}</div>
+    </div>`;
+  }).join("");
+}
+
+function finRenderVencimentos(){
+  const cont=$("fin-vencimentos");
+  if(!cont) return;
+  const hoje=finHoje();
+  const prox=lancamentos
+    .filter(l=>(l.status||"realizado")==="previsto")
+    .sort((a,b)=>String(a.data).localeCompare(String(b.data)))
+    .slice(0,8);
+  if(!prox.length){
+    cont.innerHTML='<div class="fin-vazio">Nenhuma conta a pagar ou receber em aberto.</div>';
+    return;
+  }
+  cont.innerHTML=prox.map(l=>{
+    const atrasado=l.data<hoje;
+    return `<div class="fin-venc-row ${atrasado?"fin-venc-atraso":""}">
+      <div class="fin-venc-data">${finDataBr(l.data)}${atrasado?'<span class="fin-venc-flag">vencido</span>':""}</div>
+      <div class="fin-venc-desc">
+        <div>${escapeHtml(l.descricao||"—")}</div>
+        <div class="fin-venc-sub">${escapeHtml(finContaLabel(l.contaId))}${l.categoria?` · ${escapeHtml(l.categoria)}`:""}</div>
+      </div>
+      <div class="fin-venc-val ${l.tipo==="entrada"?"fin-pos":"fin-neg"}">${l.tipo==="entrada"?"+":"−"}${fmtMoney(l.valor)}</div>
+      <button class="btn-edit" title="Confirmar" onclick="confirmarPagamento('${l.id}')">✓</button>
+    </div>`;
+  }).join("");
+}
+
+function finRenderTopCategorias(mes){
+  const cont=$("fin-top-categorias");
+  if(!cont) return;
+  const gastosMes=lancamentos.filter(l=>l.tipo==="saida"&&l.status==="realizado"&&finMesDe(l.data)===mes);
+  if(!gastosMes.length){
+    cont.innerHTML='<div class="fin-vazio">Sem saídas registradas neste mês.</div>';
+    return;
+  }
+  const porCat={};
+  gastosMes.forEach(l=>{ const k=l.categoria||"Sem categoria"; porCat[k]=(porCat[k]||0)+toNumber(l.valor,0); });
+  const total=Object.values(porCat).reduce((s,v)=>s+v,0)||1;
+  cont.innerHTML=Object.entries(porCat).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([cat,v])=>{
+    const pct=Math.round(v/total*100);
+    return `<div class="fin-cat-row">
+      <div class="fin-cat-top"><span>${escapeHtml(cat)}</span><strong>${fmtMoney(v)}</strong></div>
+      <div class="fin-cat-bar"><div class="fin-cat-fill" style="width:${pct}%"></div></div>
+      <div class="fin-cat-pct">${pct}% das saídas</div>
+    </div>`;
+  }).join("");
+}
+
+function finRenderGraficoFluxo(){
+  const cv=$("fin-chart-fluxo");
+  if(!cv||typeof Chart==="undefined") return;
+
+  const meses=[];
+  const base=new Date();
+  for(let i=finUi.painelMeses-1;i>=0;i--){
+    const d=new Date(base.getFullYear(),base.getMonth()-i,1);
+    meses.push(monthKeyLocal(d));
+  }
+  const entradas=meses.map(m=>lancamentos.filter(l=>l.tipo==="entrada"&&l.status==="realizado"&&finMesDe(l.data)===m).reduce((s,l)=>s+toNumber(l.valor,0),0));
+  const saidas=meses.map(m=>lancamentos.filter(l=>l.tipo==="saida"&&l.status==="realizado"&&finMesDe(l.data)===m).reduce((s,l)=>s+toNumber(l.valor,0),0));
+  const resultado=meses.map((_,i)=>entradas[i]-saidas[i]);
+  const rotulos=meses.map(m=>{
+    const [a,mm]=m.split("-");
+    return new Date(+a,+mm-1,1).toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
+  });
+
+  try{ charts.finFluxo?.destroy(); }catch(e){}
+  charts.finFluxo=new Chart(cv.getContext("2d"),{
+    data:{
+      labels:rotulos,
+      datasets:[
+        {type:"bar",label:"Entradas",data:entradas,backgroundColor:"rgba(16,185,129,.55)",borderColor:"#10B981",borderWidth:1,borderRadius:6},
+        {type:"bar",label:"Saídas",data:saidas,backgroundColor:"rgba(239,68,68,.45)",borderColor:"#EF4444",borderWidth:1,borderRadius:6},
+        {type:"line",label:"Resultado",data:resultado,borderColor:"#93A4BD",backgroundColor:"rgba(147,164,189,.15)",borderWidth:2,tension:.35,pointRadius:3,fill:false}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{
+        legend:{labels:{usePointStyle:true,boxWidth:8}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtMoney(c.parsed.y)}`}}
+      },
+      scales:{
+        y:{ticks:{callback:v=>fmtMoney(v).replace("R$","").trim()}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   INTEGRAÇÃO COM O RESTO DO SISTEMA
+   ══════════════════════════════════════════════════════════════════ */
+const FIN_RENDERERS={financeiro:renderFinanceiro,"fin-contas":renderContas,"fin-extrato":renderExtrato};
+
+// As permissões das telas financeiras ficam na própria tabela de
+// hasPageAccess(), junto com as demais páginas do sistema.
+
+/* A navegação do app tem dois caminhos (navigate() e o clique delegado em
+   .nav-btn[data-page]), e o segundo chama uma função interna que não dá para
+   envolver daqui. Observar a classe .active cobre os dois de uma vez. */
+(function observarNavegacaoFinanceiro(){
+  const alvos=Object.keys(FIN_RENDERERS).map(p=>$("page-"+p)).filter(Boolean);
+  if(!alvos.length) return;
+  let agendado=false;
+  const obs=new MutationObserver(()=>{
+    if(agendado) return;
+    agendado=true;
+    requestAnimationFrame(()=>{
+      agendado=false;
+      const ativa=alvos.find(el=>el.classList.contains("active"));
+      if(!ativa) return;
+      const page=ativa.id.replace(/^page-/,"");
+      try{ FIN_RENDERERS[page]?.(); }
+      catch(e){ console.error("FIN_RENDER_ERROR",page,e); }
+    });
+  });
+  alvos.forEach(el=>obs.observe(el,{attributes:true,attributeFilter:["class"]}));
+})();
+
+// Recarrega contas e lançamentos junto com o resto dos dados.
+(function estenderCargaFinanceiro(){
+  const anteriorBare=loadData;
+  const complementar=async()=>{
+    await carregarFinanceiro();
+    finPopularSelects();
+    FIN_RENDERERS[currentPage]?.();
+  };
+  loadData=async function(){
+    await anteriorBare();
+    await complementar();
+  };
+  const anteriorWindow=window.loadData;
+  window.loadData=async function(){
+    await anteriorWindow();
+    await complementar();
+  };
+})();
+
 </script>
 <style>
 
@@ -11645,6 +12679,10 @@ input,select,textarea,button{font-size:16px;}
       <button class="nav-btn"        id="nav-gastos" data-page="gastos" onclick="navigate('gastos')">      <span class="nb-icon">💸</span> Gastos</button>
       <button class="nav-btn"        id="nav-historico" data-page="historico" onclick="navigate('historico')">   <span class="nb-icon">📋</span> Histórico</button>
       <button class="nav-btn"        id="nav-bancohoras" data-page="bancohoras" onclick="navigate('bancohoras')">  <span class="nb-icon">⏱</span> Banco de Horas</button>
+      <div class="nav-sec">Financeiro</div>
+      <button class="nav-btn"        id="nav-financeiro" data-page="financeiro" onclick="navigate('financeiro')"><span class="nb-icon">💰</span> Painel Financeiro</button>
+      <button class="nav-btn"        id="nav-fin-contas" data-page="fin-contas" onclick="navigate('fin-contas')"><span class="nb-icon">🏦</span> Contas Bancárias</button>
+      <button class="nav-btn"        id="nav-fin-extrato" data-page="fin-extrato" onclick="navigate('fin-extrato')"><span class="nb-icon">📄</span> Extrato & Conciliação</button>
       <div class="nav-sec">Relatórios</div>
       <button class="nav-btn"        id="nav-fat-cliente" data-page="fat-cliente" onclick="navigate('fat-cliente')"><span class="nb-icon">💼</span> Fat. por Cliente</button>
       <button class="nav-btn"        id="nav-relatorio" data-page="relatorio" onclick="navigate('relatorio')">   <span class="nb-icon">📄</span> Relatório</button>
@@ -12505,6 +13543,223 @@ input,select,textarea,button{font-size:16px;}
       </div>
     </div>
 
+<!-- PAINEL FINANCEIRO -->
+<div class="page" id="page-financeiro">
+  <div class="phd" style="margin-bottom:22px;">
+    <div class="ptitle">Painel Financeiro</div>
+    <div class="psub">Saldo das contas, fluxo de caixa e contas a pagar/receber — <span id="fin-mes-label">—</span></div>
+  </div>
+
+  <div class="fin-kpis">
+    <div class="card fin-kpi fin-kpi-destaque">
+      <div class="fin-kpi-l">🏦 Saldo em contas</div>
+      <div class="fin-kpi-v fin-pos" id="fin-saldo-total">R$ 0,00</div>
+      <div class="fin-kpi-s">Soma de todas as contas ativas</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">↑ Entradas do mês</div>
+      <div class="fin-kpi-v fin-pos" id="fin-entradas-mes">R$ 0,00</div>
+      <div class="fin-kpi-s">Recebimentos confirmados</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">↓ Saídas do mês</div>
+      <div class="fin-kpi-v fin-neg" id="fin-saidas-mes">R$ 0,00</div>
+      <div class="fin-kpi-s">Pagamentos confirmados</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">= Resultado do mês</div>
+      <div class="fin-kpi-v fin-pos" id="fin-resultado-mes">R$ 0,00</div>
+      <div class="fin-kpi-s">Entradas menos saídas</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">⏳ A pagar</div>
+      <div class="fin-kpi-v fin-neg" id="fin-apagar">R$ 0,00</div>
+      <div class="fin-kpi-s">Saídas previstas em aberto</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">⏳ A receber</div>
+      <div class="fin-kpi-v fin-pos" id="fin-areceber">R$ 0,00</div>
+      <div class="fin-kpi-s">Entradas previstas em aberto</div>
+    </div>
+  </div>
+
+  <div class="fin-grid-2">
+    <div class="card">
+      <div class="chd">Fluxo de caixa — últimos 6 meses</div>
+      <div class="fin-chart-box"><canvas id="fin-chart-fluxo"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="chd">Saldo por conta</div>
+      <div id="fin-saldos-contas"><div class="fin-vazio">Carregando…</div></div>
+    </div>
+  </div>
+
+  <div class="fin-grid-2">
+    <div class="card">
+      <div class="chd">Próximos vencimentos</div>
+      <div id="fin-vencimentos"><div class="fin-vazio">Carregando…</div></div>
+    </div>
+    <div class="card">
+      <div class="chd">Para onde foi o dinheiro este mês</div>
+      <div id="fin-top-categorias"><div class="fin-vazio">Carregando…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTAS BANCÁRIAS -->
+<div class="page" id="page-fin-contas">
+  <div class="phd" style="margin-bottom:22px;">
+    <div class="ptitle">Contas Bancárias</div>
+    <div class="psub">Cadastre cada banco onde a facção movimenta dinheiro — o saldo é calculado pelos lançamentos</div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="chd">Nova conta</div>
+    <div class="fg fin-form">
+      <div class="ff sp4"><label>Nome da conta *</label><input id="conta-nome" type="text" placeholder="Ex: Itaú Principal, Caixa da facção..."/></div>
+      <div class="ff sp4"><label>Banco *</label><select id="conta-banco"></select></div>
+      <div class="ff sp4"><label>Tipo</label>
+        <select id="conta-tipo">
+          <option value="corrente">Conta corrente</option>
+          <option value="poupanca">Poupança</option>
+          <option value="pagamento">Conta de pagamento / digital</option>
+          <option value="caixa">Dinheiro em caixa</option>
+        </select>
+      </div>
+      <div class="ff sp3"><label>Agência</label><input id="conta-agencia" type="text" placeholder="Opcional"/></div>
+      <div class="ff sp3"><label>Conta</label><input id="conta-numero" type="text" placeholder="Opcional"/></div>
+      <div class="ff sp3"><label>Saldo inicial (R$)</label><input id="conta-saldo" type="number" step="0.01" placeholder="0,00"/></div>
+      <div class="ff sp3"><label>Data do saldo inicial</label><input id="conta-saldo-data" type="date"/></div>
+    </div>
+    <button type="button" class="btn-save" id="btn-salvar-conta" onclick="salvarConta()">+ Cadastrar conta</button>
+  </div>
+
+  <div class="fin-kpis fin-kpis-2">
+    <div class="card fin-kpi fin-kpi-destaque">
+      <div class="fin-kpi-l">💰 Saldo consolidado</div>
+      <div class="fin-kpi-v fin-pos" id="contas-saldo-total">R$ 0,00</div>
+      <div class="fin-kpi-s">Todas as contas ativas somadas</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">🏦 Contas ativas</div>
+      <div class="fin-kpi-v" id="contas-qtd">0</div>
+      <div class="fin-kpi-s">Contas em uso hoje</div>
+    </div>
+  </div>
+
+  <div id="contas-lista"><div class="empty-state"><div class="ei">🏦</div><p>Nenhuma conta cadastrada.</p></div></div>
+
+  <div class="card fin-aviso">
+    <div class="chd">Como funciona a conexão com o banco</div>
+    <p>O aplicativo roda inteiro no navegador, então a ligação com o banco é feita pelo <strong>extrato OFX</strong> — o mesmo arquivo que Itaú, Bradesco, Caixa, Banco do Brasil, Nubank, Inter, Sicoob, Sicredi e C6 disponibilizam no internet banking. Baixe o extrato do período, importe na aba <strong>Extrato</strong> e as movimentações entram automaticamente, sem digitar nada e sem repetir o que já foi importado.</p>
+    <p>Conexão automática e contínua (Open Finance Brasil, API direta do banco ou agregadores como Pluggy e Belvo) exige um servidor próprio com certificado digital — chaves de banco nunca podem ficar no navegador. O passo a passo para habilitar isso está no arquivo <strong>FINANCEIRO.md</strong> do repositório.</p>
+  </div>
+</div>
+
+<!-- EXTRATO E LANÇAMENTOS -->
+<div class="page" id="page-fin-extrato">
+  <div class="phd" style="margin-bottom:22px;">
+    <div class="ptitle">Extrato e Lançamentos</div>
+    <div class="psub">Importe o extrato do banco em OFX/CSV ou lance manualmente — depois concilie o que já está no sistema</div>
+  </div>
+
+  <div class="card fin-import-card" style="margin-bottom:16px">
+    <div class="chd">📥 Importar extrato do banco</div>
+    <div class="fg">
+      <div class="ff"><label>Conta de destino *</label><select id="imp-conta"></select></div>
+      <div class="ff">
+        <label>Arquivo do extrato (.ofx ou .csv) *</label>
+        <input id="imp-arquivo" type="file" accept=".ofx,.csv,.txt,text/csv" onchange="finArquivoSelecionado(this)"/>
+        <small>Baixe o extrato no app ou internet banking e escolha o arquivo. Transações já importadas são detectadas e ignoradas.</small>
+      </div>
+    </div>
+    <div id="imp-preview"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="chd">Lançamento manual</div>
+    <div class="fg fin-form">
+      <div class="ff sp3"><label>Conta *</label><select id="lanc-conta"></select></div>
+      <div class="ff sp2"><label>Data *</label><input id="lanc-data" type="date"/></div>
+      <div class="ff sp7"><label>Descrição *</label><input id="lanc-desc" type="text" placeholder="Ex: Pagamento de fornecedor de linha"/></div>
+      <div class="ff sp3"><label>Valor (R$) *</label><input id="lanc-valor" type="number" step="0.01" min="0" placeholder="0,00"/></div>
+      <div class="ff sp3"><label>Tipo *</label>
+        <select id="lanc-tipo" onchange="finAtualizarCategorias()">
+          <option value="saida">↓ Saída (pagamento)</option>
+          <option value="entrada">↑ Entrada (recebimento)</option>
+        </select>
+      </div>
+      <div class="ff sp3"><label>Categoria</label><select id="lanc-categoria"></select></div>
+      <div class="ff sp3"><label>Situação *</label>
+        <select id="lanc-status">
+          <option value="realizado">Já caiu na conta</option>
+          <option value="previsto">Previsto (a pagar / a receber)</option>
+        </select>
+      </div>
+    </div>
+    <button type="button" class="btn-save" id="btn-salvar-lanc" onclick="salvarLancamento()">+ Registrar lançamento</button>
+  </div>
+
+  <div class="fin-kpis fin-kpis-4">
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">↑ Entradas</div>
+      <div class="fin-kpi-v fin-pos" id="ext-entradas">R$ 0,00</div>
+      <div class="fin-kpi-s">No filtro atual</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">↓ Saídas</div>
+      <div class="fin-kpi-v fin-neg" id="ext-saidas">R$ 0,00</div>
+      <div class="fin-kpi-s">No filtro atual</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">= Resultado</div>
+      <div class="fin-kpi-v fin-pos" id="ext-resultado">R$ 0,00</div>
+      <div class="fin-kpi-s">Entradas menos saídas</div>
+    </div>
+    <div class="card fin-kpi">
+      <div class="fin-kpi-l">⇄ A conciliar</div>
+      <div class="fin-kpi-v" id="ext-naoconc">0</div>
+      <div class="fin-kpi-s">Lançamentos sem conferência</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="fg fin-form">
+      <div class="ff sp4"><label>Busca</label><input id="extrato-busca" type="text" placeholder="Descrição, categoria, conta..." oninput="finFiltrarExtrato()"/></div>
+      <div class="ff sp3"><label>Conta</label><select id="extrato-conta" onchange="finFiltrarExtrato()"><option value="">Todas as contas</option></select></div>
+      <div class="ff sp2"><label>Mês</label><input id="extrato-filtro-mes" type="month" onchange="finFiltrarExtrato()"/></div>
+      <div class="ff sp3"><label>Tipo</label>
+        <select id="extrato-tipo" onchange="finFiltrarExtrato()">
+          <option value="">Entradas e saídas</option>
+          <option value="entrada">Só entradas</option>
+          <option value="saida">Só saídas</option>
+        </select>
+      </div>
+      <div class="ff sp3"><label>Situação</label>
+        <select id="extrato-status" onchange="finFiltrarExtrato()">
+          <option value="">Todas</option>
+          <option value="realizado">Já caiu</option>
+          <option value="previsto">Previsto</option>
+        </select>
+      </div>
+      <div class="ff sp3"><label>Conciliação</label>
+        <select id="extrato-concil" onchange="finFiltrarExtrato()">
+          <option value="">Todos</option>
+          <option value="nao">Só a conciliar</option>
+          <option value="sim">Só conciliados</option>
+        </select>
+      </div>
+      <div class="ff sp6" style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;">
+        <button class="btn-outline" onclick="finLimparFiltros()">Limpar filtros</button>
+        <button class="btn-outline" onclick="finExportarExtrato()">⬇ Exportar CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="extrato-lista"><div class="empty-state"><div class="ei">📄</div><p>Nenhum lançamento.</p></div></div>
+</div>
+
+
   </main>
   </div><!-- /.app-body -->
 </div><!-- /#app-shell -->
@@ -12620,6 +13875,195 @@ input,select,textarea,button{font-size:16px;}
     <div id="fc-clientes-lista"><div class="empty-state"><div class="ei">👤</div><p>Nenhum cliente cadastrado.</p></div></div>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MÓDULO FINANCEIRO — Painel, Contas bancárias e Extrato
+     ══════════════════════════════════════════════════════════════ -->
+
+<style id="mello-financeiro-styles">
+/* ════════════════════════════════════════════════════════════════
+   MÓDULO FINANCEIRO — usa os tokens de tema já existentes,
+   então acompanha automaticamente os temas claro e escuro.
+   ════════════════════════════════════════════════════════════════ */
+
+.fin-pos{color:var(--green)!important;}
+.fin-neg{color:var(--red)!important;}
+
+/* ── KPIs ── */
+.fin-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px;}
+.fin-kpis.fin-kpis-4{grid-template-columns:repeat(4,1fr);}
+.fin-kpis.fin-kpis-2{grid-template-columns:repeat(2,1fr);}
+.fin-kpi{padding:16px 18px!important;border-top:3px solid var(--bd3);}
+.fin-kpi-destaque{border-top-color:var(--accent);}
+.fin-kpi-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);margin-bottom:8px;}
+.fin-kpi-v{font-family:var(--fm);font-size:21px;font-weight:800;color:var(--t);line-height:1.15;}
+.fin-kpi-s{font-size:11px;color:var(--t3);margin-top:4px;}
+
+/* ── Grades ── */
+.fin-grid-2{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-bottom:16px;align-items:start;}
+.fin-chart-box{position:relative;height:280px;}
+
+/* ── Contas bancárias ── */
+.fin-conta-card{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r2);padding:16px 18px;margin-bottom:12px;transition:border-color .18s ease;}
+.fin-conta-card:hover{border-color:var(--bd3);}
+.fin-conta-off{opacity:.55;}
+.fin-conta-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;}
+.fin-conta-ident{display:flex;gap:12px;align-items:center;min-width:0;}
+.fin-conta-badge{flex:0 0 auto;width:44px;height:44px;border-radius:11px;background:var(--bg4);border:1px solid var(--bd2);display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:12px;font-weight:700;color:var(--t2);}
+.fin-conta-badge.sm{width:34px;height:34px;border-radius:9px;font-size:10px;}
+.fin-conta-nome{font-size:15px;font-weight:700;color:var(--t);}
+.fin-conta-sub{font-size:11.5px;color:var(--t3);margin-top:2px;}
+.fin-conta-saldo{font-family:var(--fm);font-size:22px;font-weight:800;white-space:nowrap;}
+.fin-conta-meta{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 10px;}
+.fin-conta-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.fin-conta-acts .btn-outline{font-size:11.5px;padding:6px 12px;}
+
+/* ── Etiquetas ── */
+.fin-tag{display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--bg4);border:1px solid var(--bd2);color:var(--t3);white-space:nowrap;}
+.fin-tag-ok{background:var(--success-soft,rgba(16,185,129,.13));border-color:var(--success-line,rgba(16,185,129,.28));color:var(--green);}
+.fin-tag-warn{background:var(--warning-soft,rgba(245,158,11,.13));border-color:var(--warning-line,rgba(245,158,11,.28));color:var(--orange);}
+.fin-tag-prev{background:rgba(147,164,189,.14);border-color:rgba(147,164,189,.3);color:var(--t2);}
+.fin-tag-off{background:var(--danger-soft,rgba(239,68,68,.12));border-color:var(--danger-line,rgba(239,68,68,.26));color:var(--red);}
+
+/* ── Extrato ── */
+.fin-dia{margin-bottom:14px;border:1px solid var(--bd);border-radius:var(--r2);overflow:hidden;background:var(--bg2);}
+.fin-dia-hd{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:var(--bg3);border-bottom:1px solid var(--bd);}
+.fin-dia-data{font-family:var(--fm);font-size:12px;font-weight:700;color:var(--t2);letter-spacing:.3px;}
+.fin-dia-tot{display:flex;gap:14px;font-family:var(--fm);font-size:11.5px;font-weight:700;}
+
+.fin-lanc{display:grid;grid-template-columns:34px 1fr auto auto auto;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--bd);}
+.fin-lanc:last-child{border-bottom:none;}
+.fin-lanc-prev{background:rgba(147,164,189,.05);}
+.fin-lanc-icone{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;}
+.fin-lanc-icone.fin-in{background:var(--success-soft,rgba(16,185,129,.13));color:var(--green);}
+.fin-lanc-icone.fin-out{background:var(--danger-soft,rgba(239,68,68,.12));color:var(--red);}
+.fin-lanc-corpo{min-width:0;}
+.fin-lanc-desc{font-size:13.5px;font-weight:600;color:var(--t);overflow:hidden;text-overflow:ellipsis;}
+.fin-lanc-meta{font-size:11px;color:var(--t3);margin-top:2px;}
+.fin-lanc-tags{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;}
+.fin-lanc-valor{font-family:var(--fm);font-size:14.5px;font-weight:800;white-space:nowrap;text-align:right;}
+.fin-lanc-acts{display:flex;gap:5px;}
+
+/* ── Formulários ──
+   A regra global .fg vira uma grade de 12 colunas em que cada campo sem
+   span ocupa 1/12 (~80px), estreito demais para selects com nome de banco.
+   Aqui os campos das telas financeiras recebem larguras explícitas.
+   O seletor .fg.fin-form tem especificidade maior que .fg, então vence
+   sem precisar de !important. */
+.fg.fin-form{grid-template-columns:repeat(12,minmax(0,1fr));}
+.fg.fin-form>.sp2{grid-column:span 2;}
+.fg.fin-form>.sp3{grid-column:span 3;}
+.fg.fin-form>.sp4{grid-column:span 4;}
+.fg.fin-form>.sp6{grid-column:span 6;}
+.fg.fin-form>.sp7{grid-column:span 7;}
+@media (max-width:1100px){
+  .fg.fin-form>.sp2,.fg.fin-form>.sp3{grid-column:span 4;}
+  .fg.fin-form>.sp7{grid-column:span 8;}
+}
+@media (max-width:760px){ .fg.fin-form>.ff{grid-column:1/-1;} }
+
+/* ── Importação ── */
+.fin-import-card{border-top:3px solid var(--accent);}
+/* A grade padrão .fg quebra em muitas colunas estreitas; aqui só há dois
+   campos, e o seletor de conta precisa caber o nome do banco. */
+.fin-import-card .fg{grid-template-columns:minmax(230px,1fr) minmax(320px,2fr);}
+@media (max-width:760px){ .fin-import-card .fg{grid-template-columns:1fr;} }
+.fin-import-card input[type=file]{width:100%;padding:9px 11px;border-radius:9px;border:1px dashed var(--bd3);background:var(--bg3);color:var(--t2);font-size:12.5px;cursor:pointer;}
+.fin-imp-load,.fin-imp-erro{margin-top:14px;padding:12px 14px;border-radius:9px;font-size:12.5px;font-weight:600;}
+.fin-imp-load{background:var(--bg3);border:1px solid var(--bd2);color:var(--t3);}
+.fin-imp-erro{background:var(--danger-soft,rgba(239,68,68,.12));border:1px solid var(--danger-line,rgba(239,68,68,.26));color:var(--red);}
+.fin-imp-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-top:16px;padding-bottom:12px;border-bottom:1px solid var(--bd);}
+.fin-imp-title{font-size:14px;font-weight:700;color:var(--t);}
+.fin-imp-sub{font-size:11.5px;color:var(--t3);margin-top:3px;}
+.fin-imp-saldo{text-align:right;}
+.fin-imp-saldo span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);font-weight:700;}
+.fin-imp-saldo strong{font-family:var(--fm);font-size:16px;color:var(--t);}
+.fin-imp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0;}
+.fin-imp-stats>div{background:var(--bg3);border:1px solid var(--bd);border-radius:9px;padding:9px 12px;}
+.fin-imp-stats span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);font-weight:700;margin-bottom:3px;}
+.fin-imp-stats strong{font-family:var(--fm);font-size:15px;color:var(--t);}
+.fin-imp-tbl-wrap{max-height:340px;overflow:auto;border:1px solid var(--bd);border-radius:9px;}
+.fin-imp-tbl{margin:0;}
+.fin-imp-tbl thead th{position:sticky;top:0;background:var(--bg3);z-index:1;}
+.fin-imp-tbl tr.fin-dup{opacity:.5;}
+.fin-tag-dup{font-size:10px;font-weight:700;color:var(--orange);}
+.fin-imp-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px;}
+.fin-chip-in{background:var(--success-soft,rgba(16,185,129,.13))!important;color:var(--green)!important;}
+.fin-chip-out{background:var(--danger-soft,rgba(239,68,68,.12))!important;color:var(--red)!important;}
+
+/* ── Painel: saldos, vencimentos, categorias ── */
+.fin-vazio{padding:18px 4px;font-size:12.5px;color:var(--t3);text-align:center;}
+.fin-vazio a{color:var(--accent);font-weight:600;}
+.fin-saldo-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bd);}
+.fin-saldo-row:last-child{border-bottom:none;}
+.fin-saldo-ident{display:flex;align-items:center;gap:10px;min-width:0;}
+.fin-saldo-nome{font-size:13px;font-weight:600;color:var(--t);}
+.fin-saldo-sub{font-size:11px;color:var(--t3);}
+.fin-saldo-val{font-family:var(--fm);font-size:15px;font-weight:800;white-space:nowrap;}
+
+.fin-venc-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd);}
+.fin-venc-row:last-child{border-bottom:none;}
+.fin-venc-atraso .fin-venc-data{color:var(--red);}
+.fin-venc-data{font-family:var(--fm);font-size:11.5px;font-weight:700;color:var(--t2);white-space:nowrap;}
+.fin-venc-flag{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--red);}
+.fin-venc-desc{min-width:0;font-size:13px;font-weight:600;color:var(--t);}
+.fin-venc-sub{font-size:11px;font-weight:400;color:var(--t3);margin-top:2px;}
+.fin-venc-val{font-family:var(--fm);font-size:14px;font-weight:800;white-space:nowrap;}
+
+.fin-cat-row{margin-bottom:13px;}
+.fin-cat-top{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--t2);margin-bottom:5px;}
+.fin-cat-top strong{font-family:var(--fm);color:var(--t);}
+.fin-cat-bar{height:7px;border-radius:999px;background:var(--bg4);overflow:hidden;}
+.fin-cat-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2,var(--accent)));}
+.fin-cat-pct{font-size:10.5px;color:var(--t3);margin-top:4px;}
+
+/* ── Aviso sobre conexão bancária ── */
+.fin-aviso{margin-top:18px;border-left:3px solid var(--accent);}
+.fin-aviso p{font-size:12.5px;line-height:1.65;color:var(--t3);margin:0 0 10px;}
+.fin-aviso p:last-child{margin-bottom:0;}
+.fin-aviso strong{color:var(--t2);}
+
+/* ── Responsivo ── */
+@media (max-width:1200px){
+  .fin-kpis{grid-template-columns:repeat(3,1fr);}
+  .fin-kpis.fin-kpis-4{grid-template-columns:repeat(2,1fr);}
+}
+@media (max-width:900px),(max-width:1100px){
+  .fin-grid-2{grid-template-columns:1fr;}
+}
+@media (max-width:900px){
+  .fin-kpis,.fin-kpis.fin-kpis-4,.fin-kpis.fin-kpis-2{grid-template-columns:repeat(2,1fr);}
+  .fin-imp-stats{grid-template-columns:repeat(2,1fr);}
+  .fin-lanc{grid-template-columns:30px 1fr auto;grid-template-areas:"icone corpo valor" ". tags tags" ". acts acts";row-gap:7px;}
+  .fin-lanc-icone{grid-area:icone;}
+  .fin-lanc-corpo{grid-area:corpo;}
+  .fin-lanc-valor{grid-area:valor;}
+  .fin-lanc-tags{grid-area:tags;justify-content:flex-start;}
+  .fin-lanc-acts{grid-area:acts;}
+  .fin-conta-saldo{font-size:19px;}
+  .fin-venc-row{grid-template-columns:auto 1fr auto;row-gap:6px;}
+  .fin-chart-box{height:240px;}
+}
+@media (max-width:560px){
+  .fin-kpis,.fin-kpis.fin-kpis-4,.fin-kpis.fin-kpis-2{grid-template-columns:1fr;}
+}
+body.mobile-view .fin-grid-2{grid-template-columns:1fr;}
+body.mobile-view .fin-kpis,
+body.mobile-view .fin-kpis.fin-kpis-4,
+body.mobile-view .fin-kpis.fin-kpis-2{grid-template-columns:repeat(2,1fr);}
+
+/* Em telas realmente estreitas o valor não cabe em duas colunas e acaba
+   cortado. Precisa vir depois — e com a mesma especificidade — das regras
+   body.mobile-view acima, que não respeitam largura por si só. */
+@media (max-width:560px){
+  .fin-kpis,.fin-kpis.fin-kpis-4,.fin-kpis.fin-kpis-2,
+  body.mobile-view .fin-kpis,
+  body.mobile-view .fin-kpis.fin-kpis-4,
+  body.mobile-view .fin-kpis.fin-kpis-2{grid-template-columns:1fr;}
+  .fin-kpi-v{font-size:19px;}
+}
+</style>
+
 
 <!-- MODAL EDITAR LOTE -->
 <div id="modal-editar-lote" class="modal-overlay" onclick="if(event.target===this)fecharModalEditarLote()">
