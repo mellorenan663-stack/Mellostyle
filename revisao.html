@@ -121,6 +121,14 @@
 .lc-prog-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#2E52C9,#7BA0FF);}
 .lc-prog-txt{margin-top:5px;font-size:11.5px;color:var(--t3);}
 .lc-prog-txt b{color:var(--accent);font-family:var(--fm);}
+
+/* meta por grupo de tamanho */
+.meta-hoje{height:44px;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:11px;
+  background:rgba(76,123,243,.10);border:1px solid rgba(76,123,243,.28);
+  font-family:var(--fm);font-size:19px;font-weight:800;color:var(--accent);}
+.meta-hoje span{font-size:11px;font-weight:600;color:var(--t4);}
+.meta-hoje.red{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.30);color:var(--amber);}
+.mt-sub b{color:var(--accent);font-family:var(--fm);}
 </style>
 <style>
 :root{
@@ -690,7 +698,7 @@ let lotes=[];
 let colaboradores=[];
 let revisorAtual="";
 const esc=s=>String(s==null?"":s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
-const TAMS=["P","M","G","GG","XG"];
+const TAMS=["P","M","G","GG","XG","G1","G2","G3"];
 const CORES_HEX={amarelo:"#F5C518",amarela:"#F5C518",azul:"#3B82F6","azul marinho":"#1E3A8A",marinho:"#1E3A8A",vermelho:"#EF4444",vermelha:"#EF4444",verde:"#22C55E",preto:"#1F2937",preta:"#1F2937",branco:"#7BA0FF",branca:"#7BA0FF",rosa:"#EC4899",roxo:"#8B5CF6",roxa:"#8B5CF6",lilas:"#A78BFA","lilás":"#A78BFA",laranja:"#F97316",cinza:"#9CA3AF",bege:"#D8C3A5",marrom:"#92400E",vinho:"#7F1D1D",caramelo:"#B45309",nude:"#E2C9B0",turquesa:"#14B8A6",mostarda:"#D69E2E",pink:"#EC4899",off:"#EFEAE0","off white":"#EFEAE0"};
 function corHex(nome){
   const k=String(nome||"").trim().toLowerCase();
@@ -1394,7 +1402,38 @@ aplicarSetorUI();
 
 /* ───── metas ───── */
 let metas={revisao:{hora:0,dia:0},arremate:{hora:0,dia:0},manga:{hora:0,dia:0}};
-let jornada={normal:9,sexta:6};
+let jornada={normal:9.5,sexta:6};
+/* A meta muda conforme o tamanho: peça maior rende menos por dia. */
+const GRUPOS_TAM=[
+  {key:"padrao",  nome:"P · M · G · GG", tams:["P","M","G","GG","XG"], dia:930},
+  {key:"especial",nome:"G1 · G2 · G3",   tams:["G1","G2","G3"],        dia:840}
+];
+let metasTam={padrao:{dia:930},especial:{dia:840}};
+function grupoDoTam(t){ const g=GRUPOS_TAM.find(g=>g.tams.indexOf(t)>=0); return g?g.key:"padrao"; }
+function horasHoje(){ return ehSextaHoje()?Number(jornada.sexta||0):Number(jornada.normal||0); }
+function fmtH(n){ return String(Number(n||0)).replace('.',','); }   /* 9.5 -> 9,5 */
+function metaEfetivaGrupo(k){
+  const base=Number((metasTam[k]||{}).dia||0);
+  if(!base) return 0;
+  if(ehSextaHoje()&&Number(jornada.normal)>0) return Math.round(base*Number(jornada.sexta||0)/Number(jornada.normal));
+  return base;
+}
+/* peças revisadas hoje, separadas por grupo de tamanho */
+function feitoHojePorGrupo(){
+  const cfg=S(), hoje=_hojeStr(), out={padrao:0,especial:0};
+  (Array.isArray(lotes)?lotes:[]).forEach(l=>{
+    const log=logDe(l,cfg);
+    if(log.length){
+      log.forEach(e=>{ if(_emStr(e.em)===hoje) out[grupoDoTam(e.t)]+=Number(e.q||0); });
+      return;
+    }
+    if(!cfg.concl(l)) return; if(_emStr(l[cfg.fEm])!==hoje) return;
+    const g=getGrade(l);
+    if(g.length) g.forEach(x=>TAMS.forEach(t=>{ const q=Number(x.tam[t]||0); if(q>0) out[grupoDoTam(t)]+=q; }));
+    else out.padrao+=Number(l.qtdTotal||0);
+  });
+  return out;
+}
 let metasDocId=null;
 const ORDEM_SETORES=["revisao"];
 async function loadMetas(){
@@ -1404,7 +1443,9 @@ async function loadMetas(){
     if(snap.docs.length){
       const d=snap.docs[0]; metasDocId=d.id; const dd=d.data()||{}; const m=dd.metas||{}, j=dd.jornada||{};
       ORDEM_SETORES.forEach(k=>{ metas[k]={hora:Number((m[k]||{}).hora||0),dia:Number((m[k]||{}).dia||0)}; });
-      jornada={normal:Number(j.normal)>0?Number(j.normal):9, sexta:Number(j.sexta)>0?Number(j.sexta):6};
+      jornada={normal:Number(j.normal)>0?Number(j.normal):9.5, sexta:Number(j.sexta)>0?Number(j.sexta):6};
+      const mt=dd.metasTam||{};
+      GRUPOS_TAM.forEach(g=>{ const v=Number((mt[g.key]||{}).dia); metasTam[g.key]={dia:v>0?v:g.dia}; });
     } else { metasDocId=null; }
   }catch(err){ console.error("METAS_LOAD",err); }
   if($("view-metas")&&$("view-metas").style.display!=="none") renderMetas();
@@ -1412,8 +1453,8 @@ async function loadMetas(){
 async function salvarMetas(){
   const uid=auth.currentUser&&auth.currentUser.uid; if(!uid) return;
   try{
-    if(metasDocId){ await updateDoc(doc(db,"metasSetores",metasDocId),{...ownerFields(),metas,jornada,updatedEm:Timestamp.now()}); }
-    else { const ref=await addDoc(collection(db,"metasSetores"),{...ownerFields(),metas,jornada,criadoEm:Timestamp.now()}); metasDocId=ref.id; }
+    if(metasDocId){ await updateDoc(doc(db,"metasSetores",metasDocId),{...ownerFields(),metas,metasTam,jornada,updatedEm:Timestamp.now()}); }
+    else { const ref=await addDoc(collection(db,"metasSetores"),{...ownerFields(),metas,metasTam,jornada,criadoEm:Timestamp.now()}); metasDocId=ref.id; }
   }catch(err){ console.error("METAS_SAVE",err); toast("Não foi possível salvar a meta","err"); }
 }
 function _hojeStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -1436,48 +1477,62 @@ function metaEfetiva(k){
 }
 function renderMetas(){
   const host=$("view-metas"); if(!host) return;
-  const sexta=ehSextaHoje();
-  let metaDiaTot=0, metaHoraTot=0, feitoTot=0;
-  const cards=ORDEM_SETORES.map(k=>{
-    const cfg=SETORES[k], m=metas[k]||{hora:0,dia:0}, feito=feitoHojeSetor(k);
-    const metaHoje=metaEfetiva(k);
-    metaDiaTot+=metaHoje; metaHoraTot+=Number(m.hora||0); feitoTot+=feito;
-    const pctReal=metaHoje>0?Math.round(feito/metaHoje*100):0;
-    const pctBar=Math.min(100,pctReal);
-    const batida=metaHoje>0&&feito>=metaHoje, falta=Math.max(0,metaHoje-feito), sobra=Math.max(0,feito-metaHoje);
-    const tagSexta=(sexta&&Number(m.dia)>0&&metaHoje<Number(m.dia))?' <span class="meta-sexta">sexta · meta '+metaHoje.toLocaleString('pt-BR')+'</span>':'';
+  const sexta=ehSextaHoje(), feitos=feitoHojePorGrupo(), horas=horasHoje();
+  let feitoTot=0;
+  const cards=GRUPOS_TAM.map(g=>{
+    const base=Number((metasTam[g.key]||{}).dia||0);
+    const metaHoje=metaEfetivaGrupo(g.key);
+    const feito=Number(feitos[g.key]||0);
+    feitoTot+=feito;
+    const pct=metaHoje>0?Math.round(feito/metaHoje*100):0, pctBar=Math.min(100,pct);
+    const batida=metaHoje>0&&feito>=metaHoje;
+    const falta=Math.max(0,metaHoje-feito), sobra=Math.max(0,feito-metaHoje);
+    const porHora=(metaHoje>0&&horas>0)?Math.round(metaHoje/horas):0;
+    const reduzida=sexta&&base>0&&metaHoje<base;
     return `<div class="meta-card">
-      <div class="meta-head"><span class="meta-nome">${cfg.nome}</span>${metaHoje>0?'<span class="meta-badge'+(batida?' ok':'')+'">'+pctReal+'%</span>':''}</div>
+      <div class="meta-head">
+        <span class="meta-nome">${g.nome}</span>
+        ${metaHoje>0?`<span class="meta-badge${batida?' ok':''}">${pct}%</span>`:''}
+      </div>
       <div class="meta-inputs">
-        <label>Meta / hora<input type="number" min="0" inputmode="numeric" data-meta="${k}" data-campo="hora" value="${m.hora||''}" placeholder="0"></label>
-        <label>Meta / dia<input type="number" min="0" inputmode="numeric" data-meta="${k}" data-campo="dia" value="${m.dia||''}" placeholder="0"></label>
+        <label>Meta / dia<input type="number" min="0" inputmode="numeric" data-mt="${g.key}" value="${base||''}" placeholder="0"></label>
+        <label>Vale hoje<div class="meta-hoje${reduzida?' red':''}">${metaHoje.toLocaleString('pt-BR')}<span>pçs</span></div></label>
       </div>
       <div class="meta-bar"><div class="meta-fill${batida?' ok':''}" style="width:${pctBar}%"></div></div>
-      <div class="meta-sub">Feito hoje: <b>${feito.toLocaleString('pt-BR')}</b>${metaHoje>0?' / '+metaHoje.toLocaleString('pt-BR')+' pçs · '+(batida?('meta batida 🎉'+(sobra>0?' +'+(pctReal-100)+'% ('+sobra.toLocaleString('pt-BR')+' acima)':'')):'faltam '+falta.toLocaleString('pt-BR')):' pçs'}${tagSexta}</div>
+      <div class="meta-sub">Feito hoje: <b>${feito.toLocaleString('pt-BR')}</b>${metaHoje>0?' / '+metaHoje.toLocaleString('pt-BR')+' pçs · '+(batida?('meta batida 🎉'+(sobra>0?' +'+sobra.toLocaleString('pt-BR'):'')):'faltam '+falta.toLocaleString('pt-BR')):' pçs'}${porHora?' · <b>'+porHora.toLocaleString('pt-BR')+'</b> pçs/h':''}${reduzida?' <span class="meta-sexta">sexta · '+fmtH(jornada.sexta)+'h de '+fmtH(jornada.normal)+'h</span>':''}</div>
     </div>`;
   }).join("");
-  const pctTotReal=metaDiaTot>0?Math.round(feitoTot/metaDiaTot*100):0, pctTot=Math.min(100,pctTotReal), totBat=metaDiaTot>0&&feitoTot>=metaDiaTot, sobraTot=Math.max(0,feitoTot-metaDiaTot);
+
   const total=`<div class="meta-total-card">
-    <div class="mt-l">Meta do dia inteiro${sexta?' · <span class="meta-sexta">sexta</span>':''}</div>
-    <div class="mt-v">${feitoTot.toLocaleString('pt-BR')} <span>/ ${metaDiaTot.toLocaleString('pt-BR')} pçs</span></div>
-    <div class="meta-bar big"><div class="meta-fill${totBat?' ok':''}" style="width:${pctTot}%"></div></div>
-    <div class="mt-sub">${metaDiaTot>0?(totBat?('Meta do dia batida! 🎉'+(sobraTot>0?' +'+(pctTotReal-100)+'% ('+sobraTot.toLocaleString('pt-BR')+' pçs acima)':'')):pctTotReal+'% concluído · faltam '+Math.max(0,metaDiaTot-feitoTot).toLocaleString('pt-BR')+' pçs'):'Defina as metas de cada setor abaixo.'}${metaHoraTot>0?' · soma por hora: '+metaHoraTot.toLocaleString('pt-BR')+' pçs/h':''}</div>
+    <div class="mt-l">Revisado hoje${sexta?' · <span class="meta-sexta">sexta</span>':''}</div>
+    <div class="mt-v">${feitoTot.toLocaleString('pt-BR')} <span>pçs</span></div>
+    <div class="mt-sub">${GRUPOS_TAM.map(g=>g.nome.replace(/ · /g,'/')+': <b>'+Number(feitos[g.key]||0).toLocaleString('pt-BR')+'</b>').join(' · ')} — cada grupo tem a sua meta.</div>
   </div>`;
+
   const jorn=`<div class="jornada-card">
     <div class="jornada-l">⏱️ Jornada (horas/dia) — na sexta a meta cai nessa proporção</div>
     <div class="jornada-inputs">
-      <label>Seg–Qui<input type="number" min="1" step="0.5" inputmode="decimal" data-jornada="normal" value="${jornada.normal||''}" placeholder="9"></label>
+      <label>Seg–Qui<input type="number" min="1" step="0.5" inputmode="decimal" data-jornada="normal" value="${jornada.normal||''}" placeholder="9,5"></label>
       <label>Sexta<input type="number" min="0" step="0.5" inputmode="decimal" data-jornada="sexta" value="${jornada.sexta||''}" placeholder="6"></label>
     </div>
   </div>`;
-  host.innerHTML=`<div class="metas-wrap">${ORDEM_SETORES.length>1?total:''}${cards}${jorn}<div class="meta-note">As metas valem para todos. Na sexta a meta do dia cai na proporção das horas (ex.: 6h de 9h ⇒ 67% da meta). “Feito hoje” soma as peças concluídas hoje em cada setor.</div></div>`;
-  host.querySelectorAll('input[data-meta]').forEach(inp=>inp.addEventListener('change',async()=>{
-    const k=inp.dataset.meta, c=inp.dataset.campo;
-    metas[k]=metas[k]||{hora:0,dia:0}; metas[k][c]=Math.max(0,Math.round(Number(inp.value||0)));
+
+  const pctSexta=(Number(jornada.normal)>0)?Math.round(Number(jornada.sexta||0)/Number(jornada.normal)*100):0;
+  host.innerHTML=`<div class="metas-wrap">${total}${cards}${jorn}
+    <div class="meta-note">A meta muda conforme o tamanho: peça maior rende menos por dia.
+    Na sexta, a jornada menor reduz as duas metas na mesma proporção
+    (${fmtH(jornada.sexta)}h de ${fmtH(jornada.normal)}h ⇒ ${pctSexta}%).
+    “Feito hoje” soma os lançamentos do dia, separados pelo tamanho revisado.</div></div>`;
+
+  host.querySelectorAll('input[data-mt]').forEach(inp=>inp.addEventListener('change',async()=>{
+    const k=inp.dataset.mt;
+    metasTam[k]=metasTam[k]||{dia:0};
+    metasTam[k].dia=Math.max(0,Math.round(Number(inp.value||0)));
     await salvarMetas(); renderMetas();
   }));
   host.querySelectorAll('input[data-jornada]').forEach(inp=>inp.addEventListener('change',async()=>{
-    const f=inp.dataset.jornada; jornada[f]=Math.max(f==='sexta'?0:1,Number(inp.value||0));
+    const f=inp.dataset.jornada;
+    jornada[f]=Math.max(f==='sexta'?0:1,Number(String(inp.value||'').replace(',','.'))||0);
     await salvarMetas(); renderMetas();
   }));
 }
