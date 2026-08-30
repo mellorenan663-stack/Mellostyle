@@ -16388,6 +16388,341 @@ html[data-theme="escuro"] ::-webkit-scrollbar-thumb:hover{ background:linear-gra
 #dash-metas .bar-values .bar-target{ margin-left:.4em; }
 #dash-metas .bars-panel .bar-row:last-child:nth-child(odd){ grid-column:1 / -1; }  /* ímpar sozinho ocupa a linha toda */
 </style>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   MELLO STYLE — CAMADA HIPER TECNOLÓGICA
+   Boot, campo de partículas, HUD ao vivo, varredura e brilho de cursor.
+   Tudo decorativo: não recebe clique nem altera dado algum.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* o conteúdo fica acima do campo de partículas */
+#app-shell{ position:relative; z-index:1; }
+#tk-canvas{
+  position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.55;
+  display:none;
+}
+html[data-theme="escuro"] #tk-canvas{ display:block; }
+
+/* ── sequência de inicialização ── */
+#tk-boot{
+  position:fixed; inset:0; z-index:99999; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(90% 70% at 50% 40%,#0B1120,#04070F 70%);
+  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace;
+  transition:opacity .45s ease; opacity:1;
+}
+#tk-boot.tk-out{ opacity:0; pointer-events:none; }
+.tk-boot-inner{ width:min(440px,86vw); }
+.tk-boot-logo{
+  font-size:19px; font-weight:800; letter-spacing:6px; text-align:center; margin-bottom:22px;
+  background:linear-gradient(100deg,#EAF2FF,#7C9CFF 50%,#3AE7F0);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 0 18px rgba(58,231,240,.45));
+}
+.tk-boot-lines{ min-height:104px; font-size:11.5px; line-height:1.9; color:#8FA3C8; }
+.tk-boot-lines b{ color:#3AE7F0; font-weight:700; }
+.tk-boot-lines i{ color:#6EE7B7; font-style:normal; }
+.tk-boot-bar{ margin-top:18px; height:3px; border-radius:99px; background:rgba(124,156,255,.16); overflow:hidden; }
+.tk-boot-bar i{ display:block; height:100%; width:0; border-radius:99px;
+  background:linear-gradient(90deg,#7C9CFF,#3AE7F0); box-shadow:0 0 14px rgba(58,231,240,.7);
+  transition:width .12s linear; }
+
+/* ── barra de estado ao vivo ── */
+#tk-hud{
+  position:fixed; left:18px; bottom:14px; z-index:70; display:flex; align-items:center; gap:9px;
+  padding:7px 13px; border-radius:99px; pointer-events:none;
+  background:rgba(11,17,32,.82); border:1px solid rgba(124,156,255,.26);
+  backdrop-filter:blur(8px); box-shadow:0 8px 26px rgba(3,7,18,.5);
+  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace;
+  font-size:10.5px; letter-spacing:1.1px; color:#8FA3C8; text-transform:uppercase;
+}
+#tk-hud .tk-dot{ width:7px; height:7px; border-radius:50%; background:#34D399;
+  box-shadow:0 0 0 0 rgba(52,211,153,.6); animation:tkPulse 2s ease-out infinite; }
+#tk-hud .tk-sep{ opacity:.35; }
+#tk-hud #tk-clock{ color:#3AE7F0; font-weight:700; }
+html:not([data-theme="escuro"]) #tk-hud{ display:none; }
+@media (max-width:980px){ #tk-hud{ display:none!important; } }
+
+/* ── cartões: 4 cantos de HUD + varredura no hover + brilho do cursor ── */
+html[data-theme="escuro"] .card{ isolation:isolate; }
+html[data-theme="escuro"] .card::before{
+  content:""; position:absolute; inset:7px; pointer-events:none; opacity:.5;
+  background:
+    linear-gradient(90deg,var(--tk1) 0 14px,transparent 14px) 0 0/100% 2px no-repeat,
+    linear-gradient(180deg,var(--tk1) 0 14px,transparent 14px) 0 0/2px 100% no-repeat,
+    linear-gradient(270deg,var(--tk1) 0 14px,transparent 14px) 100% 0/100% 2px no-repeat,
+    linear-gradient(0deg,var(--tk1) 0 14px,transparent 14px) 100% 100%/2px 100% no-repeat;
+}
+/* brilho que segue o cursor */
+html[data-theme="escuro"] .card{ --tkx:50%; --tky:50%; }
+html[data-theme="escuro"] .card.tk-hot{
+  background-image:
+    radial-gradient(340px circle at var(--tkx) var(--tky),rgba(58,231,240,.10),transparent 62%),
+    linear-gradient(var(--tk-grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--tk-grid) 1px,transparent 1px),
+    linear-gradient(165deg,rgba(19,30,51,.92),rgba(11,17,32,.96))!important;
+  background-size:100% 100%,26px 26px,26px 26px,100% 100%!important;
+}
+
+/* ── entrada em cascata ao trocar de tela ── */
+html[data-theme="escuro"] .page.tk-enter .card,
+html[data-theme="escuro"] .page.tk-enter .krb-wrap,
+html[data-theme="escuro"] .page.tk-enter .kpi-card{
+  animation:tkIn .5s cubic-bezier(.22,1,.36,1) both;
+}
+html[data-theme="escuro"] .page.tk-enter .card:nth-child(2){ animation-delay:.05s; }
+html[data-theme="escuro"] .page.tk-enter .card:nth-child(3){ animation-delay:.10s; }
+html[data-theme="escuro"] .page.tk-enter .card:nth-child(4){ animation-delay:.15s; }
+html[data-theme="escuro"] .page.tk-enter .card:nth-child(n+5){ animation-delay:.20s; }
+@keyframes tkIn{
+  from{ opacity:0; transform:translateY(14px) scale(.985); filter:blur(2px); }
+  to{ opacity:1; transform:none; filter:none; }
+}
+
+/* ── título em decodificação ── */
+html[data-theme="escuro"] .ptitle.tk-decode{ filter:drop-shadow(0 0 12px rgba(58,231,240,.45)); }
+
+/* ── barras de progresso do sistema com listras animadas ── */
+html[data-theme="escuro"] .bar-fill,
+html[data-theme="escuro"] .prog-fill,
+html[data-theme="escuro"] .etapa-fill{
+  background-image:linear-gradient(115deg,rgba(255,255,255,.16) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.16) 50%,rgba(255,255,255,.16) 75%,transparent 75%);
+  background-size:16px 16px; animation:tkStripes 1.1s linear infinite;
+}
+@keyframes tkStripes{ from{background-position:0 0;} to{background-position:16px 0;} }
+
+@media (prefers-reduced-motion:reduce){
+  #tk-canvas{ display:none!important; }
+  html[data-theme="escuro"] *{ animation:none!important; }
+}
+
+</style>
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   MELLO STYLE — CAMADA HIPER TECNOLÓGICA (comportamento visual)
+   Nada aqui lê, grava ou calcula dado do sistema: só enfeite de tela.
+   Tudo é defensivo — se algo falhar, o app segue normal.
+   ══════════════════════════════════════════════════════════════════════ */
+(function(){
+  "use strict";
+  var REDUZ=false;
+  try{ REDUZ=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+  var escuro=function(){ try{ return document.documentElement.getAttribute("data-theme")==="escuro"; }catch(e){ return false; } };
+
+  /* ── 1) sequência de inicialização ── */
+  function boot(){
+    try{
+      if(REDUZ) return;
+      if(sessionStorage.getItem("tk_boot")) return;
+      sessionStorage.setItem("tk_boot","1");
+      var ov=document.createElement("div");
+      ov.id="tk-boot";
+      ov.innerHTML='<div class="tk-boot-inner"><div class="tk-boot-logo">MELLO STYLE</div>'+
+                   '<div class="tk-boot-lines"></div><div class="tk-boot-bar"><i></i></div></div>';
+      document.body.appendChild(ov);
+      var linhas=[
+        "&gt; iniciando núcleo <b>MELLO/OS v91</b>",
+        "&gt; conectando base de dados… <i>ok</i>",
+        "&gt; carregando lotes e produção… <i>ok</i>",
+        "&gt; sincronizando metas do mês… <i>ok</i>",
+        "&gt; sistema pronto <i>■</i>"
+      ];
+      var alvo=ov.querySelector(".tk-boot-lines"), barra=ov.querySelector(".tk-boot-bar i"), n=0;
+      var t=setInterval(function(){
+        if(n<linhas.length){
+          alvo.innerHTML+=linhas[n]+"<br>";
+          barra.style.width=Math.round(((n+1)/linhas.length)*100)+"%";
+          n++;
+        }else{
+          clearInterval(t);
+          ov.classList.add("tk-out");
+          setTimeout(function(){ try{ ov.remove(); }catch(e){} },520);
+        }
+      },230);
+      // trava de segurança: nunca deixa a tela presa
+      setTimeout(function(){ try{ clearInterval(t); ov.classList.add("tk-out"); setTimeout(function(){ ov.remove(); },520); }catch(e){} },4200);
+    }catch(e){ console.warn("TK_BOOT",e); }
+  }
+
+  /* ── 2) campo de partículas ── */
+  function particulas(){
+    try{
+      if(REDUZ) return;
+      var cv=document.createElement("canvas"); cv.id="tk-canvas";
+      document.body.insertBefore(cv,document.body.firstChild);
+      var ctx=cv.getContext("2d"), pts=[], w=0,h=0, raf=null, vivo=true;
+      function medir(){ w=cv.width=innerWidth; h=cv.height=innerHeight; }
+      function semear(){
+        pts=[]; var qtd=Math.min(46,Math.round(innerWidth/32));
+        for(var i=0;i<qtd;i++) pts.push({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*.22,vy:(Math.random()-.5)*.22});
+      }
+      function passo(){
+        if(!vivo) return;
+        ctx.clearRect(0,0,w,h);
+        for(var i=0;i<pts.length;i++){
+          var p=pts[i];
+          p.x+=p.vx; p.y+=p.vy;
+          if(p.x<0||p.x>w) p.vx*=-1;
+          if(p.y<0||p.y>h) p.vy*=-1;
+          ctx.beginPath(); ctx.arc(p.x,p.y,1.4,0,6.283);
+          ctx.fillStyle="rgba(124,156,255,.55)"; ctx.fill();
+          for(var j=i+1;j<pts.length;j++){
+            var q=pts[j], dx=p.x-q.x, dy=p.y-q.y, d=dx*dx+dy*dy;
+            if(d<19600){
+              ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
+              ctx.strokeStyle="rgba(58,231,240,"+(0.16*(1-d/19600)).toFixed(3)+")";
+              ctx.lineWidth=1; ctx.stroke();
+            }
+          }
+        }
+        raf=requestAnimationFrame(passo);
+      }
+      medir(); semear(); passo();
+      addEventListener("resize",function(){ medir(); semear(); },{passive:true});
+      document.addEventListener("visibilitychange",function(){
+        vivo=!document.hidden;
+        if(vivo){ passo(); } else if(raf){ cancelAnimationFrame(raf); }
+      });
+    }catch(e){ console.warn("TK_PARTICULAS",e); }
+  }
+
+  /* ── 3) números que sobem ── */
+  var SEL_NUM=".kpi-v,.krb-v,.cph-kpi-v,.gd-kpi-v,.sb-v,.lf-v,.gx-kpi-v,.fin-kpi-v";
+  function animarNumero(el){
+    try{
+      if(el.children.length) return;
+      var alvo=el.textContent;
+      var m=alvo.match(/-?\d[\d.]*(,\d+)?/);
+      if(!m) return;
+      var num=parseFloat(m[0].replace(/\./g,"").replace(",","."));
+      if(!isFinite(num)||Math.abs(num)<2) return;
+      var casas=(m[0].split(",")[1]||"").length;
+      var pre=alvo.slice(0,m.index), pos=alvo.slice(m.index+m[0].length);
+      var marca=String(Date.now())+Math.random();
+      el.dataset.tkTok=marca;
+      var t0=performance.now(), dur=780;
+      function passo(t){
+        if(el.dataset.tkTok!==marca) return;          // outro render assumiu
+        var p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3);
+        el.textContent=pre+(num*e).toLocaleString("pt-BR",{minimumFractionDigits:casas,maximumFractionDigits:casas})+pos;
+        if(p<1) requestAnimationFrame(passo);
+        else { el.textContent=alvo; delete el.dataset.tkTok; }   // devolve o valor exato
+      }
+      requestAnimationFrame(passo);
+    }catch(e){}
+  }
+  function animarVisiveis(){
+    try{
+      if(REDUZ) return;
+      document.querySelectorAll(SEL_NUM).forEach(function(el){
+        if(el.offsetParent===null) return;
+        animarNumero(el);
+      });
+    }catch(e){}
+  }
+
+  /* ── 4) título em decodificação ── */
+  var GLIFOS="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&/*+=<>";
+  function decodificar(el){
+    try{
+      if(REDUZ||!el||el.children.length) return;
+      var alvo=el.textContent; if(!alvo||alvo.length>48) return;
+      var marca=String(Date.now())+Math.random(); el.dataset.tkTok=marca;
+      el.classList.add("tk-decode");
+      var i=0, t=setInterval(function(){
+        if(el.dataset.tkTok!==marca){ clearInterval(t); return; }
+        i++;
+        var saida="";
+        for(var k=0;k<alvo.length;k++){
+          var c=alvo[k];
+          if(c===" "){ saida+=" "; continue; }
+          saida+= (k<i) ? c : GLIFOS[Math.floor(Math.random()*GLIFOS.length)];
+        }
+        el.textContent=saida;
+        if(i>=alvo.length){
+          clearInterval(t); el.textContent=alvo;
+          el.classList.remove("tk-decode"); delete el.dataset.tkTok;
+        }
+      },26);
+    }catch(e){}
+  }
+
+  /* ── 5) barra de estado com relógio ── */
+  function hud(){
+    try{
+      if(document.getElementById("tk-hud")) return;
+      var d=document.createElement("div"); d.id="tk-hud";
+      d.innerHTML='<span class="tk-dot"></span><span>sistema online</span>'+
+                  '<span class="tk-sep">|</span><span id="tk-clock">--:--:--</span>';
+      document.body.appendChild(d);
+      setInterval(function(){
+        try{
+          var c=document.getElementById("tk-clock"); if(!c) return;
+          c.textContent=new Date().toLocaleTimeString("pt-BR",{hour12:false});
+        }catch(e){}
+      },1000);
+    }catch(e){ console.warn("TK_HUD",e); }
+  }
+
+  /* ── 6) brilho do cursor nos cartões ── */
+  function brilhoCursor(){
+    try{
+      if(REDUZ) return;
+      document.addEventListener("mousemove",function(ev){
+        var c=ev.target&&ev.target.closest?ev.target.closest(".card"):null;
+        if(!c) return;
+        var r=c.getBoundingClientRect();
+        c.style.setProperty("--tkx",(ev.clientX-r.left)+"px");
+        c.style.setProperty("--tky",(ev.clientY-r.top)+"px");
+        if(!c.classList.contains("tk-hot")){
+          c.classList.add("tk-hot");
+          c.addEventListener("mouseleave",function h(){ c.classList.remove("tk-hot"); c.removeEventListener("mouseleave",h); });
+        }
+      },{passive:true});
+    }catch(e){}
+  }
+
+  /* ── 7) entrada em cascata + gatilhos na troca de tela ── */
+  function aoTrocarTela(){
+    try{
+      var pg=document.querySelector(".page:not([style*='display: none'])")||document.querySelector(".page.active");
+      if(pg&&!REDUZ){
+        pg.classList.remove("tk-enter"); void pg.offsetWidth; pg.classList.add("tk-enter");
+        setTimeout(function(){ try{ pg.classList.remove("tk-enter"); }catch(e){} },900);
+        var tit=pg.querySelector(".ptitle"); if(tit) decodificar(tit);
+      }
+      animarVisiveis();
+    }catch(e){}
+  }
+  function ligarNavegacao(){
+    try{
+      if(typeof window.navigate!=="function"||window.navigate.__tk) return false;
+      var orig=window.navigate;
+      var envolto=function(){
+        var r=orig.apply(this,arguments);
+        setTimeout(aoTrocarTela,140);
+        return r;
+      };
+      envolto.__tk=true;
+      window.navigate=envolto;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function iniciar(){
+    boot();
+    if(escuro()){ particulas(); hud(); brilhoCursor(); }
+    // navigate pode ser definido depois: tenta algumas vezes
+    var tentativas=0;
+    var t=setInterval(function(){
+      if(ligarNavegacao()||++tentativas>30) clearInterval(t);
+    },300);
+    setTimeout(aoTrocarTela,1200);
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",iniciar);
+  else iniciar();
+})();
+
+</script>
 </body>
 
 <!-- ── MELHORIAS UX: Voltar ao topo, load-bar, lazy spinner ── -->
