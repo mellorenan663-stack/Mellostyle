@@ -367,11 +367,12 @@ const CONFIG_DOC_ID="mello-style";
 // momento pelo botão de tema — depois disso respeita a escolha do usuário.
 function aplicarMigracaoDesignPaper(){
   try{
-    if(localStorage.getItem("mello_design_v3")) return;
+    if(localStorage.getItem("mello_design_tech")) return;
+    localStorage.setItem("mello_design_tech","1");
     localStorage.setItem("mello_design_v3","1");
-    setConfigField("tema","claro");
-    try{ if(typeof applyTheme==="function") applyTheme("claro"); }catch(_e){}
-    try{ persistConfigParcial({tema:"claro"}); }catch(_e){}
+    setConfigField("tema","escuro");
+    try{ if(typeof applyTheme==="function") applyTheme("escuro"); }catch(_e){}
+    try{ persistConfigParcial({tema:"escuro"}); }catch(_e){}
   }catch(_e){}
 }
 async function carregarConfiguracoesFirebase(){
@@ -16090,6 +16091,302 @@ html[data-theme="escuro"] #dash-agora .metas-section-title{
 /* legenda alinhada às cores da barra */
 #dash-agora .sl-dot.real{background:linear-gradient(90deg,var(--ms-ok1),var(--ms-ok2))!important;box-shadow:0 0 8px rgba(52,211,153,.55);border:none!important;}
 #dash-agora .sl-dot.open{background:repeating-linear-gradient(135deg,var(--ms-a1) 0 4px,var(--ms-a3) 4px 8px)!important;opacity:.8;border:none!important;}
+</style>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   MELLO STYLE — CAMADA TECNOLÓGICA GLOBAL
+   Mesma linguagem do painel de metas aplicada ao sistema inteiro.
+   Só aparência: nenhuma lógica, cálculo ou marcação depende daqui.
+   ══════════════════════════════════════════════════════════════════════ */
+html[data-theme="escuro"]{
+  /* superfícies navy no lugar do cinza neutro */
+  --bg:#070C18; --bg2:#0B1120; --bg3:#0E1626; --bg4:#131E33; --bg5:#1A2842;
+  --panel:#0B1120; --panel-2:#0E1626; --panel2:#0E1626;
+  --card:#0B1120; --card2:#0E1626;
+  --bd:rgba(124,156,255,.14); --bd2:rgba(124,156,255,.22); --bd3:rgba(124,156,255,.32);
+  --brd:rgba(124,156,255,.14); --line:rgba(124,156,255,.12); --line2:rgba(124,156,255,.20);
+  --dash-card-border:rgba(124,156,255,.16);
+  --t:#EAF2FF; --t1:#EAF2FF; --t2:#C6D4EE; --t3:#8FA3C8; --t4:#6C7FA3;
+  --muted:#8FA3C8; --muted2:#6C7FA3;
+  /* acentos tecnológicos */
+  --tk1:#7C9CFF; --tk2:#3AE7F0; --tk3:#B08CFF;
+  --tk-grid:rgba(124,156,255,.09);
+  --tk-edge:rgba(124,156,255,.22);
+  --tk-glow:0 0 22px rgba(58,231,240,.20);
+}
+
+/* ── fundo da aplicação: malha técnica + luz ambiente ── */
+html[data-theme="escuro"] body{
+  background-color:#070C18!important;
+  background-image:
+    linear-gradient(var(--tk-grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--tk-grid) 1px,transparent 1px),
+    radial-gradient(80% 55% at 8% 0%,rgba(58,231,240,.07),transparent 60%),
+    radial-gradient(80% 60% at 100% 100%,rgba(176,140,255,.08),transparent 60%)!important;
+  background-size:34px 34px,34px 34px,100% 100%,100% 100%!important;
+  background-attachment:fixed!important;
+}
+
+/* ── cartões: vidro escuro, malha, canto de HUD ── */
+html[data-theme="escuro"] .card,
+html[data-theme="escuro"] .modal-box,
+html[data-theme="escuro"] .kpi-card,
+html[data-theme="escuro"] .tbl-wrap{
+  position:relative;
+  background-color:#0B1120!important;
+  background-image:
+    linear-gradient(var(--tk-grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--tk-grid) 1px,transparent 1px),
+    linear-gradient(165deg,rgba(19,30,51,.92),rgba(11,17,32,.96))!important;
+  background-size:26px 26px,26px 26px,100% 100%!important;
+  border:1px solid var(--tk-edge)!important;
+  box-shadow:0 18px 44px rgba(3,7,18,.45),inset 0 1px 0 rgba(255,255,255,.03)!important;
+}
+html[data-theme="escuro"] .card::after{
+  content:""; position:absolute; right:9px; bottom:7px; width:14px; height:14px;
+  border-right:2px solid var(--tk-edge); border-bottom:2px solid var(--tk-edge);
+  border-radius:0 0 5px 0; opacity:.75; pointer-events:none;
+}
+html[data-theme="escuro"] .card:hover{
+  border-color:rgba(124,156,255,.34)!important;
+  box-shadow:0 22px 54px rgba(3,7,18,.55),0 0 0 1px rgba(58,231,240,.10)!important;
+}
+
+/* ── títulos de página: mono + brilho + ponto ao vivo ── */
+html[data-theme="escuro"] .ptitle{
+  position:relative; padding-left:19px!important;
+  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace!important;
+  letter-spacing:1.4px!important; text-transform:uppercase;
+  background:linear-gradient(100deg,#EAF2FF,var(--tk1) 55%,var(--tk2));
+  -webkit-background-clip:text; background-clip:text; color:transparent!important;
+}
+html[data-theme="escuro"] .ptitle::before{
+  content:""; position:absolute; left:0; top:50%; margin-top:-4px;
+  width:9px; height:9px; border-radius:50%; background:var(--tk2);
+  box-shadow:0 0 0 0 rgba(58,231,240,.55); animation:tkPulse 2.2s ease-out infinite;
+}
+html[data-theme="escuro"] .psub{ color:var(--t3)!important; font-family:ui-monospace,"DM Mono",monospace!important; font-size:11.5px!important; letter-spacing:.4px; }
+html[data-theme="escuro"] .phd{ border-bottom:1px solid var(--tk-edge); padding-bottom:14px; position:relative; }
+html[data-theme="escuro"] .phd::after{
+  content:""; position:absolute; left:0; bottom:-1px; height:2px; width:120px;
+  background:linear-gradient(90deg,var(--tk1),var(--tk2),transparent); border-radius:2px;
+  animation:tkScan 3.6s ease-in-out infinite;
+}
+/* ── cabeçalho de cartão ── */
+html[data-theme="escuro"] .chd{
+  position:relative; padding-left:12px!important;
+  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace!important;
+  letter-spacing:1.5px!important; color:var(--t3)!important;
+}
+html[data-theme="escuro"] .chd::before{
+  content:""; position:absolute; left:0; top:2px; bottom:2px; width:3px; border-radius:2px;
+  background:linear-gradient(180deg,var(--tk2),var(--tk1)); box-shadow:0 0 10px rgba(58,231,240,.5);
+}
+
+/* ── números de destaque (KPIs de todas as telas) ── */
+html[data-theme="escuro"] .kpi-v,
+html[data-theme="escuro"] .cph-kpi-v,
+html[data-theme="escuro"] .gd-kpi-v,
+html[data-theme="escuro"] .sb-v,
+html[data-theme="escuro"] .fin-kpi-v,
+html[data-theme="escuro"] .gx-kpi-v{
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(135deg,#FFFFFF,#8FB4FF 70%,var(--tk2));
+  -webkit-background-clip:text; background-clip:text; color:transparent!important;
+  filter:drop-shadow(0 0 12px rgba(58,231,240,.22));
+}
+html[data-theme="escuro"] .kpi-l,
+html[data-theme="escuro"] .cph-kpi-l,
+html[data-theme="escuro"] .gd-kpi-l,
+html[data-theme="escuro"] .sb-l,
+html[data-theme="escuro"] .gx-kpi-l{
+  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace!important;
+  letter-spacing:1.2px!important; text-transform:uppercase; color:var(--t3)!important;
+}
+
+/* ── tabelas: leitura de instrumentos ── */
+html[data-theme="escuro"] th{
+  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace!important;
+  letter-spacing:1.2px!important; color:var(--tk1)!important;
+  border-bottom:1px solid var(--tk-edge)!important;
+  background:linear-gradient(180deg,rgba(124,156,255,.07),transparent)!important;
+}
+html[data-theme="escuro"] td{ border-bottom:1px solid rgba(124,156,255,.09)!important; font-variant-numeric:tabular-nums; }
+html[data-theme="escuro"] tbody tr{ transition:background .16s ease; }
+html[data-theme="escuro"] tbody tr:hover{ background:linear-gradient(90deg,rgba(124,156,255,.10),rgba(58,231,240,.04) 70%,transparent)!important; }
+
+/* ── botões ── */
+html[data-theme="escuro"] .btn-save,
+html[data-theme="escuro"] button.primary,
+html[data-theme="escuro"] .btn-primary{
+  background:linear-gradient(135deg,#3B5BDB,#4C7BF3 55%,#22B8CF)!important;
+  border:1px solid rgba(58,231,240,.35)!important; color:#F2F8FF!important;
+  box-shadow:0 8px 24px rgba(59,91,219,.35),inset 0 1px 0 rgba(255,255,255,.16)!important;
+  transition:transform .16s ease,box-shadow .2s ease;
+}
+html[data-theme="escuro"] .btn-save:hover,
+html[data-theme="escuro"] .btn-primary:hover{ transform:translateY(-1px); box-shadow:0 12px 30px rgba(59,91,219,.45),var(--tk-glow)!important; }
+html[data-theme="escuro"] .btn-outline{
+  background:rgba(124,156,255,.06)!important; border:1px solid var(--tk-edge)!important;
+  color:var(--t2)!important;
+}
+html[data-theme="escuro"] .btn-outline:hover{ border-color:var(--tk1)!important; color:#EAF2FF!important; box-shadow:0 0 0 1px rgba(58,231,240,.18)!important; }
+
+/* ── campos ── */
+html[data-theme="escuro"] input,
+html[data-theme="escuro"] select,
+html[data-theme="escuro"] textarea{
+  background:rgba(9,14,28,.85)!important; border:1px solid var(--tk-edge)!important;
+  color:var(--t)!important;
+}
+html[data-theme="escuro"] input:focus,
+html[data-theme="escuro"] select:focus,
+html[data-theme="escuro"] textarea:focus{
+  outline:none!important; border-color:var(--tk2)!important;
+  box-shadow:0 0 0 3px rgba(58,231,240,.14),0 0 18px rgba(58,231,240,.12)!important;
+}
+html[data-theme="escuro"] input::placeholder,
+html[data-theme="escuro"] textarea::placeholder{ color:var(--t4)!important; }
+
+/* ── navegação lateral ── */
+html[data-theme="escuro"] .nav-btn{ position:relative; transition:background .16s ease,color .16s ease; }
+html[data-theme="escuro"] .nav-btn:hover{ background:rgba(124,156,255,.08)!important; }
+html[data-theme="escuro"] .nav-btn.active{
+  background:linear-gradient(90deg,rgba(124,156,255,.18),rgba(58,231,240,.05) 70%,transparent)!important;
+  color:#EAF2FF!important;
+}
+html[data-theme="escuro"] .nav-btn.active::before{
+  content:""; position:absolute; left:0; top:14%; bottom:14%; width:3px; border-radius:0 3px 3px 0;
+  background:linear-gradient(180deg,var(--tk2),var(--tk1)); box-shadow:0 0 12px rgba(58,231,240,.65);
+}
+
+/* ── modais ── */
+html[data-theme="escuro"] .modal-overlay{ background:rgba(4,8,18,.72)!important; backdrop-filter:blur(4px); }
+html[data-theme="escuro"] .modal-hd{ border-bottom:1px solid var(--tk-edge)!important; }
+html[data-theme="escuro"] .modal-title{
+  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace!important;
+  letter-spacing:1.2px!important; color:#EAF2FF!important;
+}
+
+/* ── estado vazio ── */
+html[data-theme="escuro"] .empty-state{ color:var(--t3)!important; }
+html[data-theme="escuro"] .empty-state .ei{ filter:drop-shadow(0 0 14px rgba(58,231,240,.30)); }
+
+/* ── barra de rolagem ── */
+html[data-theme="escuro"] ::-webkit-scrollbar{ width:11px; height:11px; }
+html[data-theme="escuro"] ::-webkit-scrollbar-track{ background:#070C18; }
+html[data-theme="escuro"] ::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,var(--tk1),#2B3F6B); border-radius:99px; border:2px solid #070C18;
+}
+html[data-theme="escuro"] ::-webkit-scrollbar-thumb:hover{ background:linear-gradient(180deg,var(--tk2),var(--tk1)); }
+
+/* ── animações compartilhadas ── */
+@keyframes tkPulse{
+  0%{box-shadow:0 0 0 0 rgba(58,231,240,.5);}
+  70%{box-shadow:0 0 0 9px rgba(58,231,240,0);}
+  100%{box-shadow:0 0 0 0 rgba(58,231,240,0);}
+}
+@keyframes tkScan{
+  0%,100%{width:120px; opacity:.95;}
+  50%{width:190px; opacity:.55;}
+}
+@media (prefers-reduced-motion:reduce){
+  html[data-theme="escuro"] *{ animation:none!important; }
+}
+
+</style>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   METAS — CADA UMA NO SEU LUGAR
+   Antes: cinco metas empilhadas numa lista contínua (tudo junto).
+   Agora: cada meta é um módulo fechado, com o seu próprio quadro.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* o painel deixa de ser lista e vira uma grade de módulos */
+#dash-metas .bars-panel{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:14px!important;
+  padding:16px!important;
+}
+/* cada meta: quadro próprio */
+#dash-metas .bar-row{
+  display:grid!important;
+  grid-template-columns:1fr auto!important;
+  grid-template-areas:
+    "label  status"
+    "values values"
+    "track  pct"!important;
+  align-items:center!important;
+  gap:10px 12px!important;
+  padding:16px 16px 14px!important;
+  border:1px solid var(--ms-edge)!important;
+  border-radius:15px!important;
+  background:
+    linear-gradient(150deg,rgba(124,156,255,.07),rgba(11,17,32,0) 55%),
+    rgba(9,14,28,.55)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  border-bottom:1px solid var(--ms-edge)!important;
+}
+#dash-metas .bar-row:hover{
+  border-color:rgba(124,156,255,.38)!important;
+  background:
+    linear-gradient(150deg,rgba(124,156,255,.13),rgba(11,17,32,0) 60%),
+    rgba(9,14,28,.62)!important;
+}
+/* faixa de cor no topo do módulo, pelo status da meta */
+#dash-metas .bar-row{ position:relative; overflow:hidden; }
+#dash-metas .bar-row::before{
+  content:""; position:absolute; left:0; right:0; top:0; height:2px;
+  background:linear-gradient(90deg,var(--ms-a1),var(--ms-a2),transparent);
+  opacity:.65;
+}
+#dash-metas .bar-row:has(.bar-fill.ok)::before{ background:linear-gradient(90deg,var(--ms-ok1),var(--ms-ok2),transparent); }
+#dash-metas .bar-row:has(.bar-fill.warn)::before{ background:linear-gradient(90deg,var(--ms-wa1),var(--ms-wa2),transparent); }
+#dash-metas .bar-row:has(.bar-fill.bad)::before{ background:linear-gradient(90deg,var(--ms-ba1),var(--ms-ba2),transparent); }
+
+/* posições dentro do módulo */
+#dash-metas .bar-label{ grid-area:label!important; font-size:13px!important; }
+#dash-metas .bar-status{ grid-area:status!important; justify-self:end!important; }
+#dash-metas .bar-values{ grid-area:values!important; text-align:left!important; font-size:14.5px!important; line-height:1.35; }
+#dash-metas .bar-values .bar-target{ display:inline-block; opacity:.75; }
+#dash-metas .bar-track{ grid-area:track!important; width:100%!important; }
+#dash-metas .bar-pct{ grid-area:pct!important; justify-self:end!important; font-size:17px!important; min-width:56px; text-align:right; }
+
+/* os cinco indicadores do topo também ganham quadro próprio */
+#dash-metas .krb-wrap,#dash-agora .krb-wrap{
+  gap:12px!important; padding:14px!important;
+}
+#dash-metas .krb,#dash-agora .krb{
+  padding:14px 15px!important;
+  border:1px solid var(--ms-edge)!important; border-radius:14px!important;
+  background:linear-gradient(160deg,rgba(124,156,255,.08),rgba(9,14,28,.45))!important;
+}
+#dash-metas .krb+.krb::before,#dash-agora .krb+.krb::before{ display:none!important; }
+
+/* o rodapé de instrumentos idem */
+#dash-metas .ledger-foot{ gap:10px!important; padding:14px!important; }
+#dash-metas .lf-item{
+  padding:11px 12px; border:1px solid var(--ms-edge); border-radius:12px;
+  background:linear-gradient(160deg,rgba(124,156,255,.06),rgba(9,14,28,.40));
+  text-align:center;
+}
+
+/* telas estreitas: uma meta por linha */
+@media (max-width:900px){
+  #dash-metas .bars-panel{ grid-template-columns:1fr!important; }
+  #dash-metas .krb-wrap,#dash-agora .krb-wrap{ grid-template-columns:repeat(2,1fr)!important; }
+  #dash-metas .ledger-foot{ grid-template-columns:repeat(2,1fr)!important; }
+}
+@media (max-width:560px){
+  #dash-metas .krb-wrap,#dash-agora .krb-wrap{ grid-template-columns:1fr!important; }
+}
+
+</style>
+<style>
+/* acabamento das metas */
+#dash-metas .bar-values .bar-target{ margin-left:.4em; }
+#dash-metas .bars-panel .bar-row:last-child:nth-child(odd){ grid-column:1 / -1; }  /* ímpar sozinho ocupa a linha toda */
 </style>
 </body>
 
