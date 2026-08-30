@@ -4806,13 +4806,7 @@ function renderMetas(){
       <div class="metas-section-title">Metas do mês — ${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
       <button class="metas-edit-btn" onclick="navigate('configuracoes')">⚙ Editar metas</button>
     </div>
-    <div class="krb-wrap">
-      ${kpi('Faturamento',fmtMoney(fat),`${pF}% da meta`,pF>=70?'up':pF>=40?'':'down')}
-      ${kpi('Lucro líquido',fmtMoney(lucro),`${pL}% da meta`,pL>=70?'up':pL>=40?'':'down')}
-      ${kpi('Margem',margem+'%',`meta ${mMargem}%`,margem>=mMargem?'up':'down')}
-      ${kpi('Produção',pecas.toLocaleString('pt-BR'),`de ${mPecas.toLocaleString('pt-BR')} pçs`,pP>=70?'up':pP>=40?'':'down')}
-      ${kpi('Custo',fmtMoney(custo),`teto ${fmtMoney(mCusto)}`,custo<=mCusto?'up':'down')}
-    </div>
+
     <div class="card bars-panel">
       ${metaRow('Faturamento',fmtMoney(fat),fmtMoney(mFat),pF,stF,lbF)}
       ${metaRow('Lucro líquido',fmtMoney(lucro),fmtMoney(mLucro),pL,stL,lbL)}
@@ -16403,29 +16397,6 @@ html[data-theme="escuro"] ::-webkit-scrollbar-thumb:hover{ background:linear-gra
 }
 html[data-theme="escuro"] #tk-canvas{ display:block; }
 
-/* ── sequência de inicialização ── */
-#tk-boot{
-  position:fixed; inset:0; z-index:99999; display:flex; align-items:center; justify-content:center;
-  background:radial-gradient(90% 70% at 50% 40%,#0B1120,#04070F 70%);
-  font-family:ui-monospace,"DM Mono",SFMono-Regular,Menlo,monospace;
-  transition:opacity .45s ease; opacity:1;
-}
-#tk-boot.tk-out{ opacity:0; pointer-events:none; }
-.tk-boot-inner{ width:min(440px,86vw); }
-.tk-boot-logo{
-  font-size:19px; font-weight:800; letter-spacing:6px; text-align:center; margin-bottom:22px;
-  background:linear-gradient(100deg,#EAF2FF,#7C9CFF 50%,#3AE7F0);
-  -webkit-background-clip:text; background-clip:text; color:transparent;
-  filter:drop-shadow(0 0 18px rgba(58,231,240,.45));
-}
-.tk-boot-lines{ min-height:104px; font-size:11.5px; line-height:1.9; color:#8FA3C8; }
-.tk-boot-lines b{ color:#3AE7F0; font-weight:700; }
-.tk-boot-lines i{ color:#6EE7B7; font-style:normal; }
-.tk-boot-bar{ margin-top:18px; height:3px; border-radius:99px; background:rgba(124,156,255,.16); overflow:hidden; }
-.tk-boot-bar i{ display:block; height:100%; width:0; border-radius:99px;
-  background:linear-gradient(90deg,#7C9CFF,#3AE7F0); box-shadow:0 0 14px rgba(58,231,240,.7);
-  transition:width .12s linear; }
-
 /* ── barra de estado ao vivo ── */
 #tk-hud{
   position:fixed; left:18px; bottom:14px; z-index:70; display:flex; align-items:center; gap:9px;
@@ -16507,41 +16478,6 @@ html[data-theme="escuro"] .etapa-fill{
   var REDUZ=false;
   try{ REDUZ=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
   var escuro=function(){ try{ return document.documentElement.getAttribute("data-theme")==="escuro"; }catch(e){ return false; } };
-
-  /* ── 1) sequência de inicialização ── */
-  function boot(){
-    try{
-      if(REDUZ) return;
-      if(sessionStorage.getItem("tk_boot")) return;
-      sessionStorage.setItem("tk_boot","1");
-      var ov=document.createElement("div");
-      ov.id="tk-boot";
-      ov.innerHTML='<div class="tk-boot-inner"><div class="tk-boot-logo">MELLO STYLE</div>'+
-                   '<div class="tk-boot-lines"></div><div class="tk-boot-bar"><i></i></div></div>';
-      document.body.appendChild(ov);
-      var linhas=[
-        "&gt; iniciando núcleo <b>MELLO/OS v91</b>",
-        "&gt; conectando base de dados… <i>ok</i>",
-        "&gt; carregando lotes e produção… <i>ok</i>",
-        "&gt; sincronizando metas do mês… <i>ok</i>",
-        "&gt; sistema pronto <i>■</i>"
-      ];
-      var alvo=ov.querySelector(".tk-boot-lines"), barra=ov.querySelector(".tk-boot-bar i"), n=0;
-      var t=setInterval(function(){
-        if(n<linhas.length){
-          alvo.innerHTML+=linhas[n]+"<br>";
-          barra.style.width=Math.round(((n+1)/linhas.length)*100)+"%";
-          n++;
-        }else{
-          clearInterval(t);
-          ov.classList.add("tk-out");
-          setTimeout(function(){ try{ ov.remove(); }catch(e){} },520);
-        }
-      },230);
-      // trava de segurança: nunca deixa a tela presa
-      setTimeout(function(){ try{ clearInterval(t); ov.classList.add("tk-out"); setTimeout(function(){ ov.remove(); },520); }catch(e){} },4200);
-    }catch(e){ console.warn("TK_BOOT",e); }
-  }
 
   /* ── 2) campo de partículas ── */
   function particulas(){
@@ -16709,7 +16645,6 @@ html[data-theme="escuro"] .etapa-fill{
   }
 
   function iniciar(){
-    boot();
     if(escuro()){ particulas(); hud(); brilhoCursor(); }
     // navigate pode ser definido depois: tenta algumas vezes
     var tentativas=0;
