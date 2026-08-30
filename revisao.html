@@ -698,7 +698,9 @@ let lotes=[];
 let colaboradores=[];
 let revisorAtual="";
 const esc=s=>String(s==null?"":s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
-const TAMS=["P","M","G","GG","XG","G1","G2","G3"];
+const TAMS=["P","M","G","GG","G1","G2","G3"];
+/* XG e G1 são o mesmo tamanho: o que vier como XG é lido como G1. */
+function tamCanon(t){ return t==="XG"?"G1":t; }
 const CORES_HEX={amarelo:"#F5C518",amarela:"#F5C518",azul:"#3B82F6","azul marinho":"#1E3A8A",marinho:"#1E3A8A",vermelho:"#EF4444",vermelha:"#EF4444",verde:"#22C55E",preto:"#1F2937",preta:"#1F2937",branco:"#7BA0FF",branca:"#7BA0FF",rosa:"#EC4899",roxo:"#8B5CF6",roxa:"#8B5CF6",lilas:"#A78BFA","lilás":"#A78BFA",laranja:"#F97316",cinza:"#9CA3AF",bege:"#D8C3A5",marrom:"#92400E",vinho:"#7F1D1D",caramelo:"#B45309",nude:"#E2C9B0",turquesa:"#14B8A6",mostarda:"#D69E2E",pink:"#EC4899",off:"#EFEAE0","off white":"#EFEAE0"};
 function corHex(nome){
   const k=String(nome||"").trim().toLowerCase();
@@ -708,7 +710,12 @@ function corHex(nome){
   let h=0; for(let i=0;i<k.length;i++) h=(h*31+k.charCodeAt(i))%360;
   return `hsl(${h},55%,58%)`;
 }
-function normTam(o){ const r={}; TAMS.forEach(t=>{const n=Number((o||{})[t]||0); if(n>0)r[t]=n;}); return r; }
+function normTam(o){
+  const src=Object.assign({},o||{});
+  const xg=Number(src.XG||0);
+  if(xg>0){ src.G1=Number(src.G1||0)+xg; delete src.XG; }   /* XG = G1 */
+  const r={}; TAMS.forEach(t=>{const n=Number(src[t]||0); if(n>0)r[t]=n;}); return r;
+}
 function tamMapTotal(m){ return TAMS.reduce((s,t)=>s+Number(m[t]||0),0); }
 // grade normalizada: [{cor, tam:{...}}] — com retrocompatibilidade p/ tamanhosQtd antigo
 function getGrade(l){
@@ -851,7 +858,7 @@ function renderPorColaborador(concluidos){
     if(log.length){   // com lançamentos: conta exatamente o que cada um fez
       log.forEach(e=>{
         const nome=(e.n||"").trim()||"Sem colaborador";
-        bump(nome, e.t&&e.t!=="_total"?e.t:null, e.c&&e.c!=="_geral"?e.c:null, Number(e.q||0)).loteIds.add(l.id);
+        bump(nome, e.t&&e.t!=="_total"?tamCanon(e.t):null, e.c&&e.c!=="_geral"?e.c:null, Number(e.q||0)).loteIds.add(l.id);
       });
       return;
     }
@@ -1405,11 +1412,11 @@ let metas={revisao:{hora:0,dia:0},arremate:{hora:0,dia:0},manga:{hora:0,dia:0}};
 let jornada={normal:9.5,sexta:6};
 /* A meta muda conforme o tamanho: peça maior rende menos por dia. */
 const GRUPOS_TAM=[
-  {key:"padrao",  nome:"P · M · G · GG", tams:["P","M","G","GG","XG"], dia:930},
-  {key:"especial",nome:"G1 · G2 · G3",   tams:["G1","G2","G3"],        dia:840}
+  {key:"padrao",  nome:"P · M · G · GG", tams:["P","M","G","GG"],           dia:930},
+  {key:"especial",nome:"G1 · G2 · G3",   tams:["G1","G2","G3","XG"],       dia:840}
 ];
 let metasTam={padrao:{dia:930},especial:{dia:840}};
-function grupoDoTam(t){ const g=GRUPOS_TAM.find(g=>g.tams.indexOf(t)>=0); return g?g.key:"padrao"; }
+function grupoDoTam(t){ const c=tamCanon(t); const g=GRUPOS_TAM.find(g=>g.tams.indexOf(c)>=0); return g?g.key:"padrao"; }
 function horasHoje(){ return ehSextaHoje()?Number(jornada.sexta||0):Number(jornada.normal||0); }
 function fmtH(n){ return String(Number(n||0)).replace('.',','); }   /* 9.5 -> 9,5 */
 function metaEfetivaGrupo(k){
