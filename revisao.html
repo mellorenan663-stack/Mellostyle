@@ -217,7 +217,19 @@
 .jornada-inputs input{width:100%;box-sizing:border-box;min-width:0;height:44px;background:var(--bg3);border:1px solid var(--bd2);border-radius:11px;color:var(--t);font-size:17px;font-weight:800;padding:0 10px;text-align:center;}
 .jornada-inputs input:focus{outline:none;border-color:var(--accent);}
 .meta-sexta{display:inline-block;font-size:11px;font-weight:700;color:var(--accent);background:rgba(76,123,243,.13);padding:1px 7px;border-radius:6px;}
-.setor-bar{display:none!important}.dias-chips{display:none!important}</style>
+.setor-bar{display:none!important}.dias-chips{display:none!important}
+/* quantidade editável no fechamento */
+.done-qty-inp{width:76px;flex-shrink:0;height:46px;border-radius:11px;background:var(--bg3);border:1px solid var(--bd2);color:var(--t);font-family:var(--fm);font-size:15px;font-weight:700;text-align:center;padding:0 6px;box-sizing:border-box;}
+.done-qty-inp:focus{outline:none;border-color:var(--accent);}
+.done-qty-inp.zero{opacity:.4;}
+.done-tot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:13px 15px;margin:0 0 15px;background:var(--bg3);border:1px solid var(--bd);border-radius:13px;}
+.dt-l{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;}
+.dt-v{font-family:var(--fm);font-size:23px;font-weight:800;color:var(--accent);line-height:1;}
+.dt-u{font-size:12px;color:var(--t4);}
+.dt-dif{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--amber);background:rgba(245,158,11,.13);padding:3px 9px;border-radius:7px;}
+.dt-dif.up{color:var(--green);background:var(--green-dim);}
+.mtag.baixa{color:var(--amber)!important;background:rgba(245,158,11,.12)!important;border-color:rgba(245,158,11,.26)!important;}
+</style>
 <style>
 :root{
   --bg:#070B14; --bg2:#0F1629; --bg3:#111B31; --bg4:#17233D; --bg5:#1D2B48;
@@ -755,11 +767,12 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
         <span class="of-tag" id="done-of">OF —</span>
         <span class="dp" id="done-prod">—</span>
       </div>
-      <div class="field-help" style="margin-bottom:12px;">Selecione quem revisou cada tamanho. Pode ser uma pessoa diferente em cada um.</div>
+      <div class="field-help" style="margin-bottom:12px;">Selecione quem revisou cada tamanho. <b>Ajuste a quantidade</b> se o lote fechar com menos peças — o valor fechado passa a valer.</div>
       <div class="done-quick" id="done-quick">
         <span class="ql">Aplicar a todos</span>
       </div>
       <div class="done-rows" id="done-rows"></div>
+      <div class="done-tot" id="done-tot"></div>
       <button class="btn-primary" id="done-confirm">Concluir revisão</button>
     </div>
   </div>
@@ -1132,6 +1145,7 @@ function render(){
         ${l.cliente?`<div class="lc-cliente">${esc(l.cliente)}</div>`:""}
         <div class="lc-meta">
           <span class="mtag qty"><span class="mi">▦</span>${qtd} pçs</span>
+          ${done&&Number(l.qtdBaixa||0)>0?`<span class="mtag baixa" title="Fechou com ${Number(l.qtdBaixa).toLocaleString("pt-BR")} pçs a menos que as ${Number(l.qtdPrevista||0).toLocaleString("pt-BR")} previstas">−${Number(l.qtdBaixa).toLocaleString("pt-BR")}</span>`:""}
           ${corChips}
           ${szChips||(l.tamanhos?`<span class="mtag"><span class="mi">📐</span>${esc(l.tamanhos)}</span>`:"")}
           ${prazoTag(l.prazo,done)}
@@ -1174,20 +1188,20 @@ function abrirConcluir(id){
     html=grade.map((g,gi)=>{
       const ck=g.cor||"_geral";
       const rows=TAMS.filter(t=>g.tam[t]>0).map(t=>
-        `<div class="done-row"><span class="done-sz">${t}</span><span class="done-qty">${g.tam[t]} pçs</span><select class="rv-select done-rv" data-cor="${esc(ck)}" data-sz="${t}">${opts}</select></div>`
+        `<div class="done-row"><span class="done-sz">${t}</span><input type="number" class="done-qty-inp" inputmode="numeric" min="0" data-cor="${esc(ck)}" data-sz="${t}" data-prev="${g.tam[t]}" value="${g.tam[t]}"><select class="rv-select done-rv" data-cor="${esc(ck)}" data-sz="${t}">${opts}</select></div>`
       ).join("");
       return `<div class="done-color">
         <div class="done-color-head">
           <span class="dc-dot" style="background:${corHex(g.cor)}"></span>
           <span class="dc-name">${g.cor?esc(g.cor):"Sem cor"}</span>
-          <span class="dc-qty">${tamMapTotal(g.tam)} pçs</span>
+          <span class="dc-qty" data-dcq="${esc(ck)}">${tamMapTotal(g.tam)} pçs</span>
           <select class="rv-select dc-apply"><option value="">↓ toda a cor</option>${colaboradores.map(c=>`<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join("")}</select>
         </div>
         <div class="done-rows-inner">${rows}</div>
       </div>`;
     }).join("");
   }else{
-    html=`<div class="done-color"><div class="done-rows-inner"><div class="done-row"><span class="done-sz">TOTAL</span><span class="done-qty">${Number(l.qtdTotal||0)} pçs</span><select class="rv-select done-rv" data-cor="_geral" data-sz="_total">${opts}</select></div></div></div>`;
+    html=`<div class="done-color"><div class="done-rows-inner"><div class="done-row"><span class="done-sz">TOTAL</span><input type="number" class="done-qty-inp" inputmode="numeric" min="0" data-cor="_geral" data-sz="_total" data-prev="${Number(l.qtdTotal||0)}" value="${Number(l.qtdTotal||0)}"><select class="rv-select done-rv" data-cor="_geral" data-sz="_total">${opts}</select></div></div></div>`;
   }
   $("done-rows").innerHTML=html;
   const qh=$("done-quick");
@@ -1203,7 +1217,30 @@ function abrirConcluir(id){
     let v=t==="_total"?(l[S().fNome]||revisorAtual||""):((prev[ck]&&prev[ck][t])||revisorAtual||"");
     if([...s.options].some(o=>o.value===v)) s.value=v;
   });
+  $("done-rows").querySelectorAll("input.done-qty-inp").forEach(i=>{
+    i.addEventListener("input",atualizarTotalConcluir);
+    i.addEventListener("focus",()=>setTimeout(()=>i.select(),10));
+  });
+  atualizarTotalConcluir();
   $("done-overlay").classList.add("show");
+}
+function atualizarTotalConcluir(){
+  const host=$("done-rows"); if(!host) return;
+  const inputs=[...host.querySelectorAll("input.done-qty-inp")];
+  let tot=0, prev=0; const porCor={};
+  inputs.forEach(i=>{
+    const q=Math.max(0,Math.round(Number(i.value||0)));
+    tot+=q; prev+=Number(i.dataset.prev||0);
+    const ck=i.dataset.cor||"_geral"; porCor[ck]=(porCor[ck]||0)+q;
+    i.classList.toggle("zero",q<=0);
+    const row=i.closest(".done-row"), sel=row&&row.querySelector("select.done-rv");
+    if(sel) sel.disabled=q<=0;
+  });
+  host.querySelectorAll("[data-dcq]").forEach(el=>{ el.textContent=(porCor[el.dataset.dcq]||0)+" pçs"; });
+  const dif=prev-tot, tt=$("done-tot"); if(!tt) return;
+  tt.innerHTML='<span class="dt-l">Fechando com</span><b class="dt-v">'+tot.toLocaleString("pt-BR")+'</b><span class="dt-u">pçs</span>'+
+    (dif>0?'<span class="dt-dif">−'+dif.toLocaleString("pt-BR")+' vs. '+prev.toLocaleString("pt-BR")+' previstas</span>'
+     :dif<0?'<span class="dt-dif up">+'+(-dif).toLocaleString("pt-BR")+' vs. '+prev.toLocaleString("pt-BR")+' previstas</span>':'');
 }
 function fecharConcluir(){ $("done-overlay").classList.remove("show"); loteConcluindo=null; }
 function aplicarTodos(nome){
@@ -1214,22 +1251,53 @@ async function confirmarConcluir(){
   const l=loteConcluindo;
   if(!l) return;
   const selects=[...$("done-rows").querySelectorAll("select.done-rv")];
+  const inputs=[...$("done-rows").querySelectorAll("input.done-qty-inp")];
+  const qtdDe=(ck,sz)=>{ const i=inputs.find(x=>x.dataset.cor===ck&&x.dataset.sz===sz); return i?Math.max(0,Math.round(Number(i.value||0))):null; };
+
+  // quantidade realmente fechada (substitui a prevista)
+  const gradeOrig=getGrade(l), temGrade=gradeOrig.length>0;
+  let novaGrade=null, totalNovo=0;
+  if(temGrade){
+    novaGrade=gradeOrig.map(g=>{
+      const ck=g.cor||"_geral", tam={};   // dataset.cor volta decodificado, então compara com o valor cru
+      TAMS.forEach(t=>{ if(!(g.tam[t]>0)) return; const q=qtdDe(ck,t); const v=(q==null?Number(g.tam[t]||0):q); if(v>0) tam[t]=v; });
+      return {cor:g.cor,tam};
+    }).filter(g=>tamMapTotal(g.tam)>0);
+    totalNovo=novaGrade.reduce((s,g)=>s+tamMapTotal(g.tam),0);
+  }else{
+    const q=qtdDe("_geral","_total"); totalNovo=(q==null?Number(l.qtdTotal||0):q);
+  }
+  if(totalNovo<=0){ toast("Informe a quantidade fechada","warn"); return; }
+
   const revisoesPorCor={};
   let any=false;
-  selects.forEach(s=>{ if(s.value){ const ck=s.dataset.cor||"_geral"; (revisoesPorCor[ck]=revisoesPorCor[ck]||{})[s.dataset.sz]=s.value; any=true; } });
+  selects.forEach(s=>{
+    if(!s.value) return;
+    const ck=s.dataset.cor||"_geral", sz=s.dataset.sz, q=qtdDe(ck,sz);
+    if(q!=null&&q<=0) return;               // tamanho zerado não conta
+    (revisoesPorCor[ck]=revisoesPorCor[ck]||{})[sz]=s.value; any=true;
+  });
   if(!any){ toast("Selecione quem revisou","warn"); return; }
-  const revisadoPorNome=[...new Set(selects.filter(s=>s.value).map(s=>s.value))].join(", ");
+  const revisadoPorNome=[...new Set(Object.values(revisoesPorCor).flatMap(o=>Object.values(o)))].join(", ");
+
+  const totalAtual=temGrade?gradeOrig.reduce((s,g)=>s+tamMapTotal(g.tam),0):Number(l.qtdTotal||0);
+  const basePrev=Number(l.qtdPrevista||0)>0?Number(l.qtdPrevista):totalAtual;
+  const baixa=Math.max(0,basePrev-totalNovo);
+  const aplicarQtd=o=>{
+    if(temGrade) o.gradeCores=novaGrade.map(g=>({cor:g.cor,tam:{...g.tam}}));
+    o.qtdTotal=totalNovo; o.qtdPrevista=basePrev; o.qtdBaixa=baixa;
+  };
 
   // otimista
-  S().aplicar(l,revisadoPorNome,revisoesPorCor);
+  S().aplicar(l,revisadoPorNome,revisoesPorCor); aplicarQtd(l);
   fecharConcluir(); render();
   try{
     const orig=l.criadoEm||l.createdAt;
     const payload={...ownerFields(),updatedAt:Timestamp.now(),updatedEm:Timestamp.now()};
-    S().aplicar(payload,revisadoPorNome,revisoesPorCor);
+    S().aplicar(payload,revisadoPorNome,revisoesPorCor); aplicarQtd(payload);
     if(orig){payload.criadoEm=orig;payload.createdAt=orig;}
     await updateDoc(doc(db,"lotes",l.id),payload);
-    toast(S().nome+" concluída ✓","ok");
+    toast(baixa>0?("Concluída ✓ "+totalNovo.toLocaleString("pt-BR")+" pçs · "+baixa.toLocaleString("pt-BR")+" a menos"):(S().nome+" concluída ✓"),"ok");
   }catch(e){
     console.error("UPDATE_ERROR",e);
     await carregar();
