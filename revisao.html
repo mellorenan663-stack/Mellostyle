@@ -129,6 +129,9 @@
 .meta-hoje span{font-size:11px;font-weight:600;color:var(--t4);}
 .meta-hoje.red{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.30);color:var(--amber);}
 .mt-sub b{color:var(--accent);font-family:var(--fm);}
+
+/* linha com quantidade mas sem responsável escolhido */
+.done-row.falta-nome select.done-rv{border-color:var(--amber)!important;box-shadow:0 0 0 3px rgba(245,158,11,.14);}
 </style>
 <style>
 :root{
@@ -1143,7 +1146,7 @@ function abrirConcluir(id){
   $("done-rows").querySelectorAll("select.dc-apply").forEach(s=>s.addEventListener("change",()=>{
     const v=s.value, block=s.closest(".done-color");
     block.querySelectorAll("select.done-rv").forEach(rv=>{ if(!rv.disabled&&[...rv.options].some(o=>o.value===v)) rv.value=v; });
-    s.value="";
+    s.value=""; atualizarTotalConcluir();
   }));
   $("done-rows").querySelectorAll("select.done-rv").forEach(s=>{
     if(s.disabled) return;
@@ -1154,30 +1157,39 @@ function abrirConcluir(id){
     i.addEventListener("input",atualizarTotalConcluir);
     i.addEventListener("focus",()=>setTimeout(()=>i.select(),10));
   });
+  /* escolher quem revisou também muda o que será lançado */
+  $("done-rows").querySelectorAll("select.done-rv").forEach(s=>s.addEventListener("change",atualizarTotalConcluir));
   atualizarTotalConcluir();
   $("done-overlay").classList.add("show");
 }
 function fecharConcluir(){ $("done-overlay").classList.remove("show"); loteConcluindo=null; }
 function aplicarTodos(nome){
   $("done-rows").querySelectorAll("select.done-rv").forEach(s=>{ if(!s.disabled&&[...s.options].some(o=>o.value===nome)) s.value=nome; });
+  atualizarTotalConcluir();
 }
 function atualizarTotalConcluir(){
   const host=$("done-rows"); if(!host) return;
   const inputs=[...host.querySelectorAll("input.done-qty-inp")];
-  let agora=0, faltaTot=0;
+  let agora=0, faltaTot=0, semNome=0;
   inputs.forEach(i=>{
     const max=Number(i.dataset.falta||0);
     let q=Math.max(0,Math.round(Number(i.value||0)));
     if(q>max){ q=max; i.value=String(max); }   // não dá para lançar mais do que falta
-    agora+=q; faltaTot+=max;
+    faltaTot+=max;
     i.classList.toggle("zero",q<=0);
     const row=i.closest(".done-row"), sel=row&&row.querySelector("select.done-rv");
     if(sel&&!i.disabled) sel.disabled=q<=0;
+    // só conta o que realmente vai ser lançado: precisa de quantidade E responsável
+    const temNome=!!(sel&&sel.value);
+    if(q>0&&temNome) agora+=q;
+    else if(q>0&&!i.disabled) semNome++;
+    if(row) row.classList.toggle("falta-nome",q>0&&!temNome&&!i.disabled);
   });
   const resta=Math.max(0,faltaTot-agora), tt=$("done-tot");
   if(tt) tt.innerHTML='<span class="dt-l">Lançando</span><b class="dt-v">'+agora.toLocaleString("pt-BR")+'</b><span class="dt-u">pçs</span>'+
-    (resta>0?'<span class="dt-dif">faltam '+resta.toLocaleString("pt-BR")+' para outro dia</span>'
-            :'<span class="dt-dif ok">conclui o lote ✓</span>');
+    (semNome>0?'<span class="dt-dif">falta quem revisou em '+semNome+(semNome>1?' tamanhos':' tamanho')+'</span>'
+     :resta>0?'<span class="dt-dif">faltam '+resta.toLocaleString("pt-BR")+' para outro dia</span>'
+             :'<span class="dt-dif ok">conclui o lote ✓</span>');
   const btn=$("done-confirm"); if(btn) btn.textContent=resta>0?"Lançar revisão":"Concluir revisão";
   const enc=$("done-encerrar");
   if(enc){
@@ -1722,7 +1734,9 @@ body{
   background-attachment:fixed!important;
 }
 #tk-canvas{ position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.5; }
-#app-view,#login-view,.topbar,.fab,.overlay{ position:relative; z-index:1; }
+/* só os contêineres sem posicionamento próprio precisam subir acima do canvas;
+   topo (sticky/30), botão flutuante (fixed/40) e modais (fixed/50) já ficam acima. */
+#app-view,#login-view{ position:relative; z-index:1; }
 
 /* ── 2. topo e identidade ──────────────────────────────────────────── */
 .topbar{
