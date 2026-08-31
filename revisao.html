@@ -132,6 +132,12 @@
 
 /* linha com quantidade mas sem responsável escolhido */
 .done-row.falta-nome select.done-rv{border-color:var(--amber)!important;box-shadow:0 0 0 3px rgba(245,158,11,.14);}
+
+/* meta única + ritmo por tamanho */
+.mt-mix{margin-top:9px;padding-top:9px;border-top:1px solid var(--bd);font-size:11.5px;color:var(--t3);line-height:1.5;}
+.mt-mix b{color:var(--accent);font-family:var(--fm);}
+.mt-sub b{color:var(--accent);font-family:var(--fm);}
+.meta-sub-inline{font-size:10.5px;color:var(--t4);font-family:var(--fm);letter-spacing:.6px;text-transform:uppercase;}
 </style>
 <style>
 :root{
@@ -1431,11 +1437,19 @@ let metasTam={padrao:{dia:930},especial:{dia:840}};
 function grupoDoTam(t){ const c=tamCanon(t); const g=GRUPOS_TAM.find(g=>g.tams.indexOf(c)>=0); return g?g.key:"padrao"; }
 function horasHoje(){ return ehSextaHoje()?Number(jornada.sexta||0):Number(jornada.normal||0); }
 function fmtH(n){ return String(Number(n||0)).replace('.',','); }   /* 9.5 -> 9,5 */
-function metaEfetivaGrupo(k){
-  const base=Number((metasTam[k]||{}).dia||0);
-  if(!base) return 0;
-  if(ehSextaHoje()&&Number(jornada.normal)>0) return Math.round(base*Number(jornada.sexta||0)/Number(jornada.normal));
-  return base;
+function fatorJornada(){
+  return (ehSextaHoje()&&Number(jornada.normal)>0) ? Number(jornada.sexta||0)/Number(jornada.normal) : 1;
+}
+/* A meta do dia é uma só. O tamanho muda quanto rende: peça grande rende
+   menos, então revisar tamanho grande baixa a meta do dia na proporção. */
+function metaDoDia(){
+  const f=feitoHojePorGrupo();
+  const rA=Number((metasTam.padrao||{}).dia||0), rB=Number((metasTam.especial||{}).dia||0);
+  const fator=fatorJornada(), a=Number(f.padrao||0), b=Number(f.especial||0), tot=a+b;
+  if(tot<=0||rA<=0) return Math.round((rA||0)*fator);          // dia ainda sem lançamento: vale o ritmo normal
+  const consumo=(rA>0?a/rA:0)+(rB>0?b/rB:0);                   // quanto do dia cada peça consumiu
+  if(consumo<=0) return Math.round(rA*fator);
+  return Math.round((tot/consumo)*fator);
 }
 /* peças revisadas hoje, separadas por grupo de tamanho */
 function feitoHojePorGrupo(){
@@ -1496,36 +1510,34 @@ function metaEfetiva(k){
 }
 function renderMetas(){
   const host=$("view-metas"); if(!host) return;
-  const sexta=ehSextaHoje(), feitos=feitoHojePorGrupo(), horas=horasHoje();
-  let feitoTot=0;
-  const cards=GRUPOS_TAM.map(g=>{
-    const base=Number((metasTam[g.key]||{}).dia||0);
-    const metaHoje=metaEfetivaGrupo(g.key);
-    const feito=Number(feitos[g.key]||0);
-    feitoTot+=feito;
-    const pct=metaHoje>0?Math.round(feito/metaHoje*100):0, pctBar=Math.min(100,pct);
-    const batida=metaHoje>0&&feito>=metaHoje;
-    const falta=Math.max(0,metaHoje-feito), sobra=Math.max(0,feito-metaHoje);
-    const porHora=(metaHoje>0&&horas>0)?Math.round(metaHoje/horas):0;
-    const reduzida=sexta&&base>0&&metaHoje<base;
-    return `<div class="meta-card">
-      <div class="meta-head">
-        <span class="meta-nome">${g.nome}</span>
-        ${metaHoje>0?`<span class="meta-badge${batida?' ok':''}">${pct}%</span>`:''}
-      </div>
-      <div class="meta-inputs">
-        <label>Meta / dia<input type="number" min="0" inputmode="numeric" data-mt="${g.key}" value="${base||''}" placeholder="0"></label>
-        <label>Vale hoje<div class="meta-hoje${reduzida?' red':''}">${metaHoje.toLocaleString('pt-BR')}<span>pçs</span></div></label>
-      </div>
-      <div class="meta-bar"><div class="meta-fill${batida?' ok':''}" style="width:${pctBar}%"></div></div>
-      <div class="meta-sub">Feito hoje: <b>${feito.toLocaleString('pt-BR')}</b>${metaHoje>0?' / '+metaHoje.toLocaleString('pt-BR')+' pçs · '+(batida?('meta batida 🎉'+(sobra>0?' +'+sobra.toLocaleString('pt-BR'):'')):'faltam '+falta.toLocaleString('pt-BR')):' pçs'}${porHora?' · <b>'+porHora.toLocaleString('pt-BR')+'</b> pçs/h':''}${reduzida?' <span class="meta-sexta">sexta · '+fmtH(jornada.sexta)+'h de '+fmtH(jornada.normal)+'h</span>':''}</div>
-    </div>`;
-  }).join("");
+  const sexta=ehSextaHoje(), f=feitoHojePorGrupo(), horas=horasHoje();
+  const a=Number(f.padrao||0), b=Number(f.especial||0), feito=a+b;
+  const meta=metaDoDia();
+  const pct=meta>0?Math.round(feito/meta*100):0, pctBar=Math.min(100,pct);
+  const batida=meta>0&&feito>=meta;
+  const falta=Math.max(0,meta-feito), sobra=Math.max(0,feito-meta);
+  const porHora=(meta>0&&horas>0)?Math.round(meta/horas):0;
+  const rA=Number((metasTam.padrao||{}).dia||0), rB=Number((metasTam.especial||{}).dia||0);
 
-  const total=`<div class="meta-total-card">
-    <div class="mt-l">Revisado hoje${sexta?' · <span class="meta-sexta">sexta</span>':''}</div>
-    <div class="mt-v">${feitoTot.toLocaleString('pt-BR')} <span>pçs</span></div>
-    <div class="mt-sub">${GRUPOS_TAM.map(g=>g.nome.replace(/ · /g,'/')+': <b>'+Number(feitos[g.key]||0).toLocaleString('pt-BR')+'</b>').join(' · ')} — cada grupo tem a sua meta.</div>
+  const principal=`<div class="meta-total-card">
+    <div class="mt-l">Meta do dia${sexta?' · <span class="meta-sexta">sexta</span>':''}</div>
+    <div class="mt-v">${feito.toLocaleString('pt-BR')} <span>/ ${meta.toLocaleString('pt-BR')} pçs</span></div>
+    <div class="meta-bar big"><div class="meta-fill${batida?' ok':''}" style="width:${pctBar}%"></div></div>
+    <div class="mt-sub">${meta>0
+      ? (batida?('meta batida 🎉'+(sobra>0?' · <b>+'+sobra.toLocaleString('pt-BR')+'</b> acima':''))
+              :('<b>'+pct+'%</b> · faltam <b>'+falta.toLocaleString('pt-BR')+'</b> pçs'))
+        +(porHora?' · ritmo de <b>'+porHora.toLocaleString('pt-BR')+'</b> pçs/h':'')
+      : 'Defina o ritmo por tamanho abaixo.'}</div>
+    ${b>0?`<div class="mt-mix">Hoje: <b>${a.toLocaleString('pt-BR')}</b> em P/M/G/GG · <b>${b.toLocaleString('pt-BR')}</b> em G1/G2/G3 — como tamanho grande rende menos, a meta do dia caiu de ${Math.round(rA*fatorJornada()).toLocaleString('pt-BR')} para ${meta.toLocaleString('pt-BR')}.</div>`:''}
+  </div>`;
+
+  const ritmo=`<div class="meta-card">
+    <div class="meta-head"><span class="meta-nome">Ritmo por tamanho</span><span class="meta-sub-inline">peças por dia</span></div>
+    <div class="meta-inputs">
+      <label>P · M · G · GG<input type="number" min="0" inputmode="numeric" data-mt="padrao" value="${rA||''}" placeholder="930"></label>
+      <label>G1 · G2 · G3<input type="number" min="0" inputmode="numeric" data-mt="especial" value="${rB||''}" placeholder="840"></label>
+    </div>
+    <div class="meta-sub">Peça maior rende menos, então revisar tamanho grande baixa a meta do dia na mesma proporção.</div>
   </div>`;
 
   const jorn=`<div class="jornada-card">
@@ -1537,11 +1549,9 @@ function renderMetas(){
   </div>`;
 
   const pctSexta=(Number(jornada.normal)>0)?Math.round(Number(jornada.sexta||0)/Number(jornada.normal)*100):0;
-  host.innerHTML=`<div class="metas-wrap">${total}${cards}${jorn}
-    <div class="meta-note">A meta muda conforme o tamanho: peça maior rende menos por dia.
-    Na sexta, a jornada menor reduz as duas metas na mesma proporção
-    (${fmtH(jornada.sexta)}h de ${fmtH(jornada.normal)}h ⇒ ${pctSexta}%).
-    “Feito hoje” soma os lançamentos do dia, separados pelo tamanho revisado.</div></div>`;
+  host.innerHTML=`<div class="metas-wrap">${principal}${ritmo}${jorn}
+    <div class="meta-note">A meta é uma só para o dia. O tamanho muda o ritmo: em P/M/G/GG contam-se ${rA.toLocaleString('pt-BR')} peças no dia; em G1/G2/G3, ${rB.toLocaleString('pt-BR')}, porque a peça é maior e a produção cai.
+    Na sexta a jornada menor reduz a meta na mesma proporção (${fmtH(jornada.sexta)}h de ${fmtH(jornada.normal)}h ⇒ ${pctSexta}%).</div></div>`;
 
   host.querySelectorAll('input[data-mt]').forEach(inp=>inp.addEventListener('change',async()=>{
     const k=inp.dataset.mt;
@@ -1550,8 +1560,8 @@ function renderMetas(){
     await salvarMetas(); renderMetas();
   }));
   host.querySelectorAll('input[data-jornada]').forEach(inp=>inp.addEventListener('change',async()=>{
-    const f=inp.dataset.jornada;
-    jornada[f]=Math.max(f==='sexta'?0:1,Number(String(inp.value||'').replace(',','.'))||0);
+    const f2=inp.dataset.jornada;
+    jornada[f2]=Math.max(f2==='sexta'?0:1,Number(String(inp.value||'').replace(',','.'))||0);
     await salvarMetas(); renderMetas();
   }));
 }
