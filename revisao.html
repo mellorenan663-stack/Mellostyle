@@ -138,6 +138,25 @@
 .mt-mix b{color:var(--accent);font-family:var(--fm);}
 .mt-sub b{color:var(--accent);font-family:var(--fm);}
 .meta-sub-inline{font-size:10.5px;color:var(--t4);font-family:var(--fm);letter-spacing:.6px;text-transform:uppercase;}
+
+/* meta de cada funcionária */
+.mp-titulo{font-size:11px;font-weight:800;color:var(--t4);text-transform:uppercase;letter-spacing:.8px;margin:6px 2px -2px;}
+.mp-card{position:relative;}
+.mp-card.ok{border-color:rgba(63,185,80,.32);}
+/* nome grande quebra em até duas linhas em vez de sumir cortado */
+.mp-nome{display:flex;align-items:flex-start;gap:8px;min-width:0;font-size:15px;line-height:1.3;}
+.mp-nome .rank-dot{margin-top:6px;}
+.mp-n{min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.mp-card .meta-head{gap:10px;margin-bottom:8px;}
+.rank-dot.off{background:var(--bd2);}
+.mp-num{font-family:var(--fm);font-size:23px;font-weight:800;color:var(--t);letter-spacing:-.5px;line-height:1;margin-bottom:9px;}
+.mp-num span{font-size:13px;font-weight:600;color:var(--t3);letter-spacing:0;}
+.mp-card.ok .mp-num{color:#3FB950;}
+.mp-sub{margin-top:8px;font-size:11.5px;line-height:1.5;}
+.mp-sub b{color:var(--accent);font-family:var(--fm);}
+.mp-mix{color:var(--t4);}
+.mp-vazio{background:var(--bg2);border:1px dashed var(--bd2);border-radius:14px;padding:18px 16px;
+  text-align:center;font-size:12.5px;color:var(--t3);line-height:1.5;}
 </style>
 <style>
 :root{
@@ -1440,32 +1459,44 @@ function fmtH(n){ return String(Number(n||0)).replace('.',','); }   /* 9.5 -> 9,
 function fatorJornada(){
   return (ehSextaHoje()&&Number(jornada.normal)>0) ? Number(jornada.sexta||0)/Number(jornada.normal) : 1;
 }
-/* A meta do dia é uma só. O tamanho muda quanto rende: peça grande rende
-   menos, então revisar tamanho grande baixa a meta do dia na proporção. */
-function metaDoDia(){
-  const f=feitoHojePorGrupo();
+/* A meta é de CADA funcionária, não do dia inteiro: cada revisora tem a sua.
+   O tamanho não cria uma segunda meta — só muda quanto rende: peça grande sai
+   menos, então quem revisou G1/G2/G3 tem a meta menor na mesma proporção. */
+function metaIndividual(a,b){
   const rA=Number((metasTam.padrao||{}).dia||0), rB=Number((metasTam.especial||{}).dia||0);
-  const fator=fatorJornada(), a=Number(f.padrao||0), b=Number(f.especial||0), tot=a+b;
-  if(tot<=0||rA<=0) return Math.round((rA||0)*fator);          // dia ainda sem lançamento: vale o ritmo normal
-  const consumo=(rA>0?a/rA:0)+(rB>0?b/rB:0);                   // quanto do dia cada peça consumiu
+  const fator=fatorJornada(), pa=Number(a||0), pb=Number(b||0), tot=pa+pb;
+  if(rA<=0) return 0;
+  if(tot<=0) return Math.round(rA*fator);            // ainda sem lançamento: vale o ritmo normal
+  const consumo=(rA>0?pa/rA:0)+(rB>0?pb/rB:0);       // quanto do dia cada peça consumiu
   if(consumo<=0) return Math.round(rA*fator);
   return Math.round((tot/consumo)*fator);
 }
-/* peças revisadas hoje, separadas por grupo de tamanho */
-function feitoHojePorGrupo(){
-  const cfg=S(), hoje=_hojeStr(), out={padrao:0,especial:0};
+/* peças que cada revisora fez hoje, separadas por grupo de tamanho */
+function feitoHojePorPessoa(){
+  const cfg=S(), hoje=_hojeStr(), out=new Map();
+  function bump(nome,grupo,q){
+    const n=String(nome||"").trim()||"Sem colaborador";
+    const cur=out.get(n)||{nome:n,padrao:0,especial:0,lotes:new Set()};
+    cur[grupo]+=Number(q||0); out.set(n,cur); return cur;
+  }
   (Array.isArray(lotes)?lotes:[]).forEach(l=>{
     const log=logDe(l,cfg);
-    if(log.length){
-      log.forEach(e=>{ if(_emStr(e.em)===hoje) out[grupoDoTam(e.t)]+=Number(e.q||0); });
+    if(log.length){    // com lançamentos: cada parte conta no dia e para quem fez
+      log.forEach(e=>{ if(_emStr(e.em)===hoje) bump(e.n,grupoDoTam(e.t),e.q).lotes.add(l.id); });
       return;
     }
     if(!cfg.concl(l)) return; if(_emStr(l[cfg.fEm])!==hoje) return;
-    const g=getGrade(l);
-    if(g.length) g.forEach(x=>TAMS.forEach(t=>{ const q=Number(x.tam[t]||0); if(q>0) out[grupoDoTam(t)]+=q; }));
-    else out.padrao+=Number(l.qtdTotal||0);
+    const grade=getGrade(l), porCor=l[cfg.fCor]||null, porTam=l[cfg.fTam]||null;
+    const un=String(l[cfg.fNome]||"").trim(), fb=(un&&un.indexOf(",")<0)?un:"";
+    if(grade.length){
+      grade.forEach(g=>{ const ck=g.cor||"_geral"; TAMS.forEach(t=>{
+        const q=Number(g.tam[t]||0); if(q<=0) return;
+        const nome=(porCor&&porCor[ck]&&porCor[ck][t])||(porTam&&porTam[t])||fb;
+        bump(nome,grupoDoTam(t),q).lotes.add(l.id);
+      }); });
+    }else bump(fb,"padrao",Number(l.qtdTotal||0)).lotes.add(l.id);
   });
-  return out;
+  return [...out.values()];
 }
 let metasDocId=null;
 const ORDEM_SETORES=["revisao"];
@@ -1510,34 +1541,65 @@ function metaEfetiva(k){
 }
 function renderMetas(){
   const host=$("view-metas"); if(!host) return;
-  const sexta=ehSextaHoje(), f=feitoHojePorGrupo(), horas=horasHoje();
-  const a=Number(f.padrao||0), b=Number(f.especial||0), feito=a+b;
-  const meta=metaDoDia();
-  const pct=meta>0?Math.round(feito/meta*100):0, pctBar=Math.min(100,pct);
-  const batida=meta>0&&feito>=meta;
-  const falta=Math.max(0,meta-feito), sobra=Math.max(0,feito-meta);
-  const porHora=(meta>0&&horas>0)?Math.round(meta/horas):0;
+  const sexta=ehSextaHoje(), horas=horasHoje(), fator=fatorJornada();
   const rA=Number((metasTam.padrao||{}).dia||0), rB=Number((metasTam.especial||{}).dia||0);
+  const metaBase=Math.round(rA*fator);                 // o que cada uma precisa fazer hoje
 
-  const principal=`<div class="meta-total-card">
-    <div class="mt-l">Meta do dia${sexta?' · <span class="meta-sexta">sexta</span>':''}</div>
-    <div class="mt-v">${feito.toLocaleString('pt-BR')} <span>/ ${meta.toLocaleString('pt-BR')} pçs</span></div>
-    <div class="meta-bar big"><div class="meta-fill${batida?' ok':''}" style="width:${pctBar}%"></div></div>
-    <div class="mt-sub">${meta>0
-      ? (batida?('meta batida 🎉'+(sobra>0?' · <b>+'+sobra.toLocaleString('pt-BR')+'</b> acima':''))
-              :('<b>'+pct+'%</b> · faltam <b>'+falta.toLocaleString('pt-BR')+'</b> pçs'))
-        +(porHora?' · ritmo de <b>'+porHora.toLocaleString('pt-BR')+'</b> pçs/h':'')
+  const mapa=new Map(feitoHojePorPessoa().map(p=>[p.nome,p]));
+  /* toda revisora cadastrada aparece, mesmo sem ter lançado nada hoje */
+  (Array.isArray(colaboradores)?colaboradores:[]).forEach(c=>{
+    const n=String(c.nome||"").trim();
+    if(n&&!mapa.has(n)) mapa.set(n,{nome:n,padrao:0,especial:0,lotes:new Set()});
+  });
+  const pessoas=[...mapa.values()].map(p=>{
+    const feito=Number(p.padrao||0)+Number(p.especial||0);
+    const meta=metaIndividual(p.padrao,p.especial);
+    return {...p,feito,meta,
+      pct:meta>0?Math.round(feito/meta*100):0,
+      bateu:meta>0&&feito>=meta};
+  }).sort((x,y)=>y.feito-x.feito||x.nome.localeCompare(y.nome,"pt-BR"));
+
+  const bateram=pessoas.filter(p=>p.bateu).length;
+  const totalTime=pessoas.reduce((s,p)=>s+p.feito,0);
+  const porHora=(metaBase>0&&horas>0)?Math.round(metaBase/horas):0;
+
+  const topo=`<div class="meta-total-card">
+    <div class="mt-l">Meta de cada funcionária${sexta?' · <span class="meta-sexta">sexta</span>':''}</div>
+    <div class="mt-v">${metaBase.toLocaleString('pt-BR')} <span>pçs por revisora</span></div>
+    <div class="mt-sub">${rA>0
+      ? `${porHora?'ritmo de <b>'+porHora.toLocaleString('pt-BR')+'</b> pçs/h · ':''}${bateram} de ${pessoas.length} ${pessoas.length===1?'bateu':'bateram'} · o time revisou <b>${totalTime.toLocaleString('pt-BR')}</b> pçs hoje`
       : 'Defina o ritmo por tamanho abaixo.'}</div>
-    ${b>0?`<div class="mt-mix">Hoje: <b>${a.toLocaleString('pt-BR')}</b> em P/M/G/GG · <b>${b.toLocaleString('pt-BR')}</b> em G1/G2/G3 — como tamanho grande rende menos, a meta do dia caiu de ${Math.round(rA*fatorJornada()).toLocaleString('pt-BR')} para ${meta.toLocaleString('pt-BR')}.</div>`:''}
+    ${sexta&&rA>0?`<div class="mt-mix">Sexta é de ${fmtH(jornada.sexta)}h, então a meta de cada uma cai de ${rA.toLocaleString('pt-BR')} para <b>${metaBase.toLocaleString('pt-BR')}</b> peças.</div>`:''}
   </div>`;
 
+  const lista=pessoas.length?pessoas.map(p=>{
+    const pctBar=Math.min(100,p.pct);
+    const falta=Math.max(0,p.meta-p.feito), sobra=Math.max(0,p.feito-p.meta);
+    const mix=(Number(p.especial||0)>0&&Number(p.padrao||0)>0)
+      ? `<span class="mp-mix"><b>${Number(p.padrao).toLocaleString('pt-BR')}</b> P/M/G/GG · <b>${Number(p.especial).toLocaleString('pt-BR')}</b> G1/G2/G3</span>`
+      : (Number(p.especial||0)>0?`<span class="mp-mix">tudo em <b>G1/G2/G3</b></span>`:'');
+    const menor=p.meta>0&&p.meta<metaBase;
+    return `<div class="meta-card mp-card${p.bateu?' ok':''}">
+      <div class="meta-head">
+        <span class="meta-nome mp-nome"><span class="rank-dot${p.bateu?'':' off'}"></span><span class="mp-n">${esc(p.nome)}</span></span>
+        ${p.meta>0?`<span class="meta-badge${p.bateu?' ok':''}">${p.pct}%</span>`:''}
+      </div>
+      <div class="mp-num">${p.feito.toLocaleString('pt-BR')}<span> / ${p.meta.toLocaleString('pt-BR')} pçs</span></div>
+      <div class="meta-bar"><div class="meta-fill${p.bateu?' ok':''}" style="width:${pctBar}%"></div></div>
+      <div class="meta-sub mp-sub">${p.meta>0
+        ? (p.bateu?('meta batida 🎉'+(sobra>0?' · <b>+'+sobra.toLocaleString('pt-BR')+'</b> acima':''))
+                 :('faltam <b>'+falta.toLocaleString('pt-BR')+'</b> pçs'))
+        : 'sem ritmo definido'}${p.lotes&&p.lotes.size?' · '+p.lotes.size+(p.lotes.size===1?' lote':' lotes'):''}${mix?' · '+mix:''}${menor?` <span class="meta-sexta">meta menor · peça maior</span>`:''}</div>
+    </div>`;
+  }).join(""):`<div class="mp-vazio">Nenhuma revisora cadastrada. Adicione as colaboradoras para acompanhar a meta de cada uma.</div>`;
+
   const ritmo=`<div class="meta-card">
-    <div class="meta-head"><span class="meta-nome">Ritmo por tamanho</span><span class="meta-sub-inline">peças por dia</span></div>
+    <div class="meta-head"><span class="meta-nome">Ritmo por tamanho</span><span class="meta-sub-inline">peças por funcionária/dia</span></div>
     <div class="meta-inputs">
       <label>P · M · G · GG<input type="number" min="0" inputmode="numeric" data-mt="padrao" value="${rA||''}" placeholder="930"></label>
       <label>G1 · G2 · G3<input type="number" min="0" inputmode="numeric" data-mt="especial" value="${rB||''}" placeholder="840"></label>
     </div>
-    <div class="meta-sub">Peça maior rende menos, então revisar tamanho grande baixa a meta do dia na mesma proporção.</div>
+    <div class="meta-sub">Não são duas metas: peça maior rende menos, então revisar G1/G2/G3 baixa a meta daquela revisora na mesma proporção.</div>
   </div>`;
 
   const jorn=`<div class="jornada-card">
@@ -1549,8 +1611,9 @@ function renderMetas(){
   </div>`;
 
   const pctSexta=(Number(jornada.normal)>0)?Math.round(Number(jornada.sexta||0)/Number(jornada.normal)*100):0;
-  host.innerHTML=`<div class="metas-wrap">${principal}${ritmo}${jorn}
-    <div class="meta-note">A meta é uma só para o dia. O tamanho muda o ritmo: em P/M/G/GG contam-se ${rA.toLocaleString('pt-BR')} peças no dia; em G1/G2/G3, ${rB.toLocaleString('pt-BR')}, porque a peça é maior e a produção cai.
+  host.innerHTML=`<div class="metas-wrap">${topo}
+    <div class="mp-titulo">Cada revisora hoje</div>${lista}${ritmo}${jorn}
+    <div class="meta-note">A meta é de cada funcionária: ${rA.toLocaleString('pt-BR')} peças no dia em P/M/G/GG. Em G1/G2/G3 a peça é maior e a produção cai, então valem ${rB.toLocaleString('pt-BR')} — é a mesma meta, só com ritmo menor.
     Na sexta a jornada menor reduz a meta na mesma proporção (${fmtH(jornada.sexta)}h de ${fmtH(jornada.normal)}h ⇒ ${pctSexta}%).</div></div>`;
 
   host.querySelectorAll('input[data-mt]').forEach(inp=>inp.addEventListener('change',async()=>{
