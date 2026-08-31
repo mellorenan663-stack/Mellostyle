@@ -4899,24 +4899,6 @@ function renderRelatorioProdutividadeHora(mes){
     <div class="rel-2col"><div><div class="rel-section-title">Ranking por funcionária</div><table class="rel-table"><tbody>${porFunc.map((x,i)=>`<tr><td>${i+1}. ${x.nome}</td><td class="rtd-r"><strong>${Math.round(x.media)} pçs/h</strong></td></tr>`).join("")}</tbody></table></div>
     <div><div class="rel-section-title">Média por função</div><table class="rel-table"><tbody>${porEtapa.map(x=>`<tr><td>${x.nome}</td><td class="rtd-r"><strong>${Math.round(x.media)} pçs/h</strong></td></tr>`).join("")}</tbody></table></div></div>`;
 }
-/* Peças revisadas por pessoa no mês, lidas dos lançamentos que o app de
-   revisão grava em cada lote (revisoesLog). Só leitura: nada é gravado. */
-function revisaoPorPessoaNoMes(mes){
-  const out={};
-  (Array.isArray(lotes)?lotes:[]).forEach(l=>{
-    const log=Array.isArray(l&&l.revisoesLog)?l.revisoesLog:[];
-    log.forEach(e=>{
-      const q=toNumber(e&&e.q,0); if(q<=0) return;
-      const se=e.em&&e.em.seconds; if(!se) return;
-      const d=new Date(se*1000);
-      const m=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
-      if(m!==mes) return;
-      const nome=safeText(e.n)||"Sem nome";
-      out[nome]=(out[nome]||0)+q;
-    });
-  });
-  return out;
-}
 function renderRelatorio(){
   const sel=$("rel-mes");if(!sel)return;
   const meses=new Set();
@@ -4975,7 +4957,6 @@ window.gerarPreviewRelatorio=function(){
 
   const fMap={};regsM.forEach(r=>{const nome=safeText(r.funcionarioNome)||"Sem nome";fMap[nome]=(fMap[nome]||0)+toNumber(r.qtd,0);});
   const ranking=Object.entries(fMap).sort((a,b)=>b[1]-a[1]);
-  const revLista=Object.entries(revisaoPorPessoaNoMes(mes)).sort((a,b)=>b[1]-a[1]);
   const etapaMap={};ETAPAS.forEach(e=>etapaMap[e]=0);
   regsM.forEach(r=>{if(etapaMap[r.etapa]!==undefined)etapaMap[r.etapa]+=toNumber(r.qtd,0);});
   const lotesM=(resumo.lotesDoMes||[]).filter(l=>statusOper(l)!=="Cancelado");
@@ -5082,11 +5063,6 @@ window.gerarPreviewRelatorio=function(){
         <tbody>${categorias.map(c=>`<tr><td>${esc(c.categoria)}</td><td class="rtd-r"><strong>${fmtMoney(c.valor)}</strong></td></tr>`).join("")||"<tr><td colspan='2' class='td-empty'>Sem gastos no período.</td></tr>"}</tbody></table>
       </div>
     </div>
-
-    ${revLista.length?`<div class="rel-section-title">Revisão por funcionária</div>
-    <table class="rel-table rel-table-pro"><thead><tr><th>#</th><th>Funcionária</th><th class="rtd-r">Peças revisadas</th></tr></thead>
-    <tbody>${revLista.map(([n,q],i)=>`<tr><td>${i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</td><td>${esc(n)}</td><td class="rtd-r"><strong>${q.toLocaleString("pt-BR")}</strong></td></tr>`).join("")}</tbody></table>
-    <div class="rel-mini">Lançamentos do app de revisão neste mês, inclusive os parciais (quem revisou parte de um lote num dia e o resto em outro). Ficam em quadro próprio para não somar em dobro com os registros de produção.</div>`:""}
 
     <div class="rel-section-title">Alertas executivos</div>
     <div class="rel-alert-list">${alertas.map(a=>`<div class="rel-alert-item ${saudeCls}">${esc(a)}</div>`).join("")}</div>
