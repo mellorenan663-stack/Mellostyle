@@ -427,6 +427,40 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
   .row2{grid-template-columns:1fr;}
   .sum-v{font-size:26px;}
 }
+
+/* excluir lote */
+.lc-del{width:36px;height:36px;flex-shrink:0;border-radius:10px;border:1px solid var(--bd);background:var(--bg3);
+  color:var(--t4);display:flex;align-items:center;justify-content:center;transition:border-color .15s,color .15s,background .15s;}
+.lc-del svg{width:16px;height:16px;}
+.lc-del:hover,.lc-del:active{border-color:rgba(239,68,68,.45);color:var(--red);background:rgba(239,68,68,.10);}
+.btn-danger{height:52px;padding:0 20px;border-radius:13px;background:linear-gradient(135deg,#EF4444,#B91C1C);color:#fff;
+  font-size:15px;font-weight:800;letter-spacing:-.2px;display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 8px 24px rgba(239,68,68,.24);transition:transform .08s,filter .15s;}
+.btn-danger:active{transform:translateY(1px);}
+.btn-danger:disabled{filter:grayscale(.5) brightness(.8);cursor:default;}
+.btn-danger-ghost{width:100%;height:46px;margin-top:10px;border-radius:12px;background:none;border:1px solid rgba(239,68,68,.30);
+  color:var(--red);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:background .15s,border-color .15s;}
+.btn-danger-ghost svg{width:15px;height:15px;}
+.btn-danger-ghost:active{background:rgba(239,68,68,.10);border-color:rgba(239,68,68,.5);}
+.del-alvo{background:var(--bg3);border:1px solid var(--bd);border-radius:14px;padding:14px 16px;margin-bottom:12px;}
+.del-of{font-family:var(--fm);font-size:11px;font-weight:500;color:#0B0F18;background:var(--accent);border-radius:7px;
+  padding:3px 8px;letter-spacing:.3px;display:inline-block;margin-bottom:8px;}
+.del-prod{font-size:16px;font-weight:800;letter-spacing:-.3px;line-height:1.3;}
+.del-sub{font-size:12.5px;color:var(--t3);margin-top:4px;}
+.del-sub b{font-family:var(--fm);color:var(--t2);}
+.del-aviso{display:none;background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.28);border-radius:12px;
+  padding:11px 14px;font-size:12.5px;line-height:1.5;color:var(--amber);margin-bottom:12px;}
+.del-aviso.show{display:block;}
+.del-aviso b{color:var(--amber);font-family:var(--fm);}
+.del-txt{font-size:12.5px;color:var(--t3);line-height:1.5;margin-bottom:16px;}
+.del-acoes{display:flex;gap:10px;}
+.del-acoes .btn-ghost{flex:1 1 40%;height:52px;border-radius:13px;font-size:15px;justify-content:center;}
+.del-acoes .btn-danger{flex:1 1 60%;}
+.toast .toast-undo{margin-left:auto;flex-shrink:0;background:var(--bg5);border:1px solid var(--bd2);border-radius:9px;
+  padding:6px 12px;font-size:12.5px;font-weight:800;color:var(--accent-lt);pointer-events:auto;}
+.toast .toast-undo:active{border-color:var(--bd3);}
+.toast.undo{pointer-events:auto;}
 </style>
 </head>
 <body>
@@ -658,7 +692,31 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
           <textarea class="input" id="e-obs"></textarea>
         </div>
         <button class="btn-primary" id="edit-btn" type="submit">Salvar alterações</button>
+        <button class="btn-danger-ghost" id="edit-del" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          Excluir este lote
+        </button>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ EXCLUIR SHEET ════════ -->
+<div class="overlay" id="del-overlay">
+  <div class="sheet sheet-del">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">Excluir lote</div>
+      <button class="sheet-x" id="del-close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="del-alvo" id="del-alvo"></div>
+      <div class="del-aviso" id="del-aviso"></div>
+      <p class="del-txt">O lote sai da lista e das contas do mês. Dá para desfazer logo depois, pelo aviso que aparece no topo.</p>
+      <div class="del-acoes">
+        <button class="btn-ghost" id="del-cancel" type="button">Cancelar</button>
+        <button class="btn-danger" id="del-ok" type="button">Excluir lote</button>
+      </div>
     </div>
   </div>
 </div>
@@ -714,7 +772,7 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyCHcBrAnUFiIh8I0-8wIjqPJnAQc3f3rXM",authDomain:"jv-confecao.firebaseapp.com",projectId:"jv-confecao",storageBucket:"jv-confecao.firebasestorage.app",messagingSenderId:"1089479881122",appId:"1:1089479881122:web:10018e26e1f938d363c2fb",measurementId:"G-RC1SWE9Y6G"};
 const app=initializeApp(firebaseConfig);
@@ -987,6 +1045,22 @@ function toast(msg,type=""){
   host.appendChild(el);
   setTimeout(()=>{el.style.transition="opacity .3s";el.style.opacity="0";setTimeout(()=>el.remove(),300);},3000);
 }
+/* aviso com botão de voltar atrás — fica mais tempo na tela que o toast normal */
+function toastDesfazer(msg,onUndo){
+  const host=$("toast-host");
+  const el=document.createElement("div");
+  el.className="toast undo";
+  el.innerHTML=`<span>✓</span><span>${esc(msg)}</span>`;
+  const b=document.createElement("button");
+  b.className="toast-undo"; b.type="button"; b.textContent="Desfazer";
+  b.addEventListener("click",()=>{ fim(); onUndo&&onUndo(); });
+  el.appendChild(b);
+  host.appendChild(el);
+  let morto=false;
+  function fim(){ if(morto) return; morto=true; clearTimeout(t);
+    el.style.transition="opacity .3s"; el.style.opacity="0"; setTimeout(()=>el.remove(),300); }
+  const t=setTimeout(fim,8000);
+}
 function loginError(msg){
   const e=$("login-err");
   if(!msg){e.classList.remove("show");return;}
@@ -1093,6 +1167,9 @@ function render(){
           <button class="lc-edit" data-edit="${l.id}" aria-label="Editar lote">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
+          <button class="lc-del" data-del="${l.id}" aria-label="Excluir lote" title="Excluir lote">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
         </div>
         <div class="lc-prod">${esc(l.produto||"—")}</div>
         ${l.cliente?`<div class="lc-cliente">${esc(l.cliente)}</div>`:""}
@@ -1121,6 +1198,7 @@ function render(){
     else abrirConcluir(b.dataset.id);
   }));
   host.querySelectorAll(".lc-edit").forEach(b=>b.addEventListener("click",()=>abrirEdit(b.dataset.edit)));
+  host.querySelectorAll(".lc-del").forEach(b=>b.addEventListener("click",()=>abrirExcluir(b.dataset.del)));
 }
 
 let loteConcluindo=null;
@@ -1393,6 +1471,58 @@ function abrirEdit(id){
   $("edit-overlay").classList.add("show");
 }
 function fecharEdit(){ $("edit-overlay").classList.remove("show"); }
+
+/* ───── excluir lote ───── */
+let loteExcluindo=null;
+function abrirExcluir(id){
+  const l=lotes.find(x=>x.id===id); if(!l) return;
+  loteExcluindo=id;
+  const total=(gradeTotal(l)||Number(l.qtdTotal||0)).toLocaleString("pt-BR");
+  $("del-alvo").innerHTML=`<span class="del-of">OF ${esc(l.numeroOf||"—")}</span>
+    <div class="del-prod">${esc(l.produto||"—")}</div>
+    <div class="del-sub">${l.cliente?esc(l.cliente)+" · ":""}<b>${total}</b> pçs</div>`;
+  /* avisa quando já tem trabalho lançado, para ninguém apagar sem perceber */
+  const feito=totalFeito(l), concl=isConcluido(l);
+  const av=$("del-aviso");
+  if(concl||feito>0){
+    av.innerHTML=concl
+      ? `Este lote já está <b>${S().verbo.toLowerCase()}</b>${l[S().fNome]?" por "+esc(l[S().fNome]):""}. Excluir tira essas peças da meta e do relatório.`
+      : `Já há <b>${feito.toLocaleString("pt-BR")}</b> ${feito===1?"peça revisada":"peças revisadas"} neste lote. Excluir tira essas peças da meta e do relatório.`;
+    av.classList.add("show");
+  }else av.classList.remove("show");
+  fecharEdit();
+  $("del-overlay").classList.add("show");
+}
+function fecharExcluir(){ $("del-overlay").classList.remove("show"); loteExcluindo=null; }
+async function confirmarExcluir(){
+  const id=loteExcluindo; if(!id) return;
+  const i=lotes.findIndex(x=>x.id===id); if(i<0){ fecharExcluir(); return; }
+  const backup=Object.assign({},lotes[i]);          /* guardado para o desfazer */
+  const btn=$("del-ok"); btn.disabled=true; btn.textContent="Excluindo…";
+  try{
+    await deleteDoc(doc(db,"lotes",id));
+    lotes.splice(i,1);
+    fecharExcluir();
+    render();
+    toastDesfazer(`Lote OF ${backup.numeroOf||"—"} excluído`,()=>restaurarLote(backup));
+  }catch(err){
+    console.error("DEL_LOTE",err);
+    toast("Erro ao excluir o lote","err");
+  }finally{ btn.disabled=false; btn.textContent="Excluir lote"; }
+}
+/* devolve o lote com o mesmo id, do jeitinho que estava */
+async function restaurarLote(backup){
+  const {id,...dados}=backup;
+  try{
+    await setDoc(doc(db,"lotes",id),dados);
+    if(!lotes.some(x=>x.id===id)) lotes.push(backup);
+    render();
+    toast("Lote de volta ✓","ok");
+  }catch(err){
+    console.error("UNDO_LOTE",err);
+    toast("Não foi possível devolver o lote","err");
+  }
+}
 
 async function salvarEdicao(e){
   e.preventDefault();
@@ -1747,6 +1877,11 @@ $("add-close").addEventListener("click",fecharAdd);
 $("add-overlay").addEventListener("click",e=>{ if(e.target===$("add-overlay")) fecharAdd(); });
 $("add-form").addEventListener("submit",salvarLote);
 $("edit-close").addEventListener("click",fecharEdit);
+$("edit-del").addEventListener("click",()=>{ const id=$("e-id").value; if(id) abrirExcluir(id); });
+$("del-close").addEventListener("click",fecharExcluir);
+$("del-cancel").addEventListener("click",fecharExcluir);
+$("del-ok").addEventListener("click",confirmarExcluir);
+$("del-overlay").addEventListener("click",e=>{ if(e.target===$("del-overlay")) fecharExcluir(); });
 $("edit-overlay").addEventListener("click",e=>{ if(e.target===$("edit-overlay")) fecharEdit(); });
 $("edit-form").addEventListener("submit",salvarEdicao);
 $("search").addEventListener("input",e=>{ busca=e.target.value.trim(); render(); });
