@@ -1431,7 +1431,7 @@ window.salvarEdicaoFunc=async()=>{
   finally{btn.disabled=false;btn.textContent="Salvar";}
 };
 window.deletarFuncionario=async id=>{
-  if(!confirm("Remover este funcionário? Os registros de produção serão mantidos."))return;
+  if(!confirm("Remover este funcionário? Os registros de produção continuam. Ele vai para a Lixeira."))return;
   try{await deleteDoc(doc(db,"funcionarios",id));toast("Removido.");await loadData();}
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
@@ -1607,7 +1607,7 @@ window.salvarPonto=async()=>{
 };
 
 window.deletarPonto=async id=>{
-  if(!confirm("Remover este registro do banco de horas?"))return;
+  if(!confirm("Remover este registro do banco de horas? Ele vai para a Lixeira."))return;
   try{await deleteDoc(doc(db,"pontos",id));toast("Removido.");await loadData();}
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
@@ -1825,7 +1825,7 @@ async function finalizarCronometroProducao(){
   finally{if(btn){btn.disabled=false;btn.textContent=old;}}
 }
 async function deletarControleProducaoHora(id){
-  if(!confirm("Excluir esta medição de produção por hora?"))return;
+  if(!confirm("Excluir esta medição de produção por hora? Ela vai para a Lixeira."))return;
   try{await deleteDoc(doc(db,"controleProducaoHora",id));toast("Medição excluída.");await loadData();if(currentPage==="controlehora")renderControleProducaoHora();}
   catch(e){console.error("DELETE_CONTROLE_HORA_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 }
@@ -2136,7 +2136,7 @@ window.salvarClienteFirebase=async()=>{
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 window.deletarClienteFirebase=async id=>{
-  if(!confirm("Remover este cliente? Os lotes vinculados serão mantidos."))return;
+  if(!confirm("Remover este cliente? Os lotes vinculados continuam. Ele vai para a Lixeira."))return;
   try{await deleteDoc(doc(db,"clientes",id));toast("Removido.");await loadData();}
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
@@ -2282,7 +2282,7 @@ window.atualizarStatusLote=async(id,status)=>{
   }
 };
 window.deletarLote=async id=>{
-  if(!confirm("Remover este lote? Esta ação não pode ser desfeita."))return;
+  if(!confirm("Remover este lote? Ele vai para a Lixeira, dá para restaurar de lá."))return;
   try{
     await deleteDoc(doc(db,"lotes",id));
     const i=lotes.findIndex(l=>l.id===id);
@@ -2712,7 +2712,7 @@ window.salvarRegistro=async()=>{
   }
 };
 window.deletarRegistro=async id=>{
-  if(!confirm("Remover este registro?"))return;
+  if(!confirm("Remover este registro de produção? Ele vai para a Lixeira."))return;
   try{await deleteDoc(doc(db,"registros",id));toast("Removido.");await loadData();}
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
@@ -3110,7 +3110,7 @@ window.toggleCategoriaOutros=function(){
   if(sel.value!=="Outros")campo.value="";
 };
 window.deletarGasto=async id=>{
-  if(!confirm("Remover gasto?"))return;
+  if(!confirm("Remover este gasto? Ele vai para a Lixeira."))return;
   try{await deleteDoc(doc(db,"gastos",id));toast("Removido.");await loadData();}
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
@@ -5450,7 +5450,7 @@ function renderGastosDrawer(){
   }).join('');
 }
 window.deletarGastoDrawer=async function(id){
-  if(!confirm('Remover este gasto?'))return false;
+  if(!confirm('Remover este gasto? Ele vai para a Lixeira.'))return false;
   const snap=getCollectionSnapshot('gastos',id);
   try{
     await deleteDoc(doc(db,'gastos',id));
@@ -5527,7 +5527,7 @@ function addLixeira(tipo, collectionName, item){
   saveLixeiraStore(arr.slice(0,300));
 }
 function getCollectionSnapshot(collectionName,id){
-  const map={funcionarios,registros,lotes,gastos,pontos,clientes};
+  const map={funcionarios,registros,lotes,gastos,pontos,clientes,controleProducaoHora};
   const list=map[collectionName]||[];
   const found=list.find(x=>x.id===id);
   return found?JSON.parse(JSON.stringify(found)):null;
@@ -5611,11 +5611,35 @@ window.deletarCliente = function(id){
   if(!confirm('Mover cliente para lixeira?')) return;
   addLixeira('cliente','clientes_local',item); addAuditoria('removeu','cliente',item.nome); clientesCadastro.splice(idx,1); saveClientesStore(clientesCadastro); renderClientes(); toast('Cliente movido para lixeira!');
 };
+/* o cartão da lixeira mostra o nome do registro, não o da coleção do banco */
+const LIXEIRA_ROTULO={lotes:'Lote',funcionarios:'Funcionário',registros:'Produção',gastos:'Gasto',
+  pontos:'Banco de horas',clientes:'Cliente',clientes_local:'Cliente',controleProducaoHora:'Produção por hora'};
+function lixeiraTitulo(x){ return LIXEIRA_ROTULO[x.collectionName]||LIXEIRA_ROTULO[x.tipo]||x.tipo||'Registro'; }
+function lixeiraResumo(x){
+  const i=x.item||{}, p=[];
+  if(i.numeroOf||i.produto){
+    if(i.numeroOf) p.push('OF '+i.numeroOf);
+    if(i.produto) p.push(i.produto);
+    if(i.cliente) p.push(i.cliente);
+    if(i.qtdTotal) p.push(Number(i.qtdTotal).toLocaleString('pt-BR')+' pçs');
+  }else if(i.descricao){
+    p.push(i.descricao);
+    if(i.valor!=null) p.push(fmtMoney(i.valor));
+  }else if(i.funcionarioNome){
+    p.push(i.funcionarioNome);
+    if(i.etapa) p.push(i.etapa);
+    const q=[i.qtd,i.qtdPecas,i.quantidade].find(v=>v!=null);
+    if(q!=null) p.push(Number(q).toLocaleString('pt-BR')+' pçs');
+    if(i.loteNumeroOf) p.push('OF '+i.loteNumeroOf);
+  }else if(i.nome) p.push(i.nome);
+  else if(i.obs) p.push(i.obs);
+  return p.length?p.join(' · '):'Registro';
+}
 function renderLixeira(){
   const cont=$('lixeira-list'); if(!cont) return; const itens=getLixeiraStore();
   if($('lixeira-total')) $('lixeira-total').textContent=String(itens.length);
   if(!itens.length){ cont.innerHTML='<div class="empty-state"><div class="ei">🗑</div><p>Lixeira vazia.</p></div>'; return; }
-  cont.innerHTML=itens.map(x=>`<div class="trash-card"><div class="client-top"><div><div class="client-name">${escapeHtml(x.tipo)}</div><div class="client-sub">${new Date(x.quando).toLocaleString('pt-BR')} • ${escapeHtml(x.usuario)}</div></div></div><div class="td-muted" style="margin:8px 0 12px">${escapeHtml(x.item?.nome||x.item?.descricao||x.item?.funcionarioNome||x.item?.produto||x.item?.numeroOf||x.item?.obs||'Registro')}</div><div class="fa"><button class="btn-save" onclick="restaurarDaLixeira('${x.trashId}')">Restaurar</button><button class="btn-x" onclick="excluirDefinitivoLixeira('${x.trashId}')">Excluir definitivo</button></div></div>`).join('');
+  cont.innerHTML=itens.map(x=>`<div class="trash-card"><div class="client-top"><div><div class="client-name">${escapeHtml(lixeiraTitulo(x))}</div><div class="client-sub">${new Date(x.quando).toLocaleString('pt-BR')} • ${escapeHtml(x.usuario)}</div></div></div><div class="td-muted" style="margin:8px 0 12px">${escapeHtml(lixeiraResumo(x))}</div><div class="fa"><button class="btn-save" onclick="restaurarDaLixeira('${x.trashId}')">Restaurar</button><button class="btn-x" onclick="excluirDefinitivoLixeira('${x.trashId}')">Excluir definitivo</button></div></div>`).join('');
 }
 window.restaurarDaLixeira = async function(trashId){
   const itens=getLixeiraStore(); const found=itens.find(x=>x.trashId===trashId); if(!found) return;
@@ -5688,6 +5712,7 @@ function renderAuditoria(){
   wrapDelete('deletarPonto','pontos',x=>x.funcionarioNome||'ponto');
   wrapDelete('deletarLote','lotes',x=>`OF ${x.numeroOf||''} ${x.produto||''}`);
   wrapDelete('deletarClienteFirebase','clientes',x=>x.nome||'cliente');
+  wrapDelete('deletarControleProducaoHora','controleProducaoHora',x=>`${x.funcionarioNome||'medição'} • ${x.etapa||''}`);
 
   const wrapLog=(name, acao, tipo, labelResolver)=>{
     if(typeof window[name]!=='function') return;
@@ -17430,6 +17455,25 @@ html[data-theme="escuro"] .summary-bar{
 
 
 
+</style>
+<style id="mello-fix-sb">
+/* Barra de números com poucos itens: as colunas seguem a quantidade, senão o
+   rótulo fica num canto e o número no outro (Lixeira e Auditoria têm só um). */
+.summary-bar:not(.lotes-summary-bar):has(.sb-item:first-child:nth-last-child(1)){
+  grid-template-columns:minmax(190px,260px)!important;
+}
+.summary-bar:not(.lotes-summary-bar):has(.sb-item:first-child:nth-last-child(2)){
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+.summary-bar:not(.lotes-summary-bar):has(.sb-item:first-child:nth-last-child(3)){
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+}
+.summary-bar:not(.lotes-summary-bar):has(.sb-item:first-child:nth-last-child(4)){
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+.summary-bar:not(.lotes-summary-bar):has(.sb-item:first-child:nth-last-child(5)){
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+}
 </style>
 
 
