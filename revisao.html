@@ -504,6 +504,23 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
 .dia-seg{font-size:11px;font-weight:700;color:var(--amber);background:rgba(245,158,11,.12);
   border:1px solid rgba(245,158,11,.26);border-radius:7px;padding:2px 8px;}
 .dia-seg.sm{margin-left:auto;margin-right:8px;font-size:10.5px;padding:1px 7px;}
+
+/* mais de uma pessoa no mesmo tamanho */
+.done-tam{display:flex;flex-direction:column;gap:8px;}
+.done-tam.ok{opacity:.85;}
+.done-add{align-self:flex-start;margin-left:57px;height:32px;padding:0 12px;border-radius:9px;
+  background:none;border:1px dashed var(--bd2);color:var(--t4);font-size:11.5px;font-weight:700;
+  transition:border-color .15s,color .15s;}
+.done-add:active{border-color:var(--accent);color:var(--accent);}
+.done-row.extra .done-sz.mais{background:var(--bg3);color:var(--t4);font-size:20px;font-weight:400;}
+.done-row.extra .done-de{color:var(--t4);font-size:10.5px;}
+.done-row-x{width:32px;height:32px;flex-shrink:0;border-radius:9px;border:1px solid var(--bd);
+  background:var(--bg3);color:var(--t4);font-size:13px;transition:border-color .15s,color .15s;}
+.done-row-x:active{border-color:rgba(239,68,68,.45);color:var(--red);}
+.dt-soma{font-size:11.5px;color:var(--t3);margin-left:57px;}
+.dt-soma:empty{display:none;}
+.dt-soma b{font-family:var(--fm);color:var(--accent);}
+.done-tam.dividido{border-left:2px solid rgba(76,123,243,.32);padding-left:9px;margin-left:-11px;}
 </style>
 </head>
 <body>
@@ -1264,12 +1281,17 @@ function abrirConcluir(id){
   const opts=`<option value="">— quem revisou —</option>`+colaboradores.map(c=>`<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join("");
   const linha=(ck,rot,sz,tot,ja)=>{
     const falta=Math.max(0,tot-ja), ok=falta<=0;
-    return `<div class="done-row${ok?" ok":""}">
-      <span class="done-sz">${rot}</span>
-      <input type="number" class="done-qty-inp" inputmode="numeric" min="0" max="${falta}" data-cor="${esc(ck)}" data-sz="${sz}" data-falta="${falta}" value="${ok?"":falta}"${ok?" disabled":""}>
-      <label class="done-seg${ok?" off":""}" title="Peças de segunda encontradas nesta revisão"><span class="ds-l">2ª</span><input type="number" class="done-seg-inp" inputmode="numeric" min="0" max="${falta}" value=""${ok?" disabled":""}></label>
-      <span class="done-de">${ok?"tudo revisado ✓":(ja>0?`<b>${ja}</b> de ${tot} feitas · faltam ${falta}`:`de ${tot}`)}</span>
-      <select class="rv-select done-rv" data-cor="${esc(ck)}" data-sz="${sz}"${ok?" disabled":""}>${opts}</select>
+    /* o tamanho é um grupo: dá para somar outra pessoa na mesma linha */
+    return `<div class="done-tam${ok?" ok":""}" data-cor="${esc(ck)}" data-sz="${sz}" data-falta="${falta}">
+      <div class="done-row${ok?" ok":""}">
+        <span class="done-sz">${rot}</span>
+        <input type="number" class="done-qty-inp" inputmode="numeric" min="0" max="${falta}" value="${ok?"":falta}"${ok?" disabled":""}>
+        <label class="done-seg${ok?" off":""}" title="Peças de segunda encontradas nesta revisão"><span class="ds-l">2ª</span><input type="number" class="done-seg-inp" inputmode="numeric" min="0" max="${falta}" value=""${ok?" disabled":""}></label>
+        <span class="done-de">${ok?"tudo revisado ✓":(ja>0?`<b>${ja}</b> de ${tot} feitas · faltam ${falta}`:`de ${tot}`)}</span>
+        <select class="rv-select done-rv"${ok?" disabled":""}>${opts}</select>
+      </div>
+      ${ok?"":`<div class="dt-soma"></div>
+      <button type="button" class="done-add">+ dividir com outra pessoa</button>`}
     </div>`;
   };
   let html;
@@ -1295,9 +1317,8 @@ function abrirConcluir(id){
   qh.innerHTML=`<span class="ql">Aplicar a todos</span>`+colaboradores.map(c=>`<button type="button" data-all="${esc(c.nome)}">${esc(c.nome)}</button>`).join("");
   qh.querySelectorAll("[data-all]").forEach(b=>b.addEventListener("click",()=>aplicarTodos(b.dataset.all)));
   $("done-rows").querySelectorAll("select.dc-apply").forEach(s=>s.addEventListener("change",()=>{
-    const v=s.value, block=s.closest(".done-color");
-    block.querySelectorAll("select.done-rv").forEach(rv=>{ if(!rv.disabled&&[...rv.options].some(o=>o.value===v)) rv.value=v; });
-    s.value=""; atualizarTotalConcluir();
+    aplicarTodos(s.value,s.closest(".done-color"));
+    s.value="";
   }));
   $("done-rows").querySelectorAll("select.done-rv").forEach(s=>{
     if(s.disabled) return;
@@ -1312,42 +1333,92 @@ function abrirConcluir(id){
     i.addEventListener("input",atualizarTotalConcluir);
     i.addEventListener("focus",()=>setTimeout(()=>i.select(),10));
   });
+  $("done-rows").querySelectorAll("button.done-add").forEach(b=>b.addEventListener("click",()=>dividirTamanho(b.closest(".done-tam"))));
   /* escolher quem revisou também muda o que será lançado */
   $("done-rows").querySelectorAll("select.done-rv").forEach(s=>s.addEventListener("change",atualizarTotalConcluir));
   atualizarTotalConcluir();
   $("done-overlay").classList.add("show");
 }
+/* soma outra pessoa no mesmo tamanho, com a quantidade dela */
+function dividirTamanho(grupo){
+  if(!grupo||grupo.classList.contains("ok")) return;
+  const opts=`<option value="">— quem revisou —</option>`+colaboradores.map(c=>`<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join("");
+  const div=document.createElement("div");
+  div.className="done-row extra";
+  div.innerHTML=`<span class="done-sz mais" aria-hidden="true">+</span>
+    <input type="number" class="done-qty-inp" inputmode="numeric" min="0" max="${Number(grupo.dataset.falta||0)}" value="0">
+    <label class="done-seg" title="Peças de segunda encontradas nesta revisão"><span class="ds-l">2ª</span><input type="number" class="done-seg-inp" inputmode="numeric" min="0" value=""></label>
+    <span class="done-de"></span>
+    <button type="button" class="done-row-x" title="Tirar esta pessoa" aria-label="Tirar esta pessoa">✕</button>
+    <select class="rv-select done-rv">${opts}</select>`;
+  grupo.insertBefore(div, grupo.querySelector(".dt-soma"));
+  div.querySelectorAll("input").forEach(i=>{
+    i.addEventListener("input",atualizarTotalConcluir);
+    i.addEventListener("focus",()=>setTimeout(()=>i.select(),10));
+  });
+  div.querySelector("select.done-rv").addEventListener("change",atualizarTotalConcluir);
+  div.querySelector("button.done-row-x").addEventListener("click",()=>{ div.remove(); atualizarTotalConcluir(); });
+  grupo.classList.add("dividido");
+  atualizarTotalConcluir();
+  /* a primeira pessoa vem com o tamanho inteiro; é ela que precisa baixar */
+  const primeira=grupo.querySelector(".done-row:not(.extra) input.done-qty-inp");
+  if(primeira&&!primeira.disabled){ primeira.focus(); primeira.select(); }
+}
 function fecharConcluir(){ $("done-overlay").classList.remove("show"); loteConcluindo=null; }
-function aplicarTodos(nome){
-  $("done-rows").querySelectorAll("select.done-rv").forEach(s=>{ if(!s.disabled&&[...s.options].some(o=>o.value===nome)) s.value=nome; });
+/* preenche quem revisou, sem mexer nos tamanhos que foram divididos à mão */
+function aplicarTodos(nome,escopo){
+  const raiz=escopo||$("done-rows");
+  raiz.querySelectorAll("select.done-rv").forEach(s=>{
+    if(s.disabled) return;
+    if(s.closest(".done-tam.dividido")) return;
+    if([...s.options].some(o=>o.value===nome)) s.value=nome;
+  });
   atualizarTotalConcluir();
 }
-function atualizarTotalConcluir(){
+function atualizarTotalConcluir(ev){
   const host=$("done-rows"); if(!host) return;
-  const inputs=[...host.querySelectorAll("input.done-qty-inp")];
+  const alvo=(ev&&ev.target&&ev.target.classList&&ev.target.classList.contains("done-qty-inp"))?ev.target:null;
   let agora=0, faltaTot=0, semNome=0, seg=0;
-  inputs.forEach(i=>{
-    const max=Number(i.dataset.falta||0);
-    let q=Math.max(0,Math.round(Number(i.value||0)));
-    if(q>max){ q=max; i.value=String(max); }   // não dá para lançar mais do que falta
-    faltaTot+=max;
-    i.classList.toggle("zero",q<=0);
-    const row=i.closest(".done-row"), sel=row&&row.querySelector("select.done-rv");
-    const sg=row&&row.querySelector("input.done-seg-inp");
-    // de segunda é parte do que ela revisou, então nunca passa da quantidade
-    let s2=0;
-    if(sg&&!sg.disabled){
-      s2=Math.max(0,Math.round(Number(sg.value||0)));
-      if(s2>q){ s2=q; sg.value=q>0?String(q):""; }
-      sg.classList.toggle("tem",s2>0);
-      sg.parentElement.classList.toggle("tem",s2>0);
+  [...host.querySelectorAll(".done-tam")].forEach(grupo=>{
+    const falta=Number(grupo.dataset.falta||0);
+    faltaTot+=falta;
+    /* o campo que a pessoa acabou de mexer é atendido primeiro: quem cede é o outro */
+    const linhas=[...grupo.querySelectorAll(".done-row")];
+    const ordem=alvo&&grupo.contains(alvo)
+      ? [alvo.closest(".done-row"),...linhas.filter(r=>r!==alvo.closest(".done-row"))]
+      : linhas;
+    let resta=falta, somaGrupo=0;
+    ordem.forEach(row=>{
+      const i=row.querySelector("input.done-qty-inp"); if(!i||i.disabled) return;
+      let q=Math.max(0,Math.round(Number(i.value||0)));
+      if(q>resta){ q=resta; i.value=resta>0?String(resta):"0"; }   // o tamanho não rende mais do que falta
+      resta-=q; somaGrupo+=q;
+      i.classList.toggle("zero",q<=0);
+      const sel=row.querySelector("select.done-rv"), sg=row.querySelector("input.done-seg-inp");
+      // de segunda é parte do que ela revisou, então nunca passa da quantidade
+      let s2=0;
+      if(sg&&!sg.disabled){
+        s2=Math.max(0,Math.round(Number(sg.value||0)));
+        if(s2>q){ s2=q; sg.value=q>0?String(q):""; }
+        sg.classList.toggle("tem",s2>0);
+        sg.parentElement.classList.toggle("tem",s2>0);
+      }
+      if(sel) sel.disabled=q<=0;
+      // só conta o que realmente vai ser lançado: precisa de quantidade E responsável
+      const temNome=!!(sel&&sel.value);
+      if(q>0&&temNome){ agora+=q; seg+=s2; }
+      else if(q>0) semNome++;
+      row.classList.toggle("falta-nome",q>0&&!temNome);
+    });
+    const soma=grupo.querySelector(".dt-soma");
+    if(soma){
+      const dividido=linhas.length>1;
+      grupo.classList.toggle("dividido",dividido);
+      soma.innerHTML=dividido
+        ? `somam <b>${somaGrupo.toLocaleString("pt-BR")}</b> de ${falta.toLocaleString("pt-BR")}`
+          +(resta>0?` · sobram ${resta.toLocaleString("pt-BR")} para outro dia`:" · fecha o tamanho ✓")
+        : "";
     }
-    if(sel&&!i.disabled) sel.disabled=q<=0;
-    // só conta o que realmente vai ser lançado: precisa de quantidade E responsável
-    const temNome=!!(sel&&sel.value);
-    if(q>0&&temNome){ agora+=q; seg+=s2; }
-    else if(q>0&&!i.disabled) semNome++;
-    if(row) row.classList.toggle("falta-nome",q>0&&!temNome&&!i.disabled);
   });
   const resta=Math.max(0,faltaTot-agora), tt=$("done-tot");
   if(tt) tt.innerHTML='<span class="dt-l">Lançando</span><b class="dt-v">'+agora.toLocaleString("pt-BR")+'</b><span class="dt-u">pçs</span>'+
@@ -1382,7 +1453,13 @@ async function salvarLoteRevisao(l,aplicar,msg){
   }
 }
 function espelharNomes(log){   // mantém os campos antigos preenchidos
-  const porCor={}; log.forEach(e=>{ (porCor[e.c||"_geral"]=porCor[e.c||"_geral"]||{})[e.t]=e.n; });
+  const porCor={};
+  log.forEach(e=>{
+    const c=porCor[e.c||"_geral"]=porCor[e.c||"_geral"]||{};
+    const atual=c[e.t]?String(c[e.t]).split(", "):[];
+    if(atual.indexOf(e.n)<0) atual.push(e.n);      // o mesmo tamanho pode ter mais de uma pessoa
+    c[e.t]=atual.join(", ");
+  });
   return {porCor, nomes:[...new Set(log.map(e=>e.n))].join(", ")};
 }
 
@@ -1390,18 +1467,22 @@ let faltouNome=false;
 function lerLancamentos(){   // lê as quantidades digitadas no modal
   const agora=Timestamp.now(), novos=[];
   faltouNome=false;
-  [...$("done-rows").querySelectorAll(".done-row")].forEach(r=>{
-    const i=r.querySelector("input.done-qty-inp"), s=r.querySelector("select.done-rv");
-    if(!i||i.disabled) return;
-    const q=Math.min(Number(i.dataset.falta||0),Math.max(0,Math.round(Number(i.value||0))));
-    if(q<=0) return;
-    const nome=((s&&s.value)||"").trim();
-    if(!nome){ faltouNome=true; return; }
-    const sg=r.querySelector("input.done-seg-inp");
-    const s2=Math.min(q,Math.max(0,Math.round(Number((sg&&sg.value)||0))));
-    const reg={c:i.dataset.cor||"_geral",t:i.dataset.sz,q,n:nome,em:agora};
-    if(s2>0) reg.s=s2;                      /* de segunda: só grava quando houver */
-    novos.push(reg);
+  [...$("done-rows").querySelectorAll(".done-tam")].forEach(grupo=>{
+    let resta=Number(grupo.dataset.falta||0);
+    grupo.querySelectorAll(".done-row").forEach(r=>{
+      const i=r.querySelector("input.done-qty-inp"), s=r.querySelector("select.done-rv");
+      if(!i||i.disabled) return;
+      const q=Math.min(resta,Math.max(0,Math.round(Number(i.value||0))));
+      if(q<=0) return;
+      resta-=q;
+      const nome=((s&&s.value)||"").trim();
+      if(!nome){ faltouNome=true; return; }
+      const sg=r.querySelector("input.done-seg-inp");
+      const s2=Math.min(q,Math.max(0,Math.round(Number((sg&&sg.value)||0))));
+      const reg={c:grupo.dataset.cor||"_geral",t:grupo.dataset.sz,q,n:nome,em:agora};
+      if(s2>0) reg.s=s2;                    /* de segunda: só grava quando houver */
+      novos.push(reg);
+    });
   });
   return novos;
 }
