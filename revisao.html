@@ -461,6 +461,49 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
   padding:6px 12px;font-size:12.5px;font-weight:800;color:var(--accent-lt);pointer-events:auto;}
 .toast .toast-undo:active{border-color:var(--bd3);}
 .toast.undo{pointer-events:auto;}
+
+/* peça de segunda */
+.done-seg{display:flex;align-items:center;gap:0;flex-shrink:0;height:46px;border-radius:11px;
+  background:var(--bg3);border:1px solid var(--bd2);overflow:hidden;transition:border-color .15s;}
+.done-seg .ds-l{padding:0 7px;font-family:var(--fm);font-size:11px;font-weight:600;color:var(--t4);
+  background:var(--bg4);align-self:stretch;display:flex;align-items:center;}
+.done-seg-inp{width:48px;height:100%;background:none;border:none;color:var(--t2);font-family:var(--fm);
+  font-size:14px;font-weight:700;text-align:center;padding:0 4px;box-sizing:border-box;}
+.done-seg-inp:focus{outline:none;}
+/* as setinhas do campo numérico roubam largura num campo tão estreito */
+.done-qty-inp,.done-seg-inp{-moz-appearance:textfield;}
+.done-qty-inp::-webkit-outer-spin-button,.done-qty-inp::-webkit-inner-spin-button,
+.done-seg-inp::-webkit-outer-spin-button,.done-seg-inp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.done-seg:focus-within{border-color:var(--amber);}
+.done-seg.tem{border-color:rgba(245,158,11,.42);background:rgba(245,158,11,.09);}
+.done-seg.tem .ds-l{background:rgba(245,158,11,.18);color:var(--amber);}
+.done-seg.tem .done-seg-inp{color:var(--amber);}
+.done-seg.off{opacity:.35;}
+.dt-seg{font-size:11.5px;font-weight:700;color:var(--amber);background:rgba(245,158,11,.13);
+  padding:3px 9px;border-radius:7px;}
+.mtag.seg{color:var(--amber)!important;background:rgba(245,158,11,.12)!important;border-color:rgba(245,158,11,.28)!important;}
+.rank-sz.seg{color:var(--amber);background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.24);}
+
+/* saldo do mês por revisora */
+.mp-saldo{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-top:11px;padding-top:10px;
+  border-top:1px solid var(--bd);}
+.ms-l{font-size:10px;font-weight:800;color:var(--t4);text-transform:uppercase;letter-spacing:.7px;}
+.ms-v{font-family:var(--fm);font-size:17px;font-weight:800;letter-spacing:-.3px;color:var(--t2);}
+.ms-v span{font-size:11px;font-weight:600;color:var(--t4);}
+.mp-saldo.neg .ms-v{color:var(--red);}
+.mp-saldo.pos .ms-v{color:var(--green);}
+.ms-d{margin-left:auto;font-size:11px;color:var(--t4);}
+.ms-d b{font-family:var(--fm);}
+.mp-saldo.vazio .ms-d{margin-left:0;}
+.mp-card.devendo{border-color:rgba(239,68,68,.26);}
+.mt-neg{margin-top:9px;padding-top:9px;border-top:1px solid var(--bd);font-size:11.5px;color:var(--t3);line-height:1.5;}
+.mt-neg b{color:var(--red);font-family:var(--fm);}
+.mt-neg.ok,.mt-neg.ok b{color:var(--green);}
+.seg-txt{color:var(--amber);}
+
+.dia-seg{font-size:11px;font-weight:700;color:var(--amber);background:rgba(245,158,11,.12);
+  border:1px solid rgba(245,158,11,.26);border-radius:7px;padding:2px 8px;}
+.dia-seg.sm{margin-left:auto;margin-right:8px;font-size:10.5px;padding:1px 7px;}
 </style>
 </head>
 <body>
@@ -932,9 +975,9 @@ async function removeColaborador(id){
 }
 function renderPorColaborador(concluidos){
   const map=new Map();
-  function bump(nome,size,cor,qty){
-    const cur=map.get(nome)||{nome,pecas:0,sizes:{},cores:{},loteIds:new Set()};
-    cur.pecas+=qty;
+  function bump(nome,size,cor,qty,seg){
+    const cur=map.get(nome)||{nome,pecas:0,seg:0,sizes:{},cores:{},loteIds:new Set()};
+    cur.pecas+=qty; cur.seg+=Number(seg||0);
     if(size) cur.sizes[size]=(cur.sizes[size]||0)+qty;
     if(cor) cur.cores[cor]=(cur.cores[cor]||0)+qty;
     map.set(nome,cur); return cur;
@@ -944,7 +987,7 @@ function renderPorColaborador(concluidos){
     if(log.length){   // com lançamentos: conta exatamente o que cada um fez
       log.forEach(e=>{
         const nome=(e.n||"").trim()||"Sem colaborador";
-        bump(nome, e.t&&e.t!=="_total"?tamCanon(e.t):null, e.c&&e.c!=="_geral"?e.c:null, Number(e.q||0)).loteIds.add(l.id);
+        bump(nome, e.t&&e.t!=="_total"?tamCanon(e.t):null, e.c&&e.c!=="_geral"?e.c:null, Number(e.q||0), e.s).loteIds.add(l.id);
       });
       return;
     }
@@ -973,7 +1016,8 @@ function renderPorColaborador(concluidos){
   if(!rows.length){ sub.textContent="Nenhuma peça concluída"; body.innerHTML=`<div class="rank-empty">Lance revisões para ver as peças por colaborador.</div>`; return; }
   sub.textContent=rows.length===1?"1 colaborador":rows.length+" colaboradores";
   body.innerHTML=rows.map(r=>{
-    const szs=TAMS.filter(t=>r.sizes[t]>0).map(t=>`<span class="rank-sz">${t}<b>${r.sizes[t].toLocaleString("pt-BR")}</b></span>`).join("");
+    const szs=TAMS.filter(t=>r.sizes[t]>0).map(t=>`<span class="rank-sz">${t}<b>${r.sizes[t].toLocaleString("pt-BR")}</b></span>`).join("")
+      +(Number(r.seg||0)>0?`<span class="rank-sz seg" title="Peças de segunda encontradas">2ª<b>${Number(r.seg).toLocaleString("pt-BR")}</b></span>`:"");
     const cores=Object.keys(r.cores).sort((a,b)=>r.cores[b]-r.cores[a]).map(c=>`<span class="rank-sz"><span class="cd" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${corHex(c)};margin-right:4px;vertical-align:middle;"></span>${esc(c)}<b>${r.cores[c].toLocaleString("pt-BR")}</b></span>`).join("");
     return `<div class="rank-row">
       <div class="rank-top">
@@ -1010,6 +1054,8 @@ function getLog(l){ return logDe(l,S()); }
 function temLog(l){ return getLog(l).length>0; }
 function feitoMap(l){ const o={}; getLog(l).forEach(e=>{ const c=e.c||"_geral"; (o[c]=o[c]||{}); o[c][e.t]=(o[c][e.t]||0)+Number(e.q||0); }); return o; }
 function totalFeito(l){ return getLog(l).reduce((s,e)=>s+Number(e.q||0),0); }
+/* peças de segunda encontradas na revisão do lote */
+function totalSegunda(l){ return getLog(l).reduce((s,e)=>s+Number(e.s||0),0); }
 function totalPrevisto(l){ return gradeTotal(l)||Number(l.qtdTotal||0); }
 function faltaDe(l){ return Math.max(0,totalPrevisto(l)-totalFeito(l)); }
 function tsMonth(ts){ const s=ts?.seconds; if(!s) return ""; return monthKey(new Date(s*1000)); }
@@ -1177,6 +1223,7 @@ function render(){
           <span class="mtag qty"><span class="mi">▦</span>${qtd} pçs</span>
           ${!done&&totalFeito(l)>0?`<span class="mtag parcial">${totalFeito(l).toLocaleString("pt-BR")}/${totalPrevisto(l).toLocaleString("pt-BR")} revisadas</span>`:""}
           ${done&&Number(l.qtdBaixa||0)>0?`<span class="mtag baixa" title="Fechou com ${Number(l.qtdBaixa).toLocaleString("pt-BR")} pçs a menos que as ${Number(l.qtdPrevista||0).toLocaleString("pt-BR")} previstas">−${Number(l.qtdBaixa).toLocaleString("pt-BR")}</span>`:""}
+          ${totalSegunda(l)>0?`<span class="mtag seg" title="Peças de segunda encontradas na revisão">2ª ${totalSegunda(l).toLocaleString("pt-BR")}</span>`:""}
           ${corChips}
           ${szChips||(l.tamanhos?`<span class="mtag"><span class="mi">📐</span>${esc(l.tamanhos)}</span>`:"")}
           ${prazoTag(l.prazo,done)}
@@ -1220,6 +1267,7 @@ function abrirConcluir(id){
     return `<div class="done-row${ok?" ok":""}">
       <span class="done-sz">${rot}</span>
       <input type="number" class="done-qty-inp" inputmode="numeric" min="0" max="${falta}" data-cor="${esc(ck)}" data-sz="${sz}" data-falta="${falta}" value="${ok?"":falta}"${ok?" disabled":""}>
+      <label class="done-seg${ok?" off":""}" title="Peças de segunda encontradas nesta revisão"><span class="ds-l">2ª</span><input type="number" class="done-seg-inp" inputmode="numeric" min="0" max="${falta}" value=""${ok?" disabled":""}></label>
       <span class="done-de">${ok?"tudo revisado ✓":(ja>0?`<b>${ja}</b> de ${tot} feitas · faltam ${falta}`:`de ${tot}`)}</span>
       <select class="rv-select done-rv" data-cor="${esc(ck)}" data-sz="${sz}"${ok?" disabled":""}>${opts}</select>
     </div>`;
@@ -1260,6 +1308,10 @@ function abrirConcluir(id){
     i.addEventListener("input",atualizarTotalConcluir);
     i.addEventListener("focus",()=>setTimeout(()=>i.select(),10));
   });
+  $("done-rows").querySelectorAll("input.done-seg-inp").forEach(i=>{
+    i.addEventListener("input",atualizarTotalConcluir);
+    i.addEventListener("focus",()=>setTimeout(()=>i.select(),10));
+  });
   /* escolher quem revisou também muda o que será lançado */
   $("done-rows").querySelectorAll("select.done-rv").forEach(s=>s.addEventListener("change",atualizarTotalConcluir));
   atualizarTotalConcluir();
@@ -1273,7 +1325,7 @@ function aplicarTodos(nome){
 function atualizarTotalConcluir(){
   const host=$("done-rows"); if(!host) return;
   const inputs=[...host.querySelectorAll("input.done-qty-inp")];
-  let agora=0, faltaTot=0, semNome=0;
+  let agora=0, faltaTot=0, semNome=0, seg=0;
   inputs.forEach(i=>{
     const max=Number(i.dataset.falta||0);
     let q=Math.max(0,Math.round(Number(i.value||0)));
@@ -1281,15 +1333,25 @@ function atualizarTotalConcluir(){
     faltaTot+=max;
     i.classList.toggle("zero",q<=0);
     const row=i.closest(".done-row"), sel=row&&row.querySelector("select.done-rv");
+    const sg=row&&row.querySelector("input.done-seg-inp");
+    // de segunda é parte do que ela revisou, então nunca passa da quantidade
+    let s2=0;
+    if(sg&&!sg.disabled){
+      s2=Math.max(0,Math.round(Number(sg.value||0)));
+      if(s2>q){ s2=q; sg.value=q>0?String(q):""; }
+      sg.classList.toggle("tem",s2>0);
+      sg.parentElement.classList.toggle("tem",s2>0);
+    }
     if(sel&&!i.disabled) sel.disabled=q<=0;
     // só conta o que realmente vai ser lançado: precisa de quantidade E responsável
     const temNome=!!(sel&&sel.value);
-    if(q>0&&temNome) agora+=q;
+    if(q>0&&temNome){ agora+=q; seg+=s2; }
     else if(q>0&&!i.disabled) semNome++;
     if(row) row.classList.toggle("falta-nome",q>0&&!temNome&&!i.disabled);
   });
   const resta=Math.max(0,faltaTot-agora), tt=$("done-tot");
   if(tt) tt.innerHTML='<span class="dt-l">Lançando</span><b class="dt-v">'+agora.toLocaleString("pt-BR")+'</b><span class="dt-u">pçs</span>'+
+    (seg>0?'<span class="dt-seg">'+seg.toLocaleString("pt-BR")+' de 2ª</span>':'')+
     (semNome>0?'<span class="dt-dif">falta quem revisou em '+semNome+(semNome>1?' tamanhos':' tamanho')+'</span>'
      :resta>0?'<span class="dt-dif">faltam '+resta.toLocaleString("pt-BR")+' para outro dia</span>'
              :'<span class="dt-dif ok">conclui o lote ✓</span>');
@@ -1335,7 +1397,11 @@ function lerLancamentos(){   // lê as quantidades digitadas no modal
     if(q<=0) return;
     const nome=((s&&s.value)||"").trim();
     if(!nome){ faltouNome=true; return; }
-    novos.push({c:i.dataset.cor||"_geral",t:i.dataset.sz,q,n:nome,em:agora});
+    const sg=r.querySelector("input.done-seg-inp");
+    const s2=Math.min(q,Math.max(0,Math.round(Number((sg&&sg.value)||0))));
+    const reg={c:i.dataset.cor||"_geral",t:i.dataset.sz,q,n:nome,em:agora};
+    if(s2>0) reg.s=s2;                      /* de segunda: só grava quando houver */
+    novos.push(reg);
   });
   return novos;
 }
@@ -1586,47 +1652,70 @@ let metasTam={padrao:{dia:930},especial:{dia:840}};
 function grupoDoTam(t){ const c=tamCanon(t); const g=GRUPOS_TAM.find(g=>g.tams.indexOf(c)>=0); return g?g.key:"padrao"; }
 function horasHoje(){ return ehSextaHoje()?Number(jornada.sexta||0):Number(jornada.normal||0); }
 function fmtH(n){ return String(Number(n||0)).replace('.',','); }   /* 9.5 -> 9,5 */
-function fatorJornada(){
-  return (ehSextaHoje()&&Number(jornada.normal)>0) ? Number(jornada.sexta||0)/Number(jornada.normal) : 1;
+function fatorJornada(){ return fatorJornadaEm(_hojeStr()); }
+/* na sexta a jornada é menor, então a meta daquele dia cai na mesma proporção */
+function fatorJornadaEm(ds){
+  const d=new Date(String(ds)+"T12:00:00");
+  return (d.getDay()===5&&Number(jornada.normal)>0) ? Number(jornada.sexta||0)/Number(jornada.normal) : 1;
 }
 /* A meta é de CADA funcionária, não do dia inteiro: cada revisora tem a sua.
    O tamanho não cria uma segunda meta — só muda quanto rende: peça grande sai
    menos, então quem revisou G1/G2/G3 tem a meta menor na mesma proporção. */
-function metaIndividual(a,b){
+function metaIndividual(a,b,fatorDia){
   const rA=Number((metasTam.padrao||{}).dia||0), rB=Number((metasTam.especial||{}).dia||0);
-  const fator=fatorJornada(), pa=Number(a||0), pb=Number(b||0), tot=pa+pb;
+  const fator=(fatorDia==null?fatorJornada():fatorDia), pa=Number(a||0), pb=Number(b||0), tot=pa+pb;
   if(rA<=0) return 0;
   if(tot<=0) return Math.round(rA*fator);            // ainda sem lançamento: vale o ritmo normal
   const consumo=(rA>0?pa/rA:0)+(rB>0?pb/rB:0);       // quanto do dia cada peça consumiu
   if(consumo<=0) return Math.round(rA*fator);
   return Math.round((tot/consumo)*fator);
 }
-/* peças que cada revisora fez hoje, separadas por grupo de tamanho */
-function feitoHojePorPessoa(){
-  const cfg=S(), hoje=_hojeStr(), out=new Map();
-  function bump(nome,grupo,q){
+/* o que cada revisora fez, dia a dia — serve para o hoje e para o saldo do mês */
+function porPessoaPorDia(mes){
+  const cfg=S(), out=new Map();
+  function bump(nome,dia,grupo,q,seg,loteId){
+    if(!dia) return; if(mes&&dia.slice(0,7)!==mes) return;
     const n=String(nome||"").trim()||"Sem colaborador";
-    const cur=out.get(n)||{nome:n,padrao:0,especial:0,lotes:new Set()};
-    cur[grupo]+=Number(q||0); out.set(n,cur); return cur;
+    const p=out.get(n)||{nome:n,dias:new Map()};
+    const d=p.dias.get(dia)||{padrao:0,especial:0,seg:0,lotes:new Set()};
+    d[grupo]+=Number(q||0); d.seg+=Number(seg||0); if(loteId) d.lotes.add(loteId);
+    p.dias.set(dia,d); out.set(n,p);
   }
   (Array.isArray(lotes)?lotes:[]).forEach(l=>{
     const log=logDe(l,cfg);
     if(log.length){    // com lançamentos: cada parte conta no dia e para quem fez
-      log.forEach(e=>{ if(_emStr(e.em)===hoje) bump(e.n,grupoDoTam(e.t),e.q).lotes.add(l.id); });
+      log.forEach(e=>bump(e.n,_emStr(e.em),grupoDoTam(e.t),e.q,e.s,l.id));
       return;
     }
-    if(!cfg.concl(l)) return; if(_emStr(l[cfg.fEm])!==hoje) return;
+    if(!cfg.concl(l)) return;
+    const dia=_emStr(l[cfg.fEm]); if(!dia) return;
     const grade=getGrade(l), porCor=l[cfg.fCor]||null, porTam=l[cfg.fTam]||null;
     const un=String(l[cfg.fNome]||"").trim(), fb=(un&&un.indexOf(",")<0)?un:"";
     if(grade.length){
       grade.forEach(g=>{ const ck=g.cor||"_geral"; TAMS.forEach(t=>{
         const q=Number(g.tam[t]||0); if(q<=0) return;
-        const nome=(porCor&&porCor[ck]&&porCor[ck][t])||(porTam&&porTam[t])||fb;
-        bump(nome,grupoDoTam(t),q).lotes.add(l.id);
+        bump((porCor&&porCor[ck]&&porCor[ck][t])||(porTam&&porTam[t])||fb, dia, grupoDoTam(t), q, 0, l.id);
       }); });
-    }else bump(fb,"padrao",Number(l.qtdTotal||0)).lotes.add(l.id);
+    }else bump(fb,dia,"padrao",Number(l.qtdTotal||0),0,l.id);
   });
-  return [...out.values()];
+  return out;
+}
+const _diaVazio=()=>({padrao:0,especial:0,seg:0,lotes:new Set()});
+/* saldo de peças no mês: só os dias em que ela lançou, cada um contra a meta
+   daquele dia. Negativo quer dizer que ficou devendo peças. */
+function saldoDoMes(pessoa){
+  const r={saldo:0,dias:0,bateu:0,pior:null,seg:0};
+  if(!pessoa) return r;
+  [...pessoa.dias.keys()].sort().forEach(ds=>{
+    const d=pessoa.dias.get(ds), feito=Number(d.padrao||0)+Number(d.especial||0);
+    if(feito<=0) return;
+    const meta=metaIndividual(d.padrao,d.especial,fatorJornadaEm(ds));
+    const dif=feito-meta;
+    r.saldo+=dif; r.dias++; r.seg+=Number(d.seg||0);
+    if(dif>=0) r.bateu++;
+    if(!r.pior||dif<r.pior.dif) r.pior={ds,dif};
+  });
+  return r;
 }
 let metasDocId=null;
 const ORDEM_SETORES=["revisao"];
@@ -1672,54 +1761,73 @@ function metaEfetiva(k){
 function renderMetas(){
   const host=$("view-metas"); if(!host) return;
   const sexta=ehSextaHoje(), horas=horasHoje(), fator=fatorJornada();
+  const hoje=_hojeStr(), mes=hoje.slice(0,7);
   const rA=Number((metasTam.padrao||{}).dia||0), rB=Number((metasTam.especial||{}).dia||0);
   const metaBase=Math.round(rA*fator);                 // o que cada uma precisa fazer hoje
 
-  const mapa=new Map(feitoHojePorPessoa().map(p=>[p.nome,p]));
-  /* toda revisora cadastrada aparece, mesmo sem ter lançado nada hoje */
+  const mapa=porPessoaPorDia(mes);
+  /* toda revisora cadastrada aparece, mesmo sem ter lançado nada no mês */
   (Array.isArray(colaboradores)?colaboradores:[]).forEach(c=>{
     const n=String(c.nome||"").trim();
-    if(n&&!mapa.has(n)) mapa.set(n,{nome:n,padrao:0,especial:0,lotes:new Set()});
+    if(n&&!mapa.has(n)) mapa.set(n,{nome:n,dias:new Map()});
   });
   const pessoas=[...mapa.values()].map(p=>{
-    const feito=Number(p.padrao||0)+Number(p.especial||0);
-    const meta=metaIndividual(p.padrao,p.especial);
-    return {...p,feito,meta,
+    const d=p.dias.get(hoje)||_diaVazio();
+    const feito=Number(d.padrao||0)+Number(d.especial||0);
+    const meta=metaIndividual(d.padrao,d.especial);
+    const mesR=saldoDoMes(p);
+    return {nome:p.nome,padrao:d.padrao,especial:d.especial,seg:d.seg,lotes:d.lotes,
+      feito,meta,mes:mesR,
       pct:meta>0?Math.round(feito/meta*100):0,
       bateu:meta>0&&feito>=meta};
-  }).sort((x,y)=>y.feito-x.feito||x.nome.localeCompare(y.nome,"pt-BR"));
+  }).sort((x,y)=>y.feito-x.feito||x.mes.saldo-y.mes.saldo||x.nome.localeCompare(y.nome,"pt-BR"));
 
   const bateram=pessoas.filter(p=>p.bateu).length;
   const totalTime=pessoas.reduce((s,p)=>s+p.feito,0);
+  const segHoje=pessoas.reduce((s,p)=>s+Number(p.seg||0),0);
   const porHora=(metaBase>0&&horas>0)?Math.round(metaBase/horas):0;
+  const negativas=pessoas.filter(p=>p.mes.dias>0&&p.mes.saldo<0);
+  const devendo=negativas.reduce((s,p)=>s+p.mes.saldo,0);
+  const fmt=n=>Number(n||0).toLocaleString('pt-BR');
+  const fmtSaldo=n=>(n>0?'+':n<0?'−':'')+fmt(Math.abs(n));
 
   const topo=`<div class="meta-total-card">
     <div class="mt-l">Meta de cada funcionária${sexta?' · <span class="meta-sexta">sexta</span>':''}</div>
-    <div class="mt-v">${metaBase.toLocaleString('pt-BR')} <span>pçs por revisora</span></div>
+    <div class="mt-v">${fmt(metaBase)} <span>pçs por revisora</span></div>
     <div class="mt-sub">${rA>0
-      ? `${porHora?'ritmo de <b>'+porHora.toLocaleString('pt-BR')+'</b> pçs/h · ':''}${bateram} de ${pessoas.length} ${pessoas.length===1?'bateu':'bateram'} · o time revisou <b>${totalTime.toLocaleString('pt-BR')}</b> pçs hoje`
+      ? `${porHora?'ritmo de <b>'+fmt(porHora)+'</b> pçs/h · ':''}${bateram} de ${pessoas.length} ${pessoas.length===1?'bateu':'bateram'} · o time revisou <b>${fmt(totalTime)}</b> pçs hoje${segHoje>0?' · <span class="seg-txt">'+fmt(segHoje)+' de 2ª</span>':''}`
       : 'Defina o ritmo por tamanho abaixo.'}</div>
-    ${sexta&&rA>0?`<div class="mt-mix">Sexta é de ${fmtH(jornada.sexta)}h, então a meta de cada uma cai de ${rA.toLocaleString('pt-BR')} para <b>${metaBase.toLocaleString('pt-BR')}</b> peças.</div>`:''}
+    ${sexta&&rA>0?`<div class="mt-mix">Sexta é de ${fmtH(jornada.sexta)}h, então a meta de cada uma cai de ${fmt(rA)} para <b>${fmt(metaBase)}</b> peças.</div>`:''}
+    ${negativas.length?`<div class="mt-neg">No mês, <b>${negativas.length}</b> ${negativas.length===1?'revisora está negativa':'revisoras estão negativas'} — faltam <b>${fmt(Math.abs(devendo))}</b> peças no total.</div>`:(pessoas.some(p=>p.mes.dias>0)?`<div class="mt-neg ok">Ninguém está negativa no mês. 🎉</div>`:'')}
   </div>`;
 
   const lista=pessoas.length?pessoas.map(p=>{
     const pctBar=Math.min(100,p.pct);
     const falta=Math.max(0,p.meta-p.feito), sobra=Math.max(0,p.feito-p.meta);
     const mix=(Number(p.especial||0)>0&&Number(p.padrao||0)>0)
-      ? `<span class="mp-mix"><b>${Number(p.padrao).toLocaleString('pt-BR')}</b> P/M/G/GG · <b>${Number(p.especial).toLocaleString('pt-BR')}</b> G1/G2/G3</span>`
+      ? `<span class="mp-mix"><b>${fmt(p.padrao)}</b> P/M/G/GG · <b>${fmt(p.especial)}</b> G1/G2/G3</span>`
       : (Number(p.especial||0)>0?`<span class="mp-mix">tudo em <b>G1/G2/G3</b></span>`:'');
     const menor=p.meta>0&&p.meta<metaBase;
-    return `<div class="meta-card mp-card${p.bateu?' ok':''}">
+    const m=p.mes, neg=m.saldo<0;
+    const saldoLinha=m.dias>0
+      ? `<div class="mp-saldo${neg?' neg':' pos'}">
+           <span class="ms-l">Saldo do mês</span>
+           <span class="ms-v">${fmtSaldo(m.saldo)}<span> pçs</span></span>
+           <span class="ms-d">${m.dias} ${m.dias===1?'dia':'dias'} · bateu em ${m.bateu}${m.seg>0?' · <b class="seg-txt">'+fmt(m.seg)+'</b> de 2ª':''}</span>
+         </div>`
+      : `<div class="mp-saldo vazio"><span class="ms-l">Saldo do mês</span><span class="ms-d">sem lançamento neste mês</span></div>`;
+    return `<div class="meta-card mp-card${p.bateu?' ok':''}${neg?' devendo':''}">
       <div class="meta-head">
         <span class="meta-nome mp-nome"><span class="rank-dot${p.bateu?'':' off'}"></span><span class="mp-n">${esc(p.nome)}</span></span>
         ${p.meta>0?`<span class="meta-badge${p.bateu?' ok':''}">${p.pct}%</span>`:''}
       </div>
-      <div class="mp-num">${p.feito.toLocaleString('pt-BR')}<span> / ${p.meta.toLocaleString('pt-BR')} pçs</span></div>
+      <div class="mp-num">${fmt(p.feito)}<span> / ${fmt(p.meta)} pçs</span></div>
       <div class="meta-bar"><div class="meta-fill${p.bateu?' ok':''}" style="width:${pctBar}%"></div></div>
       <div class="meta-sub mp-sub">${p.meta>0
-        ? (p.bateu?('meta batida 🎉'+(sobra>0?' · <b>+'+sobra.toLocaleString('pt-BR')+'</b> acima':''))
-                 :('faltam <b>'+falta.toLocaleString('pt-BR')+'</b> pçs'))
-        : 'sem ritmo definido'}${p.lotes&&p.lotes.size?' · '+p.lotes.size+(p.lotes.size===1?' lote':' lotes'):''}${mix?' · '+mix:''}${menor?` <span class="meta-sexta">meta menor · peça maior</span>`:''}</div>
+        ? (p.bateu?('meta batida 🎉'+(sobra>0?' · <b>+'+fmt(sobra)+'</b> acima':''))
+                 :('faltam <b>'+fmt(falta)+'</b> pçs hoje'))
+        : 'sem ritmo definido'}${p.lotes&&p.lotes.size?' · '+p.lotes.size+(p.lotes.size===1?' lote':' lotes'):''}${Number(p.seg||0)>0?' · <b class="seg-txt">'+fmt(p.seg)+'</b> de 2ª':''}${mix?' · '+mix:''}${menor?` <span class="meta-sexta">meta menor · peça maior</span>`:''}</div>
+      ${saldoLinha}
     </div>`;
   }).join(""):`<div class="mp-vazio">Nenhuma revisora cadastrada. Adicione as colaboradoras para acompanhar a meta de cada uma.</div>`;
 
@@ -1743,8 +1851,9 @@ function renderMetas(){
   const pctSexta=(Number(jornada.normal)>0)?Math.round(Number(jornada.sexta||0)/Number(jornada.normal)*100):0;
   host.innerHTML=`<div class="metas-wrap">${topo}
     <div class="mp-titulo">Cada revisora hoje</div>${lista}${ritmo}${jorn}
-    <div class="meta-note">A meta é de cada funcionária: ${rA.toLocaleString('pt-BR')} peças no dia em P/M/G/GG. Em G1/G2/G3 a peça é maior e a produção cai, então valem ${rB.toLocaleString('pt-BR')} — é a mesma meta, só com ritmo menor.
-    Na sexta a jornada menor reduz a meta na mesma proporção (${fmtH(jornada.sexta)}h de ${fmtH(jornada.normal)}h ⇒ ${pctSexta}%).</div></div>`;
+    <div class="meta-note">A meta é de cada funcionária: ${fmt(rA)} peças no dia em P/M/G/GG. Em G1/G2/G3 a peça é maior e a produção cai, então valem ${fmt(rB)} — é a mesma meta, só com ritmo menor.
+    Na sexta a jornada menor reduz a meta na mesma proporção (${fmtH(jornada.sexta)}h de ${fmtH(jornada.normal)}h ⇒ ${pctSexta}%).
+    O saldo do mês soma só os dias em que a revisora lançou peças: cada dia entra comparado com a meta daquele dia.</div></div>`;
 
   host.querySelectorAll('input[data-mt]').forEach(inp=>inp.addEventListener('change',async()=>{
     const k=inp.dataset.mt;
@@ -1795,15 +1904,20 @@ function renderDias(){
       if(log.length){   // cada lançamento cai no dia em que foi feito
         log.forEach(e=>{ const dia=_emStr(e.em); if(!dia||dia.slice(0,7)!==mes) return;
           const nome=(e.n||"").trim()||"Sem colaborador";
-          (dias[dia]=dias[dia]||{}); dias[dia][nome]=(dias[dia][nome]||0)+Number(e.q||0); });
+          (dias[dia]=dias[dia]||{}); const c=dias[dia][nome]=dias[dia][nome]||{q:0,s:0};
+          c.q+=Number(e.q||0); c.s+=Number(e.s||0); });
         return;
       }
       const dia=_emStr(l[cfg.fEm]); if(!dia||dia.slice(0,7)!==mes) return;
-      const pp=pecasPorPessoa(l,cfg); Object.keys(pp).forEach(nome=>{ (dias[dia]=dias[dia]||{}); dias[dia][nome]=(dias[dia][nome]||0)+pp[nome]; }); });
+      const pp=pecasPorPessoa(l,cfg); Object.keys(pp).forEach(nome=>{ (dias[dia]=dias[dia]||{});
+        const c=dias[dia][nome]=dias[dia][nome]||{q:0,s:0}; c.q+=pp[nome]; }); });
   });
   const esc=x=>String(x==null?"":x).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
   const totDia={}; let maxT=0, anyData=false;
-  Object.keys(dias).forEach(d=>{ const t=Object.values(dias[d]).reduce((sm,v)=>sm+v,0); totDia[d]=t; if(t>maxT)maxT=t; if(t>0)anyData=true; });
+  const segDia={};
+  Object.keys(dias).forEach(d=>{ const vs=Object.values(dias[d]);
+    const t=vs.reduce((sm,v)=>sm+v.q,0); segDia[d]=vs.reduce((sm,v)=>sm+v.s,0);
+    totDia[d]=t; if(t>maxT)maxT=t; if(t>0)anyData=true; });
   const yy=Number(mes.slice(0,4)), mm=Number(mes.slice(5,7));
   const startWd=new Date(yy,mm-1,1).getDay();
   const ndays=new Date(yy,mm,0).getDate();
@@ -1821,11 +1935,15 @@ function renderDias(){
   let detail;
   if(!anyData){ detail='<div class="empty"><div class="empty-ico">🗓️</div><div class="empty-t">Sem registros</div><div class="empty-d">Nenhuma peça concluída neste mês'+(diasSetor!=="todos"?" em "+SETORES[diasSetor].nome:"")+'.</div></div>'; }
   else if(diasSel && dias[diasSel]){
-    const pessoas=Object.keys(dias[diasSel]).map(n=>({nome:n,pecas:dias[diasSel][n]})).sort((a,b)=>b.pecas-a.pecas);
+    const pessoas=Object.keys(dias[diasSel]).map(n=>({nome:n,pecas:dias[diasSel][n].q,seg:dias[diasSel][n].s})).sort((a,b)=>b.pecas-a.pecas);
     const dd=new Date(diasSel+"T12:00:00");
     const dl=dd.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
-    detail='<div class="dia-card"><div class="dia-head"><span class="dia-data">'+dl+'</span><span class="dia-tot">'+(totDia[diasSel]||0).toLocaleString("pt-BR")+' pçs</span></div>'+
-      '<div class="dia-list">'+pessoas.map(p=>'<div class="dia-row"><span class="dia-nome">'+esc(p.nome)+'</span><span class="dia-q">'+p.pecas.toLocaleString("pt-BR")+'</span></div>').join("")+'</div></div>';
+    detail='<div class="dia-card"><div class="dia-head"><span class="dia-data">'+dl+'</span>'+
+      ((segDia[diasSel]||0)>0?'<span class="dia-seg">'+segDia[diasSel].toLocaleString("pt-BR")+' de 2ª</span>':'')+
+      '<span class="dia-tot">'+(totDia[diasSel]||0).toLocaleString("pt-BR")+' pçs</span></div>'+
+      '<div class="dia-list">'+pessoas.map(p=>'<div class="dia-row"><span class="dia-nome">'+esc(p.nome)+'</span>'+
+        (p.seg>0?'<span class="dia-seg sm">2ª '+p.seg.toLocaleString("pt-BR")+'</span>':'')+
+        '<span class="dia-q">'+p.pecas.toLocaleString("pt-BR")+'</span></div>').join("")+'</div></div>';
   } else { detail='<div class="cal-hint">Toque em um dia para ver quem fez as peças.</div>'; }
   host.innerHTML='<div class="cal">'+cells+'</div>'+legend+'<div class="cal-detail">'+detail+'</div>';
   host.querySelectorAll('.cal-cell[data-dia]').forEach(c=>c.addEventListener('click',()=>{ const ds=c.dataset.dia; if((totDia[ds]||0)>0){ diasSel=ds; renderDias(); } }));
