@@ -521,6 +521,54 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
 .dt-soma:empty{display:none;}
 .dt-soma b{font-family:var(--fm);color:var(--accent);}
 .done-tam.dividido{border-left:2px solid rgba(76,123,243,.32);padding-left:9px;margin-left:-11px;}
+
+/* placar */
+.view-tabs .vtab{font-size:13px;padding:0 3px;}
+.placar{display:flex;flex-direction:column;gap:12px;}
+.pl-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.pl-seg{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--bd);border-radius:11px;padding:4px;}
+.pl-seg button{height:32px;padding:0 14px;border-radius:8px;background:none;border:none;color:var(--t3);
+  font-size:12.5px;font-weight:700;transition:background .15s,color .15s;}
+.pl-seg button.active{background:linear-gradient(135deg,#2E52C9,#16307A);color:#fff;}
+.pl-data{margin-left:auto;font-size:11.5px;color:var(--t4);}
+.pl-placar-total{background:linear-gradient(135deg,rgba(76,123,243,.22),rgba(110,20,43,.08));
+  border:1px solid rgba(76,123,243,.28);border-radius:16px;padding:15px 18px;}
+.pt-l{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+.pt-v{font-family:var(--fm);font-size:32px;font-weight:800;color:var(--accent);letter-spacing:-1.2px;line-height:1;}
+.pt-v span{font-size:14px;color:var(--t3);font-weight:600;letter-spacing:0;}
+.pt-sub{font-size:11.5px;color:var(--t3);margin-top:8px;}
+.pt-sub b{font-family:var(--fm);}
+.pl-lista{display:flex;flex-direction:column;gap:9px;}
+.pl-row{display:flex;align-items:center;gap:12px;background:var(--bg2);border:1px solid var(--bd);
+  border-radius:14px;padding:12px 14px;}
+.pl-pos{width:30px;height:30px;flex-shrink:0;border-radius:9px;background:var(--bg4);border:1px solid var(--bd2);
+  display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:14px;font-weight:700;color:var(--t3);}
+.pl-row.t1 .pl-pos{background:linear-gradient(135deg,#F5C518,#B8860B);border-color:rgba(245,197,24,.5);color:#1A1200;}
+.pl-row.t2 .pl-pos{background:linear-gradient(135deg,#D4D8E0,#8A93A3);border-color:rgba(212,216,224,.45);color:#12161F;}
+.pl-row.t3 .pl-pos{background:linear-gradient(135deg,#CD8A52,#8A5A2E);border-color:rgba(205,138,82,.45);color:#170D04;}
+.pl-row.t1{border-color:rgba(245,197,24,.30);}
+.pl-row.zerada{opacity:.55;}
+.pl-meio{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
+.pl-nome{font-size:14px;font-weight:700;color:var(--t);line-height:1.25;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.pl-flag{display:inline-block;margin-left:7px;font-size:10px;font-weight:800;color:var(--green);
+  background:var(--green-dim);border-radius:6px;padding:1px 6px;vertical-align:1px;}
+.pl-bar{height:7px;background:var(--bg4);border-radius:4px;overflow:hidden;}
+.pl-fill{height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,#2E52C9,var(--accent));transition:width .5s ease;}
+.pl-fill.ok{background:linear-gradient(90deg,#2EA043,#3FB950);}
+.pl-sub{font-size:11px;color:var(--t4);line-height:1.4;}
+.pl-sub b{font-family:var(--fm);color:var(--t2);}
+.pl-sub b.ok{color:var(--green);}
+.pl-sub b.neg{color:var(--red);}
+.pl-sub b.pos{color:var(--green);}
+.pl-num{flex-shrink:0;text-align:right;font-family:var(--fm);font-size:24px;font-weight:800;
+  color:var(--t);letter-spacing:-.8px;line-height:1;}
+.pl-num span{display:block;margin-top:3px;font-size:10px;font-weight:600;color:var(--t4);letter-spacing:0;}
+.pl-row.t1 .pl-num{color:#F5C518;}
+.pl-vazio{background:var(--bg2);border:1px dashed var(--bd2);border-radius:16px;padding:34px 22px;text-align:center;}
+.pl-vazio-i{font-size:34px;margin-bottom:10px;}
+.pl-vazio-t{font-size:16px;font-weight:800;margin-bottom:5px;}
+.pl-vazio-d{font-size:12.5px;color:var(--t3);line-height:1.5;}
 </style>
 </head>
 <body>
@@ -562,6 +610,7 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
   <div class="wrap">
     <div class="view-tabs">
       <button class="vtab active" data-view="prod" type="button">Produção</button>
+      <button class="vtab" data-view="placar" type="button">Placar</button>
       <button class="vtab" data-view="metas" type="button">Metas</button>
       <button class="vtab" data-view="dias" type="button">Por dia</button>
     </div>
@@ -637,6 +686,7 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
       <div class="loading"><div class="spinner"></div><div>Carregando lotes…</div></div>
     </div>
     </div>
+    <div id="view-placar" style="display:none"></div>
     <div id="view-metas" style="display:none"></div>
     <div id="view-dias" style="display:none">
       <div class="dias-bar"><span class="dias-lbl">Mês</span><input type="month" id="dias-mes"></div>
@@ -1179,6 +1229,7 @@ function ordenar(arr){
 }
 
 function render(){
+  atualizarTelasAbertas();
   const mesLotes=lotes.filter(l=>lotePertenceAoMes(l,mesSel));
   const concluidosMes=mesLotes.filter(isConcluido);
   const pend=mesLotes.filter(l=>!isConcluido(l)).length;
@@ -1839,6 +1890,87 @@ function metaEfetiva(k){
   if(ehSextaHoje() && jornada.normal>0) return Math.round(base*jornada.sexta/jornada.normal);
   return base;
 }
+/* ───── placar ───── */
+let placarPeriodo="hoje";        /* "hoje" ou "mes" */
+function renderPlacar(){
+  const host=$("view-placar"); if(!host) return;
+  const hoje=_hojeStr(), mes=hoje.slice(0,7), fmt=n=>Number(n||0).toLocaleString('pt-BR');
+  const mapa=porPessoaPorDia(mes);
+  /* toda revisora cadastrada entra no placar, mesmo zerada */
+  (Array.isArray(colaboradores)?colaboradores:[]).forEach(c=>{
+    const n=String(c.nome||"").trim();
+    if(n&&!mapa.has(n)) mapa.set(n,{nome:n,dias:new Map()});
+  });
+  const noMes=placarPeriodo==="mes";
+  const linhas=[...mapa.values()].map(p=>{
+    const m=saldoDoMes(p);
+    let pecas,seg,meta,lotes;
+    if(noMes){
+      let pd=0,pe=0,sg=0; const ls=new Set();
+      p.dias.forEach(d=>{ pd+=d.padrao; pe+=d.especial; sg+=d.seg; d.lotes.forEach(i=>ls.add(i)); });
+      pecas=pd+pe; seg=sg; lotes=ls.size;
+      meta=pecas-m.saldo;          /* a meta do mês é o que ela fez menos o saldo */
+    }else{
+      const d=p.dias.get(hoje)||_diaVazio();
+      pecas=d.padrao+d.especial; seg=d.seg; lotes=d.lotes.size;
+      meta=metaIndividual(d.padrao,d.especial);
+    }
+    return {nome:p.nome,pecas,seg,meta,lotes,mes:m,
+      pct:meta>0?Math.round(pecas/meta*100):0,
+      bateu:meta>0&&pecas>=meta};
+  }).sort((a,b)=>b.pecas-a.pecas||a.nome.localeCompare(b.nome,"pt-BR"));
+
+  const total=linhas.reduce((s,x)=>s+x.pecas,0);
+  const segTot=linhas.reduce((s,x)=>s+x.seg,0);
+  const topo=linhas.length?linhas[0].pecas:0;
+  const ativas=linhas.filter(x=>x.pecas>0).length;
+  /* só a primeira letra em maiúscula: em português o resto vai minúsculo */
+  const dataCrua=noMes
+    ? new Date(hoje+"T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"})
+    : new Date(hoje+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
+  const dataTxt=dataCrua.charAt(0).toUpperCase()+dataCrua.slice(1);
+
+  const corpo=ativas===0
+    ? `<div class="pl-vazio"><div class="pl-vazio-i">🏁</div><div class="pl-vazio-t">Placar zerado</div>
+        <div class="pl-vazio-d">Assim que a revisão for lançada${noMes?" neste mês":" hoje"}, as peças de cada uma aparecem aqui.</div></div>`
+    : linhas.map((x,i)=>{
+        const pos=i+1, larg=(x.pecas>0&&topo>0)?Math.max(2,Math.round(x.pecas/topo*100)):0;
+        const detalhe=[];
+        if(x.meta>0) detalhe.push(`<b class="${x.bateu?'ok':''}">${x.pct}%</b> da meta`);
+        if(x.lotes) detalhe.push(x.lotes+(x.lotes===1?" lote":" lotes"));
+        if(x.seg>0) detalhe.push(`<b class="seg-txt">${fmt(x.seg)}</b> de 2ª`);
+        if(noMes&&x.mes.dias>0) detalhe.push(`saldo <b class="${x.mes.saldo<0?'neg':'pos'}">${x.mes.saldo>0?'+':x.mes.saldo<0?'−':''}${fmt(Math.abs(x.mes.saldo))}</b>`);
+        return `<div class="pl-row${pos<=3&&x.pecas>0?' top t'+pos:''}${x.pecas<=0?' zerada':''}">
+          <span class="pl-pos">${pos}</span>
+          <div class="pl-meio">
+            <div class="pl-nome">${esc(x.nome)}${x.bateu?'<span class="pl-flag">meta batida</span>':''}</div>
+            <div class="pl-bar"><div class="pl-fill${x.bateu?' ok':''}" style="width:${larg}%"></div></div>
+            <div class="pl-sub">${detalhe.join(" · ")||"sem lançamento"}</div>
+          </div>
+          <div class="pl-num">${fmt(x.pecas)}<span>pçs</span></div>
+        </div>`;
+      }).join("");
+
+  host.innerHTML=`<div class="placar">
+    <div class="pl-head">
+      <div class="pl-seg">
+        <button type="button" data-per="hoje" class="${noMes?'':'active'}">Hoje</button>
+        <button type="button" data-per="mes" class="${noMes?'active':''}">No mês</button>
+      </div>
+      <div class="pl-data">${dataTxt}</div>
+    </div>
+    <div class="pl-placar-total">
+      <div class="pt-l">Total do time</div>
+      <div class="pt-v">${fmt(total)} <span>pçs</span></div>
+      <div class="pt-sub">${ativas} de ${linhas.length} ${linhas.length===1?'revisora':'revisoras'} com peças${segTot>0?' · <b class="seg-txt">'+fmt(segTot)+'</b> de 2ª':''}</div>
+    </div>
+    <div class="pl-lista">${corpo}</div>
+  </div>`;
+
+  host.querySelectorAll(".pl-seg button").forEach(b=>b.addEventListener("click",()=>{
+    placarPeriodo=b.dataset.per; renderPlacar();
+  }));
+}
 function renderMetas(){
   const host=$("view-metas"); if(!host) return;
   const sexta=ehSextaHoje(), horas=horasHoje(), fator=fatorJornada();
@@ -1948,13 +2080,21 @@ function renderMetas(){
     await salvarMetas(); renderMetas();
   }));
 }
+/* placar e metas seguem os lançamentos sem precisar trocar de aba */
+function atualizarTelasAbertas(){
+  const p=$("view-placar"), m=$("view-metas");
+  if(p&&p.style.display!=="none") renderPlacar();
+  if(m&&m.style.display!=="none") renderMetas();
+}
 function switchView(v){
   const prod=v==="prod";
   document.querySelectorAll(".vtab").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
   if($("view-prod"))$("view-prod").style.display=prod?"":"none";
+  if($("view-placar"))$("view-placar").style.display=v==="placar"?"":"none";
   if($("view-metas"))$("view-metas").style.display=v==="metas"?"":"none";
   if($("view-dias"))$("view-dias").style.display=v==="dias"?"":"none";
   if($("fab-add"))$("fab-add").style.display=prod?"":"none";
+  if(v==="placar") renderPlacar();
   if(v==="metas") renderMetas();
   if(v==="dias") renderDias();
 }
