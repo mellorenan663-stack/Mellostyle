@@ -1446,7 +1446,7 @@ function renderFuncionarios(){
     const prod=fMap[f.id]||0,pct=Math.round((prod/maxP)*100);
     const jornadaLabel=getJornadaLabel(f);
     const escalaBadge=f.escalaPadrao==="ketelen_7h"
-      ?'<span style="font-size:9px;background:rgba(143,148,156,.12);color:#D4D4D8;border:1px solid rgba(143,148,156,.2);border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700;">7h</span>'
+      ?'<span style="font-size:9px;background:rgba(143,148,156,.12);color:var(--t2);border:1px solid rgba(143,148,156,.2);border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700;">7h</span>'
       :'<span style="font-size:9px;background:rgba(191,195,202,.1);color:var(--accent-lt);border:1px solid rgba(191,195,202,.18);border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700;">9h30</span>';
     const meta=f.metaDia||0;
     const metaPct=meta>0?Math.round((prod/meta)*100):0;
@@ -1657,7 +1657,7 @@ function renderBancoHoras(){
       const saldoPos=s.saldoMin>=0;
       const saldoLabel=s.saldoMin===0?"Zerado":saldoPos?"+"+fmtHoras(s.saldoMin):"−"+fmtHoras(Math.abs(s.saldoMin));
       const bhEscalaBadge=f.escalaPadrao==="ketelen_7h"
-        ?'<span style="font-size:9px;background:rgba(143,148,156,.12);color:#D4D4D8;border:1px solid rgba(143,148,156,.2);border-radius:10px;padding:1px 7px;font-weight:700;">7h</span>'
+        ?'<span style="font-size:9px;background:rgba(143,148,156,.12);color:var(--t2);border:1px solid rgba(143,148,156,.2);border-radius:10px;padding:1px 7px;font-weight:700;">7h</span>'
         :'<span style="font-size:9px;background:rgba(191,195,202,.1);color:var(--accent-lt);border:1px solid rgba(191,195,202,.18);border-radius:10px;padding:1px 7px;font-weight:700;">9h30</span>';
       return`<div class="bh-card">
         <div class="bh-card-top">
@@ -17473,6 +17473,220 @@ html[data-theme="escuro"] .summary-bar{
 }
 .summary-bar:not(.lotes-summary-bar):has(.sb-item:first-child:nth-last-child(5)){
   grid-template-columns:repeat(5,minmax(0,1fr))!important;
+}
+</style>
+<style id="mello-luz">
+/* ═══ Tema claro: o que foi desenhado para fundo escuro precisa de tinta escura ═══
+   Regras acima usam verdes e vermelhos pastel (feitos para o escuro) e véus de
+   branco sobre branco. Aqui isso é corrigido só quando o tema é claro. */
+
+:root[data-theme="claro"]{
+  /* cores de estado legíveis sobre branco */
+  --success:#0B8F62; --success-soft:rgba(11,143,98,.10); --success-line:rgba(11,143,98,.28);
+  --danger:#C62B47;  --danger-soft:rgba(198,43,71,.09);  --danger-line:rgba(198,43,71,.26);
+  --warning:#8A5D04; --warning-soft:rgba(138,93,4,.10);  --warning-line:rgba(138,93,4,.26);
+  --green:#0B8F62;   --red:#C62B47;   --amber:#8A5D04;
+  --t3:#6B6589; --muted:#6B6589; --t4:#807B9C;
+  /* véu de tinta no lugar do véu de branco */
+  --veu:rgba(30,26,51,.040);
+  --veu2:rgba(30,26,51,.075);
+  --veu-linha:rgba(30,26,51,.09);
+}
+
+/* superfícies e linhas que eram branco translúcido */
+:root[data-theme="claro"] th{ background:var(--veu)!important; }
+:root[data-theme="claro"] td{ border-bottom:1px solid var(--veu-linha)!important; }
+:root[data-theme="claro"] .btn-outline,
+:root[data-theme="claro"] .btn-ghost,
+:root[data-theme="claro"] .btn-topbar-refresh,
+:root[data-theme="claro"] .btn-theme-quick,
+:root[data-theme="claro"] .btn-gastos-quick,
+:root[data-theme="claro"] .theme-swatch,
+:root[data-theme="claro"] .chip,
+:root[data-theme="claro"] .badge,
+:root[data-theme="claro"] .tag,
+:root[data-theme="claro"] .status-pill{ background:var(--veu)!important; }
+:root[data-theme="claro"] .progress,
+:root[data-theme="claro"] .bar,
+:root[data-theme="claro"] .fn-bar{ background:var(--veu2)!important; }
+
+/* verdes e vermelhos pastel do tema escuro */
+:root[data-theme="claro"] .chip-extra-d,
+:root[data-theme="claro"] .chip-success,
+:root[data-theme="claro"] .exec-badge.green,
+:root[data-theme="claro"] .prazo-badge.ok,
+:root[data-theme="claro"] .saldo-pos,
+:root[data-theme="claro"] .green,
+:root[data-theme="claro"] .hi-pos,
+:root[data-theme="claro"] .sb-v.green,
+:root[data-theme="claro"] .bh-iv.green,
+:root[data-theme="claro"] .hrv.green{
+  color:var(--success)!important; border-color:var(--success-line)!important;
+}
+:root[data-theme="claro"] .chip-falta,
+:root[data-theme="claro"] .chip-danger,
+:root[data-theme="claro"] .exec-badge.red,
+:root[data-theme="claro"] .prazo-badge.venc,
+:root[data-theme="claro"] .saldo-neg,
+:root[data-theme="claro"] .red,
+:root[data-theme="claro"] .hi-neg,
+:root[data-theme="claro"] .sb-v.red,
+:root[data-theme="claro"] .btn-x,
+:root[data-theme="claro"] .btn-danger,
+:root[data-theme="claro"] .btn-delete{
+  color:var(--danger)!important; border-color:var(--danger-line)!important;
+}
+:root[data-theme="claro"] .bh-eq-tag.silver{ color:var(--accent)!important; }
+:root[data-theme="claro"] .of2-btn-alt{ color:var(--success)!important; }
+
+/* O painel de metas é escuro de propósito nos dois temas, então nele continuam
+   valendo as cores claras — o resto da página é que precisa das escuras. */
+:root[data-theme="claro"] #dash-metas .green,
+:root[data-theme="claro"] #dash-agora .green,
+:root[data-theme="claro"] #dash-metas .saldo-pos,
+:root[data-theme="claro"] #dash-metas .hi-pos{ color:#6EE7B7!important; }
+:root[data-theme="claro"] #dash-metas .red,
+:root[data-theme="claro"] #dash-agora .red,
+:root[data-theme="claro"] #dash-metas .saldo-neg,
+:root[data-theme="claro"] #dash-metas .hi-neg{ color:#FCA5A5!important; }
+
+/* ═══ Topbar ═══ */
+/* No celular a faixa de atalhos era uma grade de três colunas. Com o botão de
+   cor virando o quarto, o último caía para uma segunda linha e ficava cortado. */
+@media(max-width:900px){
+  body:not(.desktop-forced) .topbar-actions{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 44px!important;
+    gap:7px!important;
+  }
+  body:not(.desktop-forced) .topbar-actions>*{ min-width:0!important; }
+  body:not(.desktop-forced) .btn-gastos-quick,
+  body:not(.desktop-forced) .btn-theme-quick{
+    padding:0 8px!important; font-size:12px!important;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  body:not(.desktop-forced) .btn-topbar-refresh{ width:44px!important; min-width:44px!important; }
+}
+@media(max-width:380px){
+  body:not(.desktop-forced) .topbar-actions{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 40px!important;
+    gap:5px!important;
+  }
+  body:not(.desktop-forced) .btn-gastos-quick,
+  body:not(.desktop-forced) .btn-theme-quick{ padding:0 6px!important; font-size:11.5px!important; }
+  body:not(.desktop-forced) .btn-topbar-refresh{ width:40px!important; min-width:40px!important; }
+}
+
+/* A lupa cobria o "B" de "Buscar": uma regra posterior zerou o espaço reservado
+   para o ícone dentro do campo. */
+.topbar #global-search-input{ padding-left:32px!important; }
+
+/* A faixa dos atalhos tinha um véu preto fixo; no tema claro virava uma barra
+   cinza com texto claro por cima. */
+:root[data-theme="claro"] .topbar-pills{ background:rgba(30,26,51,.05)!important; }
+:root[data-theme="claro"] .topbar .tp-btn:not(.active){ color:var(--t2)!important; }
+:root[data-theme="claro"] .topbar .tp-btn:not(.active) .tp-icon{ opacity:.9; }
+
+/* ═══ Relatório ═══
+   O cabeçalho tinha tinta preta fixa (#111) e o documento ficou escuro: some
+   nos dois temas. Agora a tinta acompanha o papel. */
+.rel-doc-pro .rel-brand{ color:var(--t)!important; }
+.rel-doc-pro .rel-sub,
+.rel-doc-pro .rel-periodo-label{ color:var(--t3)!important; }
+.rel-doc-pro .rel-periodo-val{ color:var(--t2)!important; }
+.rel-doc-pro .rel-card .rc-v{ color:var(--t)!important; }
+.rel-doc-pro .rel-card .rc-l{ color:var(--t3)!important; }
+
+/* No claro o relatório é papel branco — é o que também vai para a impressão. */
+:root[data-theme="claro"] .rel-doc-pro{
+  background:#FFFFFF!important; color:#1E1A33!important;
+  border:1px solid rgba(30,26,51,.10)!important;
+}
+:root[data-theme="claro"] .rel-doc-pro .rel-card{
+  background:#F7F6FC!important; border:1px solid rgba(30,26,51,.09)!important;
+}
+:root[data-theme="claro"] .rel-doc-pro .rel-card.green{ background:rgba(11,143,98,.07)!important; }
+:root[data-theme="claro"] .rel-doc-pro .rel-card.red{ background:rgba(198,43,71,.06)!important; }
+:root[data-theme="claro"] .rel-doc-pro .rel-card.yellow{ background:rgba(138,93,4,.07)!important; }
+:root[data-theme="claro"] .rel-doc-pro .rel-card.silver{ background:rgba(30,26,51,.05)!important; }
+:root[data-theme="claro"] .rel-period-box{
+  background:rgba(30,26,51,.04)!important; border-color:rgba(30,26,51,.09)!important;
+}
+:root[data-theme="claro"] .rel-table-pro{ background:#FFFFFF!important; }
+:root[data-theme="claro"] .rel-table-pro th{ background:rgba(30,26,51,.045)!important; color:var(--t3)!important; }
+:root[data-theme="claro"] .rel-table-pro td{ border-bottom:1px solid rgba(30,26,51,.075)!important; color:var(--t2)!important; }
+:root[data-theme="claro"] .rel-total-row td{ background:rgba(30,26,51,.045)!important; }
+:root[data-theme="claro"] .rel-pill{ background:rgba(30,26,51,.045); color:var(--t2); }
+:root[data-theme="claro"] .rel-pill.green{ color:var(--success); background:var(--success-soft); }
+:root[data-theme="claro"] .rel-pill.red{ color:var(--danger); background:var(--danger-soft); }
+:root[data-theme="claro"] .rel-pill.yellow{ color:var(--warning)!important; background:var(--warning-soft)!important; border-color:var(--warning-line)!important; }
+:root[data-theme="claro"] .rel-progress{ background:rgba(30,26,51,.08)!important; border-color:rgba(30,26,51,.07)!important; }
+:root[data-theme="claro"] .rel-alert-item{ background:rgba(30,26,51,.035); }
+
+:root[data-theme="claro"] .rel-footer{ color:var(--t3)!important; }
+/* dica azul-clara que sumia no fundo claro (o seletor precisa do id para vencer) */
+:root[data-theme="claro"] #dash-agora .ag-hint,
+:root[data-theme="claro"] #dash-metas .ag-hint{ color:#3A5BB8!important; border-color:rgba(58,91,184,.30)!important; }
+
+/* O título de seção some no fim do degradê: a ponta clara vira um cinza legível. */
+:root[data-theme="claro"] #dash-metas .metas-section-title,
+:root[data-theme="claro"] #dash-agora .metas-section-title{
+  background:linear-gradient(100deg,#1B2438,#4B5468 55%,#5E6679)!important;
+  -webkit-background-clip:text!important; background-clip:text!important;
+}
+
+/* A linha de total do relatório tinha fundo claro fixo: no tema escuro ficava
+   uma faixa branca com texto claro em cima. */
+:root[data-theme="escuro"] .rel-total-row td{
+  background:rgba(255,255,255,.06)!important; color:var(--accent-lt)!important;
+}
+:root[data-theme="escuro"] .rel-table th{
+  background:rgba(255,255,255,.055)!important; border-bottom-color:var(--line)!important;
+}
+:root[data-theme="escuro"] .rel-table td{ border-bottom-color:rgba(255,255,255,.07)!important; }
+:root[data-theme="claro"] .bh-eq-tag.silver{ background:#FFFFFF!important; border:1px solid var(--bd2)!important; }
+
+/* ═══ Cor prata ═══
+   O cinza do realce é claro demais para levar texto branco em cima: botão
+   cheio e chip ativo ficavam quase ilegíveis. */
+:root[data-cor="platina"][data-theme="claro"]{
+  --accent:#5D646F; --accent2:#474D56; --accent-strong:#4A515B; --accent-lt:#4A515B;
+  --accent-soft:rgba(93,100,111,.10); --accent-line:rgba(93,100,111,.30);
+  /* os cinzas de apoio também eram claros demais para o branco */
+  --t3:#61666E; --muted:#61666E; --t4:#787E87;
+  /* a paleta prata redefine as cores de estado, então elas precisam ser
+     escurecidas aqui também, senão voltam ao verde/vermelho claro */
+  --success:#0B8F62; --success-soft:rgba(11,143,98,.10); --success-line:rgba(11,143,98,.28);
+  --danger:#C62B47;  --danger-soft:rgba(198,43,71,.09);  --danger-line:rgba(198,43,71,.26);
+  --warning:#8A5D04; --warning-soft:rgba(138,93,4,.10);  --warning-line:rgba(138,93,4,.26);
+  --green:#0B8F62;   --red:#C62B47;   --amber:#8A5D04;
+  /* o degradê do botão cheio leva texto branco: precisa ser cinza escuro */
+  --grad:linear-gradient(135deg,#4F5661 0%,#6B727D 100%);
+}
+/* na prata o atalho ativo muda de fundo conforme o tema: prateado claro no
+   escuro (pede tinta escura) e cinza escuro no claro (pede tinta branca) */
+:root[data-cor="platina"][data-theme="escuro"] .tp-btn.active{ color:#1B1D21!important; text-shadow:none!important; }
+:root[data-cor="platina"][data-theme="claro"] .tp-btn.active{ color:#FFFFFF!important; text-shadow:none!important; }
+:root[data-cor="platina"] .lf-btn.active,
+:root[data-cor="platina"] .chip.active,
+:root[data-cor="platina"] .filter-btn.active{
+  background:#5D646F!important; border-color:#4A515B!important; color:#fff!important;
+}
+
+/* Impresso é sempre papel branco: o navegador não imprime fundo, e tinta clara
+   sobre papel branco sai em branco. */
+@media print{
+  .rel-doc-pro{ background:#FFFFFF!important; color:#111!important;
+    border:1px solid #ddd!important; box-shadow:none!important; }
+  .rel-doc-pro .rel-brand{ color:#111!important; }
+  .rel-doc-pro .rel-sub,.rel-doc-pro .rel-periodo-label,.rel-doc-pro .rel-card .rc-l{ color:#666!important; }
+  .rel-doc-pro .rel-periodo-val,.rel-doc-pro .rel-card .rc-v{ color:#111!important; }
+  .rel-doc-pro .rel-card{ background:#F6F6F8!important; border:1px solid #ddd!important; }
+  .rel-table-pro,.rel-table-pro th,.rel-table-pro td{ background:#fff!important; color:#111!important; }
+  .rel-table-pro th{ background:#f2f2f4!important; color:#555!important; }
+  .rel-table-pro td{ border-bottom:1px solid #e6e6ea!important; }
+  .rel-period-box{ background:#f6f6f8!important; border-color:#ddd!important; }
+  .rel-pill{ background:#f2f2f4!important; color:#333!important; border-color:#ddd!important; }
+  .rel-progress{ background:#e8e8ec!important; }
 }
 </style>
 
