@@ -3046,9 +3046,22 @@ const ENCARGOS_FUNCIONARIAS=[
   {nome:"Amanda",  salario:2200.00, inss:173.69, fgts:176.00},
   {nome:"Lidiane", salario:2400.00, inss:191.69, fgts:192.00}
 ];
+/* Reajuste sobre os valores acima. A base fica à vista para conferência e o
+   aumento é este número: no próximo reajuste, basta somar aqui. */
+const REAJUSTE_ENCARGOS=0.041;      // 4,10%
+const centavos=v=>Math.round(Number(v||0)*100)/100;
+function encargosReajustados(){
+  const f=1+REAJUSTE_ENCARGOS;
+  return ENCARGOS_FUNCIONARIAS.map(x=>({
+    nome:x.nome,
+    salario:centavos(x.salario*f),
+    inss:centavos(x.inss*f),
+    fgts:centavos(x.fgts*f)     /* o FGTS é 8% do salário, então sobe na mesma proporção */
+  }));
+}
 function linhasEncargos(){
   const l=[];
-  ENCARGOS_FUNCIONARIAS.forEach(f=>{
+  encargosReajustados().forEach(f=>{
     if(f.inss>0) l.push({descricao:`INSS ${f.nome}`, valor:f.inss});
     if(f.fgts>0) l.push({descricao:`FGTS ${f.nome}`, valor:f.fgts});
   });
@@ -3057,24 +3070,41 @@ function linhasEncargos(){
 window.lancarEncargos=async function(){
   const mes=monthKeyLocal();
   const linhas=linhasEncargos();
-  // não duplica: pula o que já existe com a mesma descrição no mês
-  const jaTem=new Set(gastos.filter(g=>(g.competencia||"")===mes).map(g=>normalize(g.descricao)));
-  const novas=linhas.filter(l=>!jaTem.has(normalize(l.descricao)));
-  if(!novas.length){
-    toast("Os encargos já estão lançados em "+formatMonthLabel(mes)+".","warn");
+  const doMes=gastos.filter(g=>(g.competencia||"")===mes);
+  const porDescricao=new Map(doMes.map(g=>[normalize(g.descricao),g]));
+  const novas=[], corrigir=[];
+  linhas.forEach(l=>{
+    const atual=porDescricao.get(normalize(l.descricao));
+    if(!atual) novas.push(l);                                   // ainda não existe no mês
+    else if(centavos(atual.valor)!==centavos(l.valor))          // existe com valor antigo
+      corrigir.push({...l, id:atual.id, de:centavos(atual.valor)});
+  });
+  if(!novas.length&&!corrigir.length){
+    toast("Os encargos já estão lançados em "+formatMonthLabel(mes)+", com os valores certos.","warn");
     return;
   }
-  const total=novas.reduce((s,l)=>s+l.valor,0);
-  if(!confirm(`Lançar ${novas.length} encargo(s) como gasto fixo de ${formatMonthLabel(mes)}?\n\n`
-    +novas.map(l=>`• ${l.descricao}: ${fmtMoney(l.valor)}`).join("\n")
-    +`\n\nTotal: ${fmtMoney(total)}\n\nA partir do mês que vem eles se repetem sozinhos.`)) return;
+  const total=novas.reduce((s,l)=>s+l.valor,0)+corrigir.reduce((s,l)=>s+l.valor-l.de,0);
+  const partes=[];
+  if(novas.length) partes.push(`Lançar ${novas.length} encargo(s) de ${formatMonthLabel(mes)}:\n`
+    +novas.map(l=>`• ${l.descricao}: ${fmtMoney(l.valor)}`).join("\n"));
+  if(corrigir.length) partes.push(`Atualizar ${corrigir.length} já lançado(s) com o valor novo:\n`
+    +corrigir.map(l=>`• ${l.descricao}: ${fmtMoney(l.de)} → ${fmtMoney(l.valor)}`).join("\n"));
+  if(!confirm(partes.join("\n\n")
+    +`\n\nDiferença no mês: ${fmtMoney(total)}\n\nA partir do mês que vem eles se repetem sozinhos.`)) return;
   try{
     requireAuthUser();
-    await Promise.all(novas.map(l=>addDoc(collection(db,"gastos"),withOwner({
-      descricao:l.descricao, valor:l.valor, tipo:"fixo", categoria:"Encargos",
-      competencia:mes, data:mes+"-01", criadoEm:Timestamp.now()
-    }))));
-    toast(`${novas.length} encargo(s) lançado(s): ${fmtMoney(total)}`);
+    await Promise.all([
+      ...novas.map(l=>addDoc(collection(db,"gastos"),withOwner({
+        descricao:l.descricao, valor:l.valor, tipo:"fixo", categoria:"Encargos",
+        competencia:mes, data:mes+"-01", criadoEm:Timestamp.now()
+      }))),
+      ...corrigir.map(l=>updateDoc(doc(db,"gastos",l.id),withOwner({
+        valor:l.valor, tipo:"fixo", categoria:"Encargos", updatedEm:Timestamp.now()
+      })))
+    ]);
+    const msg=[novas.length?`${novas.length} lançado(s)`:"",corrigir.length?`${corrigir.length} atualizado(s)`:""]
+      .filter(Boolean).join(" · ");
+    toast(`Encargos: ${msg} (${fmtMoney(total)} no mês)`);
     await loadData();
   }catch(e){ console.error("ENCARGOS_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
 };
@@ -12534,7 +12564,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="gx-acoes-grupo">
             <span class="gx-acoes-rot">Lançar no mês</span>
             <button class="btn-outline" onclick="propagarGastosFixos()" title="Copia os gastos fixos do mês anterior para o mês atual, sem duplicar">📋 Fixos do mês anterior</button>
-            <button class="btn-outline" onclick="lancarEncargos()" title="Lança INSS e FGTS das funcionárias como gasto fixo do mês, sem duplicar">👥 Encargos</button>
+            <button class="btn-outline" onclick="lancarEncargos()" title="Lança INSS e FGTS das funcionárias como gasto fixo do mês, sem duplicar. Se já estiverem lançados com valor antigo, atualiza para o valor reajustado.">👥 Encargos</button>
           </div>
         </div>
       </div>
