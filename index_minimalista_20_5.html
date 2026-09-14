@@ -3109,6 +3109,44 @@ window.lancarEncargos=async function(){
   }catch(e){ console.error("ENCARGOS_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
 };
 
+/* Reajuste (dissídio) sobre o salário das funcionárias ativas. O salário é a
+   base da folha, do 13º e das férias, então o aumento precisa chegar aqui —
+   a tabela de encargos cuida só do INSS e do FGTS. */
+window.reajustarSalarios=async function(){
+  const ativas=funcionarios.filter(f=>f.status!=="Inativo"&&Number(f.salario)>0);
+  if(!ativas.length){ toast("Nenhuma funcionária ativa com salário cadastrado.","warn"); return; }
+  const resp=prompt("Reajuste em % sobre o salário das funcionárias ativas:\n\n"
+    +`(${ativas.length} funcionária(s) · use vírgula ou ponto)`, "4,10");
+  if(resp===null) return;
+  const pct=Number(String(resp).replace("%","").replace(",",".").trim());
+  if(!isFinite(pct)||pct===0){ toast("Informe uma porcentagem válida.","warn"); return; }
+  if(Math.abs(pct)>50){ toast("Reajuste de "+pct+"% parece alto demais. Confira o número.","warn"); return; }
+  const f=1+pct/100;
+  const pctTxt=pct.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+  const mudancas=ativas.map(x=>{
+    const de=Math.round(Number(x.salario)*100)/100;
+    const para=Math.round(de*f*100)/100;
+    return {id:x.id, nome:x.nome||"—", de, para, obj:x};
+  }).filter(m=>m.para!==m.de);
+  if(!mudancas.length){ toast("Nenhum salário mudaria com esse reajuste.","warn"); return; }
+  const somaDe=mudancas.reduce((s,m)=>s+m.de,0), somaPara=mudancas.reduce((s,m)=>s+m.para,0);
+  if(!confirm(`Reajustar ${mudancas.length} salário(s) em ${pctTxt}?\n\n`
+    +mudancas.map(m=>`• ${m.nome}: ${fmtMoney(m.de)} → ${fmtMoney(m.para)}`).join("\n")
+    +`\n\nFolha: ${fmtMoney(somaDe)} → ${fmtMoney(somaPara)} (${fmtMoney(somaPara-somaDe)} a mais por mês)`
+    +`\n\nO 13º e as férias passam a ser calculados pelo salário novo.`)) return;
+  try{
+    requireAuthUser();
+    await Promise.all(mudancas.map(m=>updateDoc(doc(db,"funcionarios",m.id),withOwner({
+      salario:m.para, updatedEm:Timestamp.now()
+    }))));
+    mudancas.forEach(m=>{ m.obj.salario=m.para; });
+    try{ addAuditoria("reajustou","funcionarios",
+      `${mudancas.length} salário(s) em ${pctTxt} · folha ${fmtMoney(somaDe)} → ${fmtMoney(somaPara)}`); }catch(e){}
+    toast(`${mudancas.length} salário(s) reajustado(s) em ${pctTxt} (${fmtMoney(somaPara-somaDe)} a mais na folha)`);
+    await loadData();
+  }catch(e){ console.error("REAJUSTE_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
+};
+
 window.propagarGastosFixos=async function(){
   const mesAtual=monthKeyLocal();
   const mesAnterior=calcMesAnterior(mesAtual);
@@ -6032,7 +6070,7 @@ applyTheme(getConfig().tema);
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','histVerMais','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','exportarGastosExcel','exportarFatClienteExcel','gastoMesNav','gastoMesToggleTodos',
-    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos','previewHoras',
+    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos','reajustarSalarios','previewHoras',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes','renderFolhaPagamento','calcFolhaPagamento'
   ].forEach(expose);
@@ -12348,6 +12386,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ptitle">Funcionários</div>
           <div class="psub">Equipe ordenada por produção — salários, jornada e banco de horas integrados</div>
         </div>
+        <button class="btn-outline" onclick="reajustarSalarios()" title="Aplica um reajuste em porcentagem sobre o salário de todas as funcionárias ativas" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;white-space:nowrap;">📈 Reajustar<span class="so-largo"> salários</span></button>
         <button class="btn-save" id="btn-novo-func" onclick="toggleCard('func-form-card','btn-novo-func','Novo funcionário')" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="font-size:15px;line-height:0;">+</span> Novo funcionário</button>
       </div>
       <div class="card" id="func-form-card" style="margin-bottom:16px;display:none;">
@@ -17579,6 +17618,17 @@ html[data-theme="escuro"] .summary-bar{
 :root[data-theme="claro"] #dash-agora .red,
 :root[data-theme="claro"] #dash-metas .saldo-neg,
 :root[data-theme="claro"] #dash-metas .hi-neg{ color:#FCA5A5!important; }
+
+/* Em tela estreita os dois botões do cabeçalho dividem a linha e o texto não
+   cabe inteiro; a palavra longa sai e o rótulo continua claro. */
+@media(max-width:430px){
+  .so-largo{ display:none; }
+  body:not(.desktop-forced) .phd button{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}
+@media(max-width:360px){
+  /* mais estreito que isso não cabem dois lado a lado sem cortar o texto */
+  body:not(.desktop-forced) .phd button{ flex:1 1 100%!important; }
+}
 
 /* ═══ Topbar ═══ */
 /* No celular a faixa de atalhos era uma grade de três colunas. Com o botão de

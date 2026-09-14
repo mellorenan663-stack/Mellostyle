@@ -569,6 +569,30 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
 .pl-vazio-i{font-size:34px;margin-bottom:10px;}
 .pl-vazio-t{font-size:16px;font-weight:800;margin-bottom:5px;}
 .pl-vazio-d{font-size:12.5px;color:var(--t3);line-height:1.5;}
+
+/* lançamentos já feitos, dentro do modal */
+.done-feito{display:none;}
+.done-feito.show{display:block;margin-bottom:14px;background:var(--bg3);border:1px solid var(--bd);border-radius:14px;padding:11px 13px;}
+.df-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;
+  font-size:11px;font-weight:800;color:var(--t4);text-transform:uppercase;letter-spacing:.7px;}
+.df-head b{font-family:var(--fm);font-size:13px;color:var(--accent);letter-spacing:0;text-transform:none;}
+.df-list{display:flex;flex-direction:column;gap:6px;}
+.df-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--t3);
+  background:var(--bg2);border:1px solid var(--bd);border-radius:10px;padding:7px 9px;}
+.df-dia{font-family:var(--fm);color:var(--t4);flex-shrink:0;}
+.df-tam{font-family:var(--fm);font-weight:600;color:var(--accent-lt);flex-shrink:0;}
+.df-cor{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.df-cor .cd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.df-q{font-family:var(--fm);font-weight:700;color:var(--t);flex-shrink:0;}
+.df-q span{font-size:9.5px;font-weight:600;color:var(--t4);margin-left:2px;}
+.df-seg{font-size:10.5px;font-weight:700;color:var(--amber);background:rgba(245,158,11,.12);
+  border-radius:6px;padding:1px 6px;flex-shrink:0;}
+.df-nome{flex:1 1 100%;min-width:0;order:9;color:var(--t2);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.df-x{margin-left:auto;width:26px;height:26px;flex-shrink:0;border-radius:8px;border:1px solid var(--bd);
+  background:var(--bg4);color:var(--t4);font-size:11px;transition:border-color .15s,color .15s;}
+.df-x:active{border-color:rgba(239,68,68,.5);color:var(--red);}
+.df-nota{margin-top:9px;font-size:10.5px;color:var(--t4);line-height:1.45;}
 </style>
 </head>
 <body>
@@ -867,6 +891,7 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
       <div class="done-quick" id="done-quick">
         <span class="ql">Aplicar a todos</span>
       </div>
+      <div class="done-feito" id="done-feito"></div>
       <div class="done-rows" id="done-rows"></div>
       <div class="done-tot" id="done-tot"></div>
       <button class="btn-primary" id="done-confirm">Lançar revisão</button>
@@ -1387,6 +1412,7 @@ function abrirConcluir(id){
   $("done-rows").querySelectorAll("button.done-add").forEach(b=>b.addEventListener("click",()=>dividirTamanho(b.closest(".done-tam"))));
   /* escolher quem revisou também muda o que será lançado */
   $("done-rows").querySelectorAll("select.done-rv").forEach(s=>s.addEventListener("change",atualizarTotalConcluir));
+  renderFeitoDoLote(l);
   atualizarTotalConcluir();
   $("done-overlay").classList.add("show");
 }
@@ -1414,6 +1440,56 @@ function dividirTamanho(grupo){
   /* a primeira pessoa vem com o tamanho inteiro; é ela que precisa baixar */
   const primeira=grupo.querySelector(".done-row:not(.extra) input.done-qty-inp");
   if(primeira&&!primeira.disabled){ primeira.focus(); primeira.select(); }
+}
+/* O que já foi lançado neste lote, para conferir e corrigir sem desfazer tudo. */
+function renderFeitoDoLote(l){
+  const host=$("done-feito"); if(!host) return;
+  const log=getLog(l);
+  if(!log.length){ host.innerHTML=""; host.classList.remove("show"); return; }
+  host.classList.add("show");
+  const fmt=n=>Number(n||0).toLocaleString("pt-BR");
+  const linhas=log.map((e,i)=>{
+    const d=_emStr(e.em), dia=d?d.slice(8,10)+"/"+d.slice(5,7):"—";
+    const cor=(e.c&&e.c!=="_geral")?esc(e.c):"";
+    const tam=(e.t&&e.t!=="_total")?esc(tamCanon(e.t)):"total";
+    return `<div class="df-row">
+      <span class="df-dia">${dia}</span>
+      <span class="df-tam">${tam}</span>
+      ${cor?`<span class="df-cor"><span class="cd" style="background:${corHex(e.c)}"></span>${cor}</span>`:""}
+      <span class="df-q">${fmt(e.q)}<span>pçs</span></span>
+      ${Number(e.s||0)>0?`<span class="df-seg">2ª ${fmt(e.s)}</span>`:""}
+      <button type="button" class="df-x" data-idx="${i}" title="Apagar este lançamento" aria-label="Apagar este lançamento">✕</button>
+      <span class="df-nome">${esc(e.n||"—")}</span>
+    </div>`;
+  }).join("");
+  const tot=log.reduce((s,e)=>s+Number(e.q||0),0);
+  host.innerHTML=`<div class="df-head"><span>Já lançado</span><b>${fmt(tot)} pçs</b></div>
+    <div class="df-list">${linhas}</div>
+    <div class="df-nota">Apagar uma linha tira só ela — o resto do lote continua como está.</div>`;
+  host.querySelectorAll("button.df-x").forEach(b=>b.addEventListener("click",()=>apagarLancamento(Number(b.dataset.idx))));
+}
+/* Tira um lançamento do histórico do lote, mantendo os outros. */
+async function apagarLancamento(idx){
+  const l=loteConcluindo; if(!l) return;
+  const log=getLog(l); const e=log[idx]; if(!e) return;
+  const d=_emStr(e.em), dia=d?d.slice(8,10)+"/"+d.slice(5,7):"—";
+  const tam=(e.t&&e.t!=="_total")?tamCanon(e.t):"total";
+  if(!confirm(`Apagar este lançamento?\n\n${dia} · ${tam}${(e.c&&e.c!=="_geral")?" · "+e.c:""} · `
+    +`${Number(e.q||0).toLocaleString("pt-BR")} pçs · ${e.n||"—"}`
+    +`\n\nAs peças voltam a ficar pendentes e saem da meta de quem lançou.`)) return;
+  const novo=log.filter((_,i)=>i!==idx);
+  const {porCor,nomes}=espelharNomes(novo);
+  const fLog=S().fLog, prevTot=totalPrevisto(l);
+  const feitoTot=novo.reduce((s,x)=>s+Number(x.q||0),0);
+  const completo=feitoTot>=prevTot&&novo.length>0;
+  const aplicar=o=>{
+    o[fLog]=novo.map(x=>({...x}));
+    if(completo) S().aplicar(o,nomes,porCor);
+    else { S().reabrir(o); o[fLog]=novo.map(x=>({...x})); o[S().fNome]=nomes||null; o[S().fCor]=porCor; }
+  };
+  await salvarLoteRevisao(l,aplicar,"Lançamento apagado · "+Number(e.q||0).toLocaleString("pt-BR")+" pçs voltaram");
+  const atual=lotes.find(x=>x.id===l.id);
+  if(atual){ abrirConcluir(atual.id); }        /* reabre já com a lista atualizada */
 }
 function fecharConcluir(){ $("done-overlay").classList.remove("show"); loteConcluindo=null; }
 /* preenche quem revisou, sem mexer nos tamanhos que foram divididos à mão */
