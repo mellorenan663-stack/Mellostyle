@@ -1161,7 +1161,8 @@ function lotePertenceAoMes(l,mes){
 }
 function mesLabel(mes){
   const [y,m]=mes.split("-").map(Number);
-  return new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  const t=new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  return t.charAt(0).toUpperCase()+t.slice(1);   /* "Setembro de 2026", não "De" */
 }
 function syncMonthUI(){
   $("mn-text").textContent=mesLabel(mesSel);
@@ -2465,8 +2466,8 @@ body{
    ═══════════════════════════════════════════════════════════════════════ */
 (function(){
   "use strict";
-  var REDUZ=false;
-  try{ REDUZ=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+  /* visual limpo: sem partículas nem números subindo */
+  var REDUZ=true;
 
   /* campo de partículas (leve) */
   function particulas(){
@@ -2564,4 +2565,110 @@ body{
 })();
 
 </script>
+
+<style id="mello-clean-rev">
+/* ══════════════════════════════════════════════════════════════════════
+   MELLO STYLE — REVISÃO · VISUAL LIMPO
+   Mesmo sistema do índex principal: sem malha de fundo, sem brilho, sem
+   texto em degradê e sem monoespaçada em rótulo. Fica a tipografia, o
+   espaçamento constante e as colunas alinhadas.
+   ══════════════════════════════════════════════════════════════════════ */
+:root{
+  --ui-r:14px; --ui-r-sm:10px;
+  --ui-sombra:0 1px 2px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.20);
+}
+
+/* ── fundo e camadas ── */
+html,body{ background-image:none!important; background:var(--bg)!important; }
+#tk-canvas{ display:none!important; }
+*,*::before,*::after{ animation:none!important; }
+
+/* ── nada de facho de luz nem borda brilhante ── */
+.pieces-card::before,.rank-card::before,.meta-total-card::before,
+.lote-card::after,.rank-card::after,.meta-card::after,.dia-card::after,.pieces-card::after{
+  content:none!important; display:none!important;
+}
+
+/* ── superfícies: uma borda fina e uma sombra só ── */
+.lote-card,.sum-card,.pieces-card,.rank-card,.meta-card,.dia-card,.meta-total-card,
+.jornada-card,.sheet,.pl-row,.pl-placar-total,.mp-card,.done-feito,.cal-detail .dia-card{
+  background-image:none!important;
+  box-shadow:var(--ui-sombra)!important;
+  border-radius:var(--ui-r)!important;
+}
+.topbar{
+  background:var(--bg2)!important; background-image:none!important;
+  border-bottom:1px solid var(--bd)!important; backdrop-filter:none!important;
+}
+
+/* ── números: cor cheia, sem degradê nem halo ── */
+.sum-v,.pc-val,.dia-tot,.rank-nums strong,.mt-v,.mp-num,.pl-num,.pt-v,.ms-v,.df-q{
+  background:none!important; background-image:none!important;
+  -webkit-background-clip:border-box!important; background-clip:border-box!important;
+  -webkit-text-fill-color:currentColor!important;
+  color:var(--t)!important; filter:none!important; text-shadow:none!important;
+  font-variant-numeric:tabular-nums!important;
+}
+.mt-v,.pt-v{ color:var(--accent)!important; }
+.pl-row.t1 .pl-num{ color:var(--t)!important; }
+
+/* ── rótulo é texto: fonte normal. Número fica na monoespaçada. ── */
+.sum-l,.pc-l,.rank-sub,.dia-data,.meta-nome,.cal-wd,.sheet-title,.mt-l,.pt-l,.ms-l,
+.mp-titulo,.pl-data,.df-head{
+  font-family:var(--fh)!important; letter-spacing:.01em!important;
+}
+.sum-l,.pc-l,.mt-l,.pt-l,.ms-l,.mp-titulo,.df-head{
+  text-transform:uppercase!important; letter-spacing:.04em!important;
+  font-size:11px!important; font-weight:600!important;
+}
+.sheet-title{ font-weight:700!important; letter-spacing:-.02em!important; text-transform:none!important; }
+.meta-nome,.pl-nome,.rank-name{ letter-spacing:-.01em!important; }
+.mtag,.of-tag,.cnt,.df-dia,.df-tam{ font-family:var(--fm)!important; letter-spacing:0!important; }
+
+/* ── barras lisas ── */
+.meta-fill,.lc-prog-fill,.pl-fill{
+  background-image:none!important; box-shadow:none!important;
+}
+.meta-bar,.lc-prog-bar,.pl-bar{ box-shadow:none!important; }
+
+/* ── calendário sem brilho ── */
+.cal-cell.lvl3,.cal-cell.lvl4{ box-shadow:none!important; }
+
+/* ── botões e fichas calmos ── */
+.vtab,.btn-primary,.fab,.chip,.dia-chip,.setor-btn,.btn-ghost,.btn-danger,
+.btn-danger-ghost,.lc-edit,.lc-del,.check-btn,.sheet-x,.done-add,.done-row-x,.df-x{
+  box-shadow:none!important; letter-spacing:0!important;
+}
+.vtab.active,.chip.active,.dia-chip.active,.setor-btn.active{
+  background:var(--accent)!important; background-image:none!important;
+  color:#0B0F18!important; border-color:var(--accent)!important; box-shadow:none!important;
+}
+.btn-primary,.fab{
+  background:var(--accent)!important; background-image:none!important;
+  color:#0B0F18!important; border:1px solid var(--accent)!important;
+}
+/* identidade do topo: fonte normal, cor cheia, sem ponto piscando */
+.tb-t1{
+  font-family:var(--fh)!important; font-weight:700!important; font-size:16px!important;
+  letter-spacing:-.02em!important; padding-left:0!important;
+  background:none!important; background-image:none!important;
+  -webkit-background-clip:border-box!important; background-clip:border-box!important;
+  -webkit-text-fill-color:currentColor!important; color:var(--t)!important;
+}
+.tb-t1::before{ content:none!important; display:none!important; }
+.tb-t2{
+  font-family:var(--fh)!important; letter-spacing:.06em!important;
+  font-size:10.5px!important; font-weight:600!important; color:var(--t4)!important;
+}
+.mn-label{ text-transform:none!important; }
+/* unidade e frase curta são texto, não número */
+.pc-unit,.meta-sub-inline,.mtag.parcial,.mt-v span,.pt-v span,.pl-num span,.mp-num span{
+  font-family:var(--fh)!important; letter-spacing:.01em!important;
+}
+
+::selection{ background:var(--accent-dim); color:var(--t); }
+:is(button,a,input,select,textarea,[tabindex]):focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+</style>
 </body></html>

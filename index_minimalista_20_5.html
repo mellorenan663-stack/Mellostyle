@@ -2628,7 +2628,7 @@ function renderLotes(){
         <div class="of2-stat"><span class="of2-stat-l">Faturamento</span><span class="of2-stat-v">${fmtMoney(fat)}</span></div>
         <div class="of2-stat"><span class="of2-stat-l">Lucro est.</span><span class="of2-stat-v ${lucro>=0?'pos':'neg'}">${fmtMoney(lucro)}</span></div>
         <div class="of2-stat"><span class="of2-stat-l">Valor / peça</span><span class="of2-stat-v">${fmtMoney(l.valorPeca)}</span></div>
-        <div class="of2-stat"><span class="of2-stat-l">Cai em</span><span class="of2-stat-v">${competenciaTxt}</span></div>
+        <div class="of2-stat"><span class="of2-stat-l">Cai em</span><span class="of2-stat-v txt">${competenciaTxt}</span></div>
       </div>
       ${(l.tamanhos||l.observacoes)?`<div class="of2-hints">${l.tamanhos?`<span>📐 ${l.tamanhos}</span>`:''}${l.observacoes?`<span>💬 ${l.observacoes}</span>`:''}</div>`:''}
       <div class="of2-etapas-wrap">
@@ -17608,16 +17608,15 @@ html[data-theme="escuro"] .summary-bar{
 :root[data-theme="claro"] .bh-eq-tag.silver{ color:var(--accent)!important; }
 :root[data-theme="claro"] .of2-btn-alt{ color:var(--success)!important; }
 
-/* O painel de metas é escuro de propósito nos dois temas, então nele continuam
-   valendo as cores claras — o resto da página é que precisa das escuras. */
+/* o painel de metas virou um cartão claro, então usa as mesmas cores do resto */
+:root[data-theme="claro"] #dash-metas .bar-status.ok,
+:root[data-theme="claro"] #dash-metas .bar-status.over,
 :root[data-theme="claro"] #dash-metas .green,
-:root[data-theme="claro"] #dash-agora .green,
-:root[data-theme="claro"] #dash-metas .saldo-pos,
-:root[data-theme="claro"] #dash-metas .hi-pos{ color:#6EE7B7!important; }
+:root[data-theme="claro"] #dash-agora .green{ color:var(--success)!important; }
+:root[data-theme="claro"] #dash-metas .bar-status.bad,
 :root[data-theme="claro"] #dash-metas .red,
-:root[data-theme="claro"] #dash-agora .red,
-:root[data-theme="claro"] #dash-metas .saldo-neg,
-:root[data-theme="claro"] #dash-metas .hi-neg{ color:#FCA5A5!important; }
+:root[data-theme="claro"] #dash-agora .red{ color:var(--danger)!important; }
+:root[data-theme="claro"] #dash-metas .bar-status.warn{ color:var(--warning)!important; }
 
 /* Em tela estreita os dois botões do cabeçalho dividem a linha e o texto não
    cabe inteiro; a palavra longa sai e o rótulo continua claro. */
@@ -17769,6 +17768,297 @@ html[data-theme="escuro"] .summary-bar{
   .rel-progress{ background:#e8e8ec!important; }
 }
 </style>
+<style id="mello-clean">
+/* ══════════════════════════════════════════════════════════════════════
+   MELLO STYLE — VISUAL LIMPO
+   Tira o que era enfeite (malha de grade, brilhos, cantos de HUD, títulos
+   em monoespaçada, degradês no texto) e deixa o essencial: tipografia
+   legível, espaçamento constante e colunas alinhadas.
+   Só aparência — nenhuma conta ou marcação depende daqui.
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root{
+  --on-accent:#fff;       /* tinta sobre o realce */
+  --ui-r:12px;            /* raio único */
+  --ui-r-sm:9px;
+  --ui-pad:20px;          /* respiro dentro dos cartões */
+  --ui-pad-sm:16px;
+  --ui-sombra:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --ui-sombra-2:0 2px 4px rgba(16,24,40,.05), 0 4px 12px rgba(16,24,40,.07);
+}
+:root[data-theme="escuro"]{
+  /* no escuro o realce é claro, então a tinta em cima dele é escura */
+  --on-accent:#14121F;
+  --ui-sombra:0 1px 2px rgba(0,0,0,.30), 0 1px 3px rgba(0,0,0,.24);
+  --ui-sombra-2:0 2px 6px rgba(0,0,0,.34), 0 8px 20px rgba(0,0,0,.28);
+}
+
+/* ── 1. fundo sem malha nem brilho ── */
+html, body{ background-image:none!important; }
+body{ background:var(--bg)!important; }
+.card,.kpi-card,.lote-card,.bh-card,.fin-card,.rel-card,.metric-card,.modal-box,.modal-card,
+.tbl-wrap,.summary-bar,.panel,.box,.dash-card,.content-card,.gd-section,.cph-card,.cph-panel,
+.client-list>*,.trash-card,.exec-side-card,.exec-mini,.score-item,.proj-item,.fin-mega,
+#dash-metas .krb-wrap,#dash-metas .bars-panel,#dash-agora .split-panel,#dash-metas .ledger-foot{
+  background-image:none!important;
+  box-shadow:var(--ui-sombra)!important;
+  border-radius:var(--ui-r)!important;
+}
+/* o painel de metas deixa de ser um bloco escuro à parte */
+#dash-metas,#dash-agora{ --ms-ink:var(--t); --ms-grid:transparent; --ms-edge:var(--bd); }
+#dash-metas .krb-wrap,#dash-metas .bars-panel,#dash-agora .split-panel,#dash-metas .ledger-foot{
+  background-color:var(--card)!important;
+  border:1px solid var(--bd)!important;
+}
+#dash-metas .bar-row{ background:transparent!important; border-radius:0!important; }
+#dash-metas .bars-panel .bar-row{ border-bottom:1px solid var(--bd); }
+#dash-metas .bars-panel .bar-row:last-child{ border-bottom:none; }
+
+/* ── 2. nada de canto de HUD, risco animado ou ponto pulsante ── */
+.card::before,.card::after,
+.ptitle::before,.ptitle::after,
+.phd::after,.chd::before,
+.nav-btn.active::before,
+.lote-card::after,.rank-card::after,.meta-card::after,.pieces-card::before,
+#dash-metas .krb-wrap::before,#dash-metas .krb-wrap::after,
+#dash-metas .bars-panel::before,#dash-metas .bars-panel::after,
+#dash-agora .split-panel::before,#dash-agora .split-panel::after,
+#dash-metas .ledger-foot::before,#dash-metas .ledger-foot::after,
+#dash-metas .metas-section-hd::after,#dash-agora .metas-section-hd::after,
+#dash-metas .metas-section-title::before,#dash-agora .metas-section-title::before,
+#dash-metas .bar-row::before,#dash-metas .bar-fill::after,
+#dash-agora .split-seg.real::after,
+#dash-metas .krb+.krb::before,#dash-agora .krb+.krb::before{
+  content:none!important; display:none!important; animation:none!important;
+}
+*,*::before,*::after{ animation:none!important; }
+.live-dot{ animation:none!important; box-shadow:none!important; }
+
+/* ── 3. tipografia: sem monoespaçada em título, sem degradê no texto ── */
+.ptitle,.psub,.metas-section-title,.rel-brand,.db-hero-title,.sheet-title,.modal-title,
+.exec-title,.chd,.client-name{
+  background:none!important; background-image:none!important;
+  -webkit-background-clip:border-box!important; background-clip:border-box!important;
+  -webkit-text-fill-color:currentColor!important;
+  filter:none!important; text-shadow:none!important;
+}
+.ptitle{
+  font-family:var(--fh)!important; font-weight:700!important;
+  font-size:clamp(22px,2.4vw,27px)!important; letter-spacing:-.02em!important;
+  text-transform:none!important; color:var(--t)!important; padding-left:0!important;
+  line-height:1.2!important;
+}
+.psub{
+  font-family:var(--fh)!important; font-size:13.5px!important; font-weight:400!important;
+  letter-spacing:0!important; text-transform:none!important; color:var(--t3)!important;
+  line-height:1.45!important; margin-top:4px!important;
+}
+.phd{ border-bottom:1px solid var(--bd)!important; padding-bottom:18px!important; margin-bottom:24px!important; }
+/* a saudação era caixa alta com muito espaçamento; em frase ela some do caminho
+   e o título fica sendo o que se lê primeiro */
+.db-hero-eyebrow{
+  font-family:var(--fh)!important; font-size:12.5px!important; font-weight:500!important;
+  text-transform:none!important; letter-spacing:0!important; color:var(--t3)!important;
+}
+.db-hero-title{ font-size:clamp(24px,2.6vw,30px)!important; font-weight:700!important;
+  letter-spacing:-.025em!important; color:var(--t)!important; }
+.db-section-wrap,.card.db-card-elevated,.fin-section-wrapper{
+  border-radius:var(--ui-r)!important; box-shadow:var(--ui-sombra)!important;
+  background:var(--card)!important;
+}
+/* rótulos pequenos: caixa alta discreta, sem monoespaçada */
+.sb-l,.kpi-l,.rc-l,.exec-mini-l,.exec-side-label,.ls-l,.gd-kpi-l,.metas-section-title,
+.chd,.of2-stat-l,.bh-eq-l,.cx-l{
+  font-family:var(--fh)!important; font-size:11px!important; font-weight:600!important;
+  letter-spacing:.04em!important; color:var(--t3)!important;
+}
+.metas-section-title{ color:var(--t2)!important; font-weight:700!important; font-size:11.5px!important; }
+/* números em monoespaçada tabular: é o que mantém as colunas alinhadas */
+.sb-v,.kpi-v,.rc-v,.td-mono,.exec-mini-v,.exec-side-value,.si-val,.ls-v,.bh-final-val,
+.rank-value,.metric-value,.fin-value,.gd-kpi-v,.cx-num,.of2-stat-v{
+  font-family:var(--fm)!important; font-variant-numeric:tabular-nums!important;
+  letter-spacing:-.01em!important; text-shadow:none!important;
+}
+
+/* o painel de metas era um bloco escuro com tinta clara; agora é um cartão
+   como os outros, então a tinta e os fundos seguem o tema (precisa do id
+   para vencer as regras originais) */
+#dash-metas .metas-section-title,#dash-agora .metas-section-title{
+  background:none!important; background-image:none!important;
+  -webkit-text-fill-color:currentColor!important; color:var(--t2)!important;
+  font-family:var(--fh)!important; text-transform:uppercase!important;
+  letter-spacing:.06em!important; font-size:11.5px!important; font-weight:700!important;
+}
+#dash-metas .bar-label,#dash-metas .bar-values,#dash-metas .bar-pct,
+#dash-metas .lf-item,#dash-metas .lf-v,#dash-metas .krb,#dash-metas .krb-v,
+#dash-agora .sl-item,#dash-agora .split-seg,#dash-agora .exec-mini-v,
+#dash-metas .bar-label *,#dash-metas .bar-values *,#dash-metas .krb *,#dash-agora .sl-item *{
+  -webkit-text-fill-color:currentColor!important; text-shadow:none!important;
+  background-image:none!important;
+}
+#dash-metas .bar-label,#dash-metas .lf-item,#dash-metas .krb,#dash-agora .sl-item{ color:var(--t3)!important; }
+/* rótulos pequenos do painel usavam o cinza do fundo escuro antigo */
+#dash-metas .lf-l,#dash-agora .lf-l,#dash-metas .sl-total,#dash-agora .sl-total,
+#dash-metas .sl-l,#dash-agora .sl-l,#dash-metas .krb-s,#dash-agora .krb-s{ color:var(--t3)!important; }
+#dash-metas .bar-values,#dash-metas .lf-v,#dash-metas .krb-v,#dash-agora .exec-mini-v{ color:var(--t)!important; }
+#dash-metas .bar-label b,#dash-metas .bar-label strong{ color:var(--t)!important; }
+#dash-metas .krb,#dash-metas .lf-item,#dash-agora .split-seg,#dash-metas .krb-wrap{
+  background-color:transparent!important;
+}
+#dash-metas .krb-wrap,#dash-agora .krb-wrap,#dash-agora .ledger-foot{
+  background-color:var(--card)!important; background-image:none!important;
+  border:1px solid var(--bd)!important;
+}
+#dash-agora .krb,#dash-agora .krb-wrap *{ -webkit-text-fill-color:currentColor!important; background-image:none!important; }
+#dash-agora .krb-l,#dash-agora .krb-s{ color:var(--t3)!important; }
+#dash-agora .krb-v{ color:var(--t)!important; }
+/* rótulo é texto: fonte normal. Número fica na monoespaçada, que alinha as colunas. */
+#dash-metas .bar-status,#dash-metas .lf-l,#dash-agora .lf-l,#dash-agora .ag-hint,
+#dash-metas .ag-hint,#dash-agora .krb-l,#dash-agora .krb-s,#dash-metas .krb-l,#dash-metas .krb-s,
+#dash-metas .bar-label,#dash-agora .sl-item{
+  font-family:var(--fh)!important; letter-spacing:.01em!important; text-transform:none!important;
+}
+#dash-metas .lf-l,#dash-agora .lf-l,#dash-agora .krb-l,#dash-metas .krb-l{
+  text-transform:uppercase!important; letter-spacing:.04em!important; font-size:11px!important; font-weight:600!important;
+}
+#dash-metas .bar-track,#dash-agora .split-bar{ background:var(--bg4)!important; background-image:none!important; }
+#dash-metas .metas-edit-btn{
+  background:var(--accent)!important; background-image:none!important;
+  color:var(--on-accent)!important; border:1px solid var(--accent)!important;
+}
+
+/* ── 4. botões e campos calmos ── */
+button,.btn,.btn-outline,.btn-save,.btn-auth,.btn-edit,.btn-x,.btn-primary,.btn-ghost,
+.btn-topbar-refresh,.btn-theme-quick,.btn-gastos-quick,.tp-btn,.nav-btn,.lf-btn,.theme-swatch{
+  border-radius:var(--ui-r-sm)!important; box-shadow:none!important;
+  letter-spacing:0!important; font-weight:600!important;
+}
+button:hover,.btn:hover,.btn-outline:hover,.btn-save:hover,.btn-auth:hover,.theme-swatch:hover{
+  transform:none!important;
+}
+.btn-save,.btn-auth,.btn-primary,.btn-concluir-confirm,.btn-rel-print,.btn-gd-save{
+  background:var(--accent)!important; background-image:none!important;
+  color:var(--on-accent)!important; border:1px solid var(--accent)!important;
+}
+.tp-btn.active,.nav-btn.active,.lf-btn.active{
+  background:var(--accent)!important; background-image:none!important; color:var(--on-accent)!important;
+  border-color:var(--accent)!important; box-shadow:none!important;
+}
+input,select,textarea{ border-radius:var(--ui-r-sm)!important; box-shadow:none!important; }
+input:focus,select:focus,textarea:focus{
+  border-color:var(--accent)!important; box-shadow:0 0 0 3px var(--accent-soft)!important;
+}
+.progress,.bar,.fn-bar,.rel-progress,.meta-bar,.lc-prog-bar{ box-shadow:none!important; }
+.progress>*,.bar>*,.fn-bar>div,.rel-progress span{ background-image:none!important; box-shadow:none!important; }
+.chip,.badge,.tag,.status-pill,.prazo-badge,.rel-pill,.bh-eq-tag{
+  border-radius:999px!important; box-shadow:none!important; font-weight:600!important; letter-spacing:0!important;
+}
+
+/* ── 5. espaçamento e alinhamento ── */
+.card,.kpi-card,.bh-card,.fin-card,.modal-box,.panel,.dash-card,.content-card{ padding:var(--ui-pad)!important; }
+.summary-bar{ padding:0!important; box-shadow:var(--ui-sombra)!important; }
+.sb-item{ padding:16px 20px!important; }
+.sb-l{ margin-bottom:6px!important; }
+.sb-v{ font-size:21px!important; font-weight:700!important; line-height:1.1!important; }
+table th,table td{ padding:11px 14px!important; }
+/* O campo que ocupava duas colunas criava colunas implícitas no grid de
+   preenchimento automático, e os dois campos antes dele encolhiam para 18px.
+   Ocupando a linha inteira, o grid volta a ter colunas iguais. */
+.fg{ grid-auto-columns:minmax(190px,1fr)!important; }
+.fg > .ff{ min-width:0!important; }
+.fg > .ff[style*="span 2"],.fg > .ff[style*="span2"]{ grid-column:1 / -1!important; }
+
+/* o nome no relatório estava com as letras muito juntas */
+.rel-doc-pro .rel-brand{ letter-spacing:-.01em!important; font-weight:700!important; font-size:23px!important; }
+.rel-doc-pro .rel-sub{ margin-top:5px!important; }
+
+/* valor que é texto, não número, volta para a fonte normal */
+.of2-stat-v.txt,.sb-v.txt{ font-family:var(--fh)!important; letter-spacing:0!important; }
+/* na barra de lotes o valor em reais não cabia na coluna e saía cortado */
+.lotes-summary-bar .sb-v{ font-size:clamp(15px,1.4vw,20px)!important; }
+.lotes-summary-bar .sb-item{ padding:14px 16px!important; }
+table th{ font-family:var(--fh)!important; font-size:11px!important; font-weight:600!important;
+  letter-spacing:.04em!important; text-transform:uppercase!important; }
+.rel-doc-pro{ box-shadow:var(--ui-sombra-2)!important; border-radius:var(--ui-r)!important; }
+.rel-doc-pro .rel-card{ border-radius:var(--ui-r)!important; }
+.topbar{ backdrop-filter:none!important; background:var(--panel)!important;
+  border-bottom:1px solid var(--bd)!important; box-shadow:none!important; }
+.sidebar{ background:var(--panel)!important; background-image:none!important;
+  border-right:1px solid var(--bd)!important; box-shadow:none!important; }
+
+/* ── 6. o que ainda vinha das regras do tema (que são mais específicas) ── */
+html[data-theme] .card,html[data-theme] .kpi-card,html[data-theme] .modal-box,
+html[data-theme] .tbl-wrap,html[data-theme] .lote-card,html[data-theme] .bh-card,
+html[data-theme] .cx-table-card,html[data-theme] .rel-card,html[data-theme] .summary-bar,
+html[data-theme] .gd-section,html[data-theme] .cph-card,html[data-theme] .cph-panel,
+html[data-theme] .krb-wrap,html[data-theme] .bars-panel,html[data-theme] .split-panel,
+html[data-theme] .ledger-foot,html[data-theme] .sidebar,html[data-theme] .topbar,
+html[data-theme] body{
+  background-image:none!important;
+  box-shadow:var(--ui-sombra)!important;
+}
+html[data-theme] body,html[data-theme] .sidebar,html[data-theme] .topbar{ box-shadow:none!important; }
+
+/* números com degradê viram cor cheia: em número, degradê só atrapalha a leitura */
+html[data-theme] .sb-v,html[data-theme] .kpi-v,html[data-theme] .rc-v,html[data-theme] .krb-v,
+html[data-theme] .lf-v,html[data-theme] .bar-pct,html[data-theme] .gd-kpi-v,
+html[data-theme] .exec-mini-v,html[data-theme] .exec-side-value,html[data-theme] .ls-v,
+html[data-theme] .bh-final-val,html[data-theme] .metric-value,html[data-theme] .fin-value,
+html[data-theme] .si-val,html[data-theme] .topbar-name,html[data-theme] .topbar-name span,
+html[data-theme] .metas-section-title,html[data-theme] .db-hero-title,html[data-theme] .ptitle{
+  background:none!important; background-image:none!important;
+  -webkit-background-clip:border-box!important; background-clip:border-box!important;
+  -webkit-text-fill-color:currentColor!important; filter:none!important; text-shadow:none!important;
+}
+html[data-theme] .sb-v,html[data-theme] .kpi-v,html[data-theme] .krb-v,html[data-theme] .lf-v,
+html[data-theme] .exec-mini-v,html[data-theme] .rc-v,html[data-theme] .gd-kpi-v,
+html[data-theme] .bh-final-val,html[data-theme] .ls-v{ color:var(--t)!important; }
+html[data-theme] .sb-v.ac,html[data-theme] .lf-v.pos{ color:var(--accent)!important; }
+html[data-theme] .sb-v.green,html[data-theme] .lf-v.green{ color:var(--success)!important; }
+html[data-theme] .sb-v.red,html[data-theme] .lf-v.neg{ color:var(--danger)!important; }
+html[data-theme] .bar-pct{ color:var(--t2)!important; }
+html[data-theme] .topbar-name,html[data-theme] .topbar-name span{ color:var(--accent)!important; }
+
+/* brilhos coloridos em botão e logo */
+html[data-theme] .btn-gd-save,html[data-theme] .topbar-logo,html[data-theme] .sb-icon,
+html[data-theme] .brand-mark,html[data-theme] .tb-mark{ box-shadow:none!important; }
+
+/* os últimos vêm de regras com id, que pedem id para serem vencidas */
+#dash-metas .lf-v,#dash-agora .lf-v,#dash-metas .krb-v,#dash-agora .krb-v,
+#dash-metas .bar-pct,#dash-agora .bar-pct,
+#dash-metas .metas-section-title,#dash-agora .metas-section-title,
+#dash-metas .krb-wrap,#dash-agora .krb-wrap,.topbar-name span,.topbar-name *{
+  background:none!important; background-image:none!important;
+  -webkit-background-clip:border-box!important; background-clip:border-box!important;
+  -webkit-text-fill-color:currentColor!important; text-shadow:none!important;
+}
+#dash-metas .krb-wrap,#dash-agora .krb-wrap{ box-shadow:var(--ui-sombra)!important; background-color:var(--card)!important; }
+#dash-metas .lf-v,#dash-agora .lf-v,#dash-metas .krb-v,#dash-agora .krb-v{ color:var(--t)!important; }
+#dash-metas .lf-v.pos,#dash-agora .lf-v.pos{ color:var(--success)!important; }
+#dash-metas .bar-pct,#dash-agora .bar-pct{ color:var(--t2)!important; }
+.topbar-name,.topbar-name span{ color:var(--accent)!important; }
+
+/* estes vinham com tema + id, então precisam de um seletor mais forte ainda */
+html[data-theme] body #dash-metas .metas-section-title,
+html[data-theme] body #dash-agora .metas-section-title,
+html[data-theme] body #dash-metas .lf-v,html[data-theme] body #dash-agora .lf-v,
+html[data-theme] body .brand-name,html[data-theme] body .brand-name *,
+html[data-theme] body .sb-name,html[data-theme] body .sb-name *,
+html[data-theme] body .topbar-name,html[data-theme] body .topbar-name *{
+  background:none!important; background-image:none!important;
+  -webkit-background-clip:border-box!important; background-clip:border-box!important;
+  -webkit-text-fill-color:currentColor!important; text-shadow:none!important;
+}
+html[data-theme] body #dash-metas .metas-section-title,
+html[data-theme] body #dash-agora .metas-section-title{ color:var(--t2)!important; }
+html[data-theme] body #dash-metas .lf-v.pos,html[data-theme] body #dash-agora .lf-v.pos{ color:var(--success)!important; }
+html[data-theme] body .gtbl,html[data-theme] body .of2-card,
+html[data-theme] body .gasto-grupo,html[data-theme] body .config-tip{ box-shadow:var(--ui-sombra)!important; }
+
+/* nenhuma entrada animada */
+html[data-theme] .page,html[data-theme] .page.active,html[data-theme] .tk-enter,
+html[data-theme] .tk-enter *{ animation:none!important; opacity:1!important; transform:none!important; }
+</style>
 
 
 
@@ -17785,8 +18075,8 @@ html[data-theme="escuro"] .summary-bar{
    ══════════════════════════════════════════════════════════════════════ */
 (function(){
   "use strict";
-  var REDUZ=false;
-  try{ REDUZ=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+  /* visual limpo: sem animação de entrada, varredura ou decodificação de título */
+  var REDUZ=true;
   var escuro=function(){ try{ return document.documentElement.getAttribute("data-theme")==="escuro"; }catch(e){ return false; } };
 
   /* ── 2) campo de partículas ── */
