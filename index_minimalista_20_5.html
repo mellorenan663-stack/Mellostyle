@@ -2237,18 +2237,68 @@ window.salvarClienteInline=async function(){
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 
+/* Marca o campo com problema e leva o cursor até ele: aviso solto no canto
+   da tela não diz qual campo está errado. */
+function erroNoCampo(id,msg){
+  const el=$(id); toast(msg,"err");
+  if(!el) return null;
+  const caixa=el.closest(".ff")||el.parentElement;
+  if(caixa){ caixa.classList.add("ff-erro");
+    const limpa=()=>caixa.classList.remove("ff-erro");
+    el.addEventListener("input",limpa,{once:true});
+    el.addEventListener("change",limpa,{once:true}); }
+  try{ el.focus({preventScroll:false}); if(el.select) el.select(); }catch(_e){}
+  return null;
+}
+function limparErrosOF(prefixo){
+  document.querySelectorAll("#"+(prefixo==="edit-lote"?"modal-editar-lote":"lote-form-card")+" .ff-erro")
+    .forEach(e=>e.classList.remove("ff-erro"));
+}
+/* Lê e confere os campos do formulário de OF (novo ou edição).
+   Devolve os dados prontos, ou null quando algo está errado. */
+function lerFormularioOF(prefixo,idIgnorar,numeroOriginal){
+  limparErrosOF(prefixo);
+  const v=n=>$(prefixo+"-"+n);
+  const numeroOf=(v("numero")?.value||"").trim(),produto=(v("produto")?.value||"").trim();
+  const qtdBruta=(v("qtd")?.value||"").trim(),valorBruto=(v("valor")?.value||"").trim();
+  const qtdTotal=Math.trunc(Number(qtdBruta)),valorPeca=Number(valorBruto||0);
+  if(!numeroOf) return erroNoCampo(prefixo+"-numero","Falta o número da OF");
+  if(!produto)  return erroNoCampo(prefixo+"-produto","Falta o nome do produto");
+  if(!qtdBruta||!Number.isFinite(qtdTotal))
+    return erroNoCampo(prefixo+"-qtd","Falta a quantidade de peças");
+  if(qtdTotal<=0)
+    return erroNoCampo(prefixo+"-qtd","A quantidade tem que ser maior que zero");
+  if(qtdTotal>1000000)
+    return erroNoCampo(prefixo+"-qtd","Quantidade muito alta — confira o número");
+  if(!Number.isFinite(valorPeca)||valorPeca<0)
+    return erroNoCampo(prefixo+"-valor","O valor por peça não pode ser negativo");
+  /* mesmo número de OF duas vezes bagunça a busca e o faturamento.
+     Numa edição em que o número não mudou não há o que avisar. */
+  const mudouONumero=numeroOriginal==null||normalize(numeroOriginal)!==normalize(numeroOf);
+  const igual=mudouONumero&&lotes.find(l=>l.id!==idIgnorar&&normalize(l.numeroOf||"")===normalize(numeroOf));
+  if(igual&&!confirm(`Já existe a OF ${igual.numeroOf} (${igual.produto||"sem produto"}).\n\nCadastrar assim mesmo com o mesmo número?`))
+    return erroNoCampo(prefixo+"-numero","Escolha outro número de OF");
+  return {numeroOf,produto,qtdTotal,valorPeca,
+    status:v("status")?.value||"Aberto",
+    prazo:(v("prazo")?.value||"")||null,
+    cliente:(v("cliente")?.value||"").trim(),
+    prioridade:v("prioridade")?.value||"Normal",
+    tamanhos:(v("tamanhos")?.value||"").trim(),
+    observacoes:(v("obs")?.value||"").trim(),
+    competenciaFaturamento:v("competencia")?.value||monthKeyLocal()};
+}
+let __salvandoOF=false;
 window.salvarLote=async()=>{
-  const numeroOf=$("lote-numero").value.trim(),produto=$("lote-produto").value.trim();
-  const qtdTotal=parseInt($("lote-qtd").value)||0,valorPeca=parseFloat($("lote-valor").value)||0;
-  const status=$("lote-status").value,prazo=$("lote-prazo").value;
-  const cliente=$("lote-cliente")?.value.trim()||"";
-  const prioridade=$("lote-prioridade")?.value||"Normal";
-  const tamanhos=$("lote-tamanhos")?.value.trim()||"";
-  const observacoes=$("lote-obs")?.value.trim()||"";
-  const competenciaFaturamento=$("lote-competencia")?.value||monthKeyLocal();
-  if(!numeroOf||!produto||!qtdTotal){toast("Preencha OF, produto e quantidade","err");return;}
+  if(__salvandoOF) return;                       // trava contra clique duplo
+  const f=lerFormularioOF("lote"); if(!f) return;
+  const {status,...dadosLote}=f;
+  const btn=document.querySelector('#lote-form-card button.btn-save');
+  const rotulo=btn?btn.textContent:"";
+  __salvandoOF=true;
+  if(btn){ btn.disabled=true; btn.textContent="Salvando..."; }
   try{
-    const dados=withOwner({numeroOf,produto,qtdTotal,valorPeca,status,prazo:prazo||null,cliente,prioridade,tamanhos,observacoes,competenciaFaturamento,criadoEm:Timestamp.now()});
+    requireAuthUser();
+    const dados=withOwner({...dadosLote,status,criadoEm:Timestamp.now()});
     const ref=await addDoc(collection(db,"lotes"),dados);
     // entra na lista em memória (ordenada por criadoEm desc, então no topo)
     lotes.unshift({id:ref.id,...dados});
@@ -2259,6 +2309,7 @@ window.salvarLote=async()=>{
     try{ if(typeof toggleLoteForm==="function") toggleLoteForm(false); }catch(_e){}
     redesenharPreservandoRolagem();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{ __salvandoOF=false; if(btn){ btn.disabled=false; btn.textContent=rotulo||"+ Cadastrar OF"; } }
 };
 window.atualizarStatusLote=async(id,status)=>{
   try{
@@ -2326,17 +2377,11 @@ window.abrirModalEditarLote=function(loteId){
 window.fecharModalEditarLote=()=>{$("modal-editar-lote").classList.remove("open");document.body.style.overflow="";};
 window.salvarEdicaoLote=async()=>{
   const id=$("edit-lote-id").value;
-  const numeroOf=$("edit-lote-numero").value.trim(),produto=$("edit-lote-produto").value.trim();
-  const qtdTotal=parseInt($("edit-lote-qtd").value)||0,valorPeca=parseFloat($("edit-lote-valor").value)||0;
-  const status=$("edit-lote-status").value,prazo=$("edit-lote-prazo").value;
-  const cliente=$("edit-lote-cliente")?.value.trim()||"";
-  const prioridade=$("edit-lote-prioridade")?.value||"Normal";
-  const tamanhos=$("edit-lote-tamanhos")?.value.trim()||"";
-  const observacoes=$("edit-lote-obs")?.value.trim()||"";
-  const competenciaFaturamento=$("edit-lote-competencia")?.value||monthKeyLocal();
-  if(!numeroOf||!produto||!qtdTotal){toast("Preencha OF, produto e quantidade","err");return;}
-  const btn=$("btn-salvar-edicao-lote");btn.disabled=true;btn.textContent="Salvando...";
-  const dadosEdicao={numeroOf,produto,qtdTotal,valorPeca,prazo:prazo||null,cliente,prioridade,tamanhos,observacoes,competenciaFaturamento};
+  const f=lerFormularioOF("edit-lote",id,(lotes.find(l=>l.id===id)||{}).numeroOf); if(!f) return;
+  const {status,...dadosEdicao}=f;
+  const btn=$("btn-salvar-edicao-lote");
+  if(btn.disabled) return;                       // trava contra clique duplo
+  btn.disabled=true;btn.textContent="Salvando...";
   try{
     requireAuthUser();
     if(status==="Concluído"){
@@ -2502,6 +2547,15 @@ window.confirmarConcluirLote=async()=>{
   }catch(e){tratarErroConclusaoLote(e);}
 };
 
+/* Enter salva de qualquer campo do formulário e Esc fecha — antes só o
+   campo do número respondia ao Enter. */
+document.addEventListener("keydown",ev=>{
+  const card=document.getElementById("lote-form-card");
+  if(!card||card.style.display==="none"||!card.contains(ev.target)) return;
+  if(ev.key==="Enter"&&ev.target.tagName!=="BUTTON"&&ev.target.tagName!=="TEXTAREA"){
+    ev.preventDefault(); salvarLote();
+  } else if(ev.key==="Escape"){ ev.preventDefault(); toggleLoteForm(false); }
+});
 window.toggleLoteForm=function(force){
   const card=document.getElementById("lote-form-card");
   const btn=document.getElementById("btn-nova-of");
@@ -12339,7 +12393,7 @@ input,select,textarea,button{font-size:16px;}
           <span class="nota-cta-txt">Preenche os campos sozinho — você só confere e salva</span>
         </div>
         <div class="fg fg-of">
-          <div class="ff" style="grid-column:span 3"><label>Nº da OF *</label><input id="lote-numero" type="text" placeholder="Ex: 2024-001" onkeydown="if(event.key==='Enter')salvarLote()"/></div>
+          <div class="ff" style="grid-column:span 3"><label>Nº da OF *</label><input id="lote-numero" type="text" placeholder="Ex: 2024-001"/></div>
           <div class="ff" style="grid-column:span 5"><label>Produto *</label><input id="lote-produto" type="text" placeholder="Ex: Camiseta Básica P"/></div>
           <div class="ff" style="grid-column:span 4"><label>Cliente</label><select id="lote-cliente"><option value="">— Nenhum —</option></select><button type="button" class="ff-mini-btn" onclick="abrirModalNovoCliente()">+ Novo cliente</button></div>
           <div class="ff" style="grid-column:span 3"><label>Qtd Total *</label><input id="lote-qtd" type="number" min="1" placeholder="Ex: 500"/></div>
@@ -17940,6 +17994,22 @@ button:hover,.btn:hover,.btn-outline:hover,.btn-save:hover,.btn-auth:hover,.them
   background:var(--accent)!important; background-image:none!important;
   color:var(--on-accent)!important; border:1px solid var(--accent)!important;
 }
+/* O tema escuro ainda pintava esses botões com degradê e brilho do visual
+   antigo; as regras de lá são html[data-theme="escuro"] .btn-save, então o
+   html[data-theme] na frente é o que faz a versão limpa valer também no escuro. */
+html[data-theme] .btn-save,html[data-theme] .btn-auth,html[data-theme] .btn-primary,
+html[data-theme] button.primary,html[data-theme] .btn-concluir-confirm,
+html[data-theme] .btn-rel-print,html[data-theme] .btn-gd-save,
+html[data-theme] #login-btn{   /* o botão Entrar é pintado por regra com id */
+  background:var(--accent)!important; background-image:none!important;
+  color:var(--on-accent)!important; border:1px solid var(--accent)!important;
+  box-shadow:none!important;
+}
+html[data-theme] .btn-save:hover,html[data-theme] .btn-auth:hover,
+html[data-theme] .btn-primary:hover,html[data-theme] .btn-outline:hover{
+  transform:none!important; box-shadow:none!important;
+}
+html[data-theme] .btn-outline{ box-shadow:none!important; }
 .tp-btn.active,.nav-btn.active,.lf-btn.active{
   background:var(--accent)!important; background-image:none!important; color:var(--on-accent)!important;
   border-color:var(--accent)!important; box-shadow:none!important;
@@ -17963,10 +18033,63 @@ input:focus,select:focus,textarea:focus{
 table th,table td{ padding:11px 14px!important; }
 /* O campo que ocupava duas colunas criava colunas implícitas no grid de
    preenchimento automático, e os dois campos antes dele encolhiam para 18px.
-   Ocupando a linha inteira, o grid volta a ter colunas iguais. */
-.fg{ grid-auto-columns:minmax(190px,1fr)!important; }
+   Ocupando a linha inteira, o grid volta a ter colunas iguais.
+   Vale só para os formulários de coluna automática: o de Nova OF tem grade
+   própria de 12 colunas e quebraria com colunas implícitas de 190px. */
+.fg:not(.fg-of){ grid-auto-columns:minmax(190px,1fr)!important; }
 .fg > .ff{ min-width:0!important; }
-.fg > .ff[style*="span 2"],.fg > .ff[style*="span2"]{ grid-column:1 / -1!important; }
+.fg:not(.fg-of) > .ff[style*="span 2"],.fg:not(.fg-of) > .ff[style*="span2"]{ grid-column:1 / -1!important; }
+
+/* Em tela média a grade de 12 vira duas colunas pareadas. Antes cada campo
+   virava "span 3" de 6 e os largos "span 6", então a OF ficava sozinha numa
+   linha e o resto encaixava torto. */
+@media (max-width:1040px){
+  body:not(.desktop-forced) .fg-of{ grid-template-columns:repeat(2,minmax(0,1fr))!important; }
+  body:not(.desktop-forced) .fg-of .ff,
+  body:not(.desktop-forced) .fg-of .ff[style*="span 3"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 4"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 5"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 6"]{ grid-column:span 1!important; }
+  body:not(.desktop-forced) .fg-of .ff[style*="span 9"]{ grid-column:1 / -1!important; }
+}
+
+/* O botão "+ Novo cliente" ficava embaixo do campo e esticava a linha inteira,
+   abrindo um vão até a linha seguinte. Ao lado do rótulo ele não ocupa altura. */
+.fg-of .ff:has(> .ff-mini-btn){ position:relative; }
+/* O "+ Novo cliente" divide a linha do rótulo com ele: se ficar da altura de
+   um campo, cobre o canto do select logo abaixo. */
+.fg-of .ff-mini-btn{
+  position:absolute; top:-1px; right:0; margin-top:0!important;
+  padding:2px 9px!important; font-size:10.5px!important; line-height:1.55!important;
+  height:auto!important; min-height:0!important;
+}
+.fg-of .ff:has(> .ff-mini-btn) label{ padding-right:104px; }
+
+/* Até 900px a linha do mês vira coluna; aí o flex-basis de 150px passa a valer
+   como ALTURA e o campo virava uma caixa vazia de 150px de altura. */
+@media (max-width:900px){
+  .fg-of .month-inline input[type=month]{ flex:0 0 auto!important; width:100%!important; }
+  .fg-of .month-actions{ gap:8px!important; }
+}
+
+/* rótulos de formulário no mesmo padrão do resto: caixa alta discreta */
+.fg .ff label,.fg-of .ff label,.ff label,.af label{
+  font-family:var(--fh)!important; font-size:11px!important; font-weight:600!important;
+  letter-spacing:.04em!important; color:var(--t3)!important;
+}
+
+/* No celular a grade de Nova OF vira uma coluna só. Os campos com "span" no
+   atributo style precisam ceder também, senão criam colunas invisíveis e os
+   vizinhos ficam com largura zero. */
+@media (max-width:640px){
+  body:not(.desktop-forced) .fg-of{ grid-template-columns:minmax(0,1fr)!important; grid-auto-columns:minmax(0,1fr)!important; }
+  body:not(.desktop-forced) .fg-of .ff,
+  body:not(.desktop-forced) .fg-of .ff[style*="span 3"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 4"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 5"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 6"],
+  body:not(.desktop-forced) .fg-of .ff[style*="span 9"]{ grid-column:1 / -1!important; }
+}
 
 /* o nome no relatório estava com as letras muito juntas */
 .rel-doc-pro .rel-brand{ letter-spacing:-.01em!important; font-weight:700!important; font-size:23px!important; }
@@ -18087,6 +18210,15 @@ html[data-theme] .modal-title,html[data-theme] .exec-title,html[data-theme] .cli
 /* nenhuma entrada animada */
 html[data-theme] .page,html[data-theme] .page.active,html[data-theme] .tk-enter,
 html[data-theme] .tk-enter *{ animation:none!important; opacity:1!important; transform:none!important; }
+
+/* Campo apontado pela conferência do formulário. Precisa do html[data-theme]
+   na frente para passar na frente das regras de foco de cada tema. */
+html[data-theme] .ff.ff-erro input,html[data-theme] .ff.ff-erro select,
+html[data-theme] .ff.ff-erro input:focus,html[data-theme] .ff.ff-erro select:focus{
+  border-color:var(--red)!important;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 20%,transparent)!important;
+}
+html[data-theme] .ff.ff-erro label{ color:var(--red)!important; }
 </style>
 
 
