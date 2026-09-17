@@ -593,6 +593,16 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
   background:var(--bg4);color:var(--t4);font-size:11px;transition:border-color .15s,color .15s;}
 .df-x:active{border-color:rgba(239,68,68,.5);color:var(--red);}
 .df-nota{margin-top:9px;font-size:10.5px;color:var(--t4);line-height:1.45;}
+
+/* saldo do mês na linha do colaborador */
+.rank-saldo{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-top:9px;padding-top:9px;
+  border-top:1px solid var(--bd);}
+.rs-l{font-size:10px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.05em;}
+.rs-v{font-family:var(--fm);font-size:15px;font-weight:800;letter-spacing:-.01em;}
+.rs-v span{font-family:var(--fh);font-size:10px;font-weight:600;color:var(--t4);margin-left:3px;}
+.rank-saldo.neg .rs-v{color:var(--red);}
+.rank-saldo.pos .rs-v{color:var(--green);}
+.rs-d{margin-left:auto;font-size:10.5px;color:var(--t4);}
 </style>
 </head>
 <body>
@@ -1107,7 +1117,10 @@ function renderPorColaborador(concluidos){
   const sub=$("rank-sub"), body=$("rank-body");
   if(!rows.length){ sub.textContent="Nenhuma peça concluída"; body.innerHTML=`<div class="rank-empty">Lance revisões para ver as peças por colaborador.</div>`; return; }
   sub.textContent=rows.length===1?"1 colaborador":rows.length+" colaboradores";
+  /* saldo do mês que está na tela, para mostrar quanto cada uma está devendo */
+  const mapaMes=porPessoaPorDia(mesSel);
   body.innerHTML=rows.map(r=>{
+    const sm=saldoDoMes(mapaMes.get(r.nome));
     const szs=TAMS.filter(t=>r.sizes[t]>0).map(t=>`<span class="rank-sz">${t}<b>${r.sizes[t].toLocaleString("pt-BR")}</b></span>`).join("")
       +(Number(r.seg||0)>0?`<span class="rank-sz seg" title="Peças de segunda encontradas">2ª<b>${Number(r.seg).toLocaleString("pt-BR")}</b></span>`:"");
     const cores=Object.keys(r.cores).sort((a,b)=>r.cores[b]-r.cores[a]).map(c=>`<span class="rank-sz"><span class="cd" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${corHex(c)};margin-right:4px;vertical-align:middle;"></span>${esc(c)}<b>${r.cores[c].toLocaleString("pt-BR")}</b></span>`).join("");
@@ -1118,6 +1131,11 @@ function renderPorColaborador(concluidos){
       </div>
       ${cores?`<div class="rank-sizes">${cores}</div>`:""}
       ${szs?`<div class="rank-sizes">${szs}</div>`:""}
+      ${sm.dias>0?`<div class="rank-saldo${sm.saldo<0?" neg":" pos"}">
+        <span class="rs-l">${sm.saldo<0?"Devendo no mês":"Acima da meta no mês"}</span>
+        <span class="rs-v">${sm.saldo<0?"−":"+"}${Math.abs(sm.saldo).toLocaleString("pt-BR")}<span>pçs</span></span>
+        <span class="rs-d">${sm.dias} ${sm.dias===1?"dia":"dias"} · bateu em ${sm.bateu}</span>
+      </div>`:""}
     </div>`;
   }).join("");
 }
@@ -2016,7 +2034,9 @@ function renderPlacar(){
         if(x.meta>0) detalhe.push(`<b class="${x.bateu?'ok':''}">${x.pct}%</b> da meta`);
         if(x.lotes) detalhe.push(x.lotes+(x.lotes===1?" lote":" lotes"));
         if(x.seg>0) detalhe.push(`<b class="seg-txt">${fmt(x.seg)}</b> de 2ª`);
-        if(noMes&&x.mes.dias>0) detalhe.push(`saldo <b class="${x.mes.saldo<0?'neg':'pos'}">${x.mes.saldo>0?'+':x.mes.saldo<0?'−':''}${fmt(Math.abs(x.mes.saldo))}</b>`);
+        /* o saldo do mês aparece nos dois modos: quem olha o dia também precisa
+           saber quanto a revisora está devendo no acumulado */
+        if(x.mes.dias>0) detalhe.push(`${noMes?'saldo':'no mês'} <b class="${x.mes.saldo<0?'neg':'pos'}">${x.mes.saldo>0?'+':x.mes.saldo<0?'−':''}${fmt(Math.abs(x.mes.saldo))}</b>`);
         return `<div class="pl-row${pos<=3&&x.pecas>0?' top t'+pos:''}${x.pecas<=0?' zerada':''}">
           <span class="pl-pos">${pos}</span>
           <div class="pl-meio">
