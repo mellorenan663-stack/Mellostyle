@@ -1382,7 +1382,12 @@ window.salvarFuncionario=async()=>{
   const admissao=$("func-admissao")?.value||"";
   const metaDia=parseInt($("func-meta-dia")?.value)||0;
   const status=$("func-status")?.value||"Ativo";
-  if(!nome){toast("Nome obrigatório","err");return;}
+  if(!nome) return void erroNoCampo("func-nome","Falta o nome do funcionário");
+  if(!naoNegativo("func-salario","O salário")) return;
+  if(!naoNegativo("func-bonus","O bônus")) return;
+  if(!naoNegativo("func-meta-dia","A meta diária")) return;
+  const btn=document.querySelector('button[onclick="salvarFuncionario()"]');
+  if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML="Salvando..."; }
   try{
     const escalaPadrao=getEscalaPadraoFuncionario({nome}).tipo;
     const jornadaFinal=escalaPadrao==="ketelen_7h"?420:570;
@@ -1391,6 +1396,7 @@ window.salvarFuncionario=async()=>{
     if($("func-status")) $("func-status").value="Ativo";
     toast("Funcionário cadastrado!");await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||"+ Cadastrar Funcionário"; } }
 };
 window.editarFuncionario=function(id){
   const f=funcionarios.find(x=>x.id===id);if(!f)return;
@@ -1420,8 +1426,13 @@ window.salvarEdicaoFunc=async()=>{
   const admissao=$("edit-func-admissao")?.value||"";
   const metaDia=parseInt($("edit-func-meta-dia")?.value)||0;
   const status=$("edit-func-status")?.value||"Ativo";
-  if(!nome){toast("Nome obrigatório","err");return;}
-  const btn=$("btn-salvar-func-edit");btn.disabled=true;btn.textContent="Salvando...";
+  if(!nome) return void erroNoCampo("edit-func-nome","Falta o nome do funcionário");
+  if(!naoNegativo("edit-func-salario","O salário")) return;
+  if(!naoNegativo("edit-func-bonus","O bônus")) return;
+  if(!naoNegativo("edit-func-meta-dia","A meta diária")) return;
+  const btn=$("btn-salvar-func-edit");
+  if(btn.disabled) return;
+  btn.disabled=true;btn.textContent="Salvando...";
   try{
     const escalaPadrao=getEscalaPadraoFuncionario({nome}).tipo;
     const jornadaFinal=escalaPadrao==="ketelen_7h"?420:570;
@@ -2209,8 +2220,12 @@ window.salvarClienteEFechar=async function(){
   const nome=$("nc-nome").value.trim();
   const contato=$("nc-contato")?.value.trim()||"";
   const obs=$("nc-obs")?.value.trim()||"";
-  if(!nome){toast("Nome do cliente obrigatório","err");return;}
-  if(clientes.some(c=>normalize(c.nome)===normalize(nome))){toast("Cliente já cadastrado","warn");return;}
+  if(!nome) return void erroNoCampo("nc-nome","Falta o nome do cliente");
+  if(clientes.some(c=>normalize(c.nome)===normalize(nome))) return void erroNoCampo("nc-nome","Esse cliente já está cadastrado");
+  /* a lista de clientes só é relida depois do loadData, então sem trava três
+     cliques seguidos passam pela conferência de repetido e criam três */
+  const btn=document.querySelector('button[onclick="salvarClienteEFechar()"]');
+  if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML="Salvando..."; }
   try{
     await addDoc(collection(db,"clientes"),withOwner({nome,contato,obs,criadoEm:Timestamp.now()}));
     [$("nc-nome"),$("nc-contato"),$("nc-obs")].forEach(el=>{if(el)el.value="";});
@@ -2223,18 +2238,22 @@ window.salvarClienteEFechar=async function(){
     const editLoteCliente=$("edit-lote-cliente");
     if(editLoteCliente && editLoteCliente.tagName==="SELECT") editLoteCliente.value=nome;
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||"+ Cadastrar"; } }
 };
 window.salvarClienteInline=async function(){
   const nome=$("cliente-nome-inline").value.trim();
   const contato=$("cliente-contato-inline")?.value.trim()||"";
   const obs=$("cliente-obs-inline")?.value.trim()||"";
-  if(!nome){toast("Nome do cliente obrigatório","err");return;}
-  if(clientes.some(c=>normalize(c.nome)===normalize(nome))){toast("Cliente já cadastrado","warn");return;}
+  if(!nome) return void erroNoCampo("cliente-nome-inline","Falta o nome do cliente");
+  if(clientes.some(c=>normalize(c.nome)===normalize(nome))) return void erroNoCampo("cliente-nome-inline","Esse cliente já está cadastrado");
+  const btn=document.querySelector('button[onclick="salvarClienteInline()"]');
+  if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML="Salvando..."; }
   try{
     await addDoc(collection(db,"clientes"),withOwner({nome,contato,obs,criadoEm:Timestamp.now()}));
     [$("cliente-nome-inline"),$("cliente-contato-inline"),$("cliente-obs-inline")].forEach(el=>{if(el)el.value="";});
     toast("Cliente cadastrado!");await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||"+ Adicionar"; } }
 };
 
 /* Marca o campo com problema e leva o cursor até ele: aviso solto no canto
@@ -2249,6 +2268,16 @@ function erroNoCampo(id,msg){
     el.addEventListener("change",limpa,{once:true}); }
   try{ el.focus({preventScroll:false}); if(el.select) el.select(); }catch(_e){}
   return null;
+}
+/* Dinheiro e contagem com sinal trocado entram direto na folha, no lucro e no
+   relatório do mês, então nenhum formulário pode aceitar valor negativo. */
+function naoNegativo(id,rotulo){
+  const el=$(id); if(!el) return true;
+  const bruto=String(el.value||"").trim();
+  if(!bruto) return true;
+  const v=Number(bruto);
+  if(!Number.isFinite(v)||v<0){ erroNoCampo(id,rotulo+" não pode ser negativo"); return false; }
+  return true;
 }
 function limparErrosOF(prefixo){
   document.querySelectorAll("#"+(prefixo==="edit-lote"?"modal-editar-lote":"lote-form-card")+" .ff-erro")
@@ -2860,8 +2889,11 @@ window.salvarEdicaoGasto=async()=>{
   const catOutros=$("edit-gasto-categoria-outros")?.value.trim()||"";
   const categoria=catSel==="Outros"?(catOutros||"Outros"):catSel;
   if(!descricao||!valor||!competencia){toast("Preencha descrição, valor e competência","err");return;}
+  if(!naoNegativo("edit-gasto-valor","O valor do gasto")) return;
   if(!catSel){toast("Selecione uma categoria","err");return;}
-  const btn=$("btn-salvar-edit-gasto");btn.disabled=true;btn.textContent="Salvando...";
+  const btn=$("btn-salvar-edit-gasto");
+  if(btn.disabled) return;
+  btn.disabled=true;btn.textContent="Salvando...";
   try{
     await updateDoc(doc(db,"gastos",id),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":null)}));
     toast("Gasto atualizado!");fecharModalEditarGasto();await loadData();
@@ -3010,6 +3042,7 @@ window.salvarGasto=async()=>{
   const categoria=catSel==="Outros"?(catOutros||"Outros"):catSel;
   const parcelas=Math.max(1,Math.min(48,parseInt($("gasto-parcelas")?.value||"1",10)));
   if(!descricao||!valor||!competencia){toast("Preencha descrição, valor e competência","err");return;}
+  if(!naoNegativo("gasto-valor","O valor do gasto")) return;
   if(!catSel){toast("Selecione uma categoria","err");return;}
   if(catSel==="Outros"&&!catOutros){toast("Descreva a categoria em 'Outros'","err");return;}
   // Previne duplicação de gasto fixo com mesmo nome e competência (apenas à vista)
@@ -5591,8 +5624,9 @@ window.salvarGastoDrawer=async()=>{
   const categoria=document.getElementById('gd-cat')?.value.trim()||'Geral';
   const competencia=document.getElementById('gd-comp')?.value;
   if(!descricao||!valor||!competencia){toast('Preencha todos os campos','err');return;}
+  if(!naoNegativo('gd-valor','O valor do gasto')) return;
   const btn=document.getElementById('btn-gd-save');
-  if(btn){btn.disabled=true;btn.textContent='Salvando...';}
+  if(btn){ if(btn.disabled) return; btn.disabled=true;btn.textContent='Salvando...'; }
   try{
     await addDoc(collection(db,'gastos'),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+'-01':`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),criadoEm:Timestamp.now()}));
     document.getElementById('gd-desc').value='';
