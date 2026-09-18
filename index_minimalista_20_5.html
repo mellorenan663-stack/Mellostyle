@@ -813,6 +813,7 @@ function navigate(page){
     lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,
     relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,"fat-cliente":renderFatCliente};
   map[page]?.();
+  try{ atualizarContadoresMenu(); }catch(e){}
   if(window.innerWidth<=900){ try{ window.closeNav?.(); }catch(e){} }
 }
 window.navigate=navigate;
@@ -1222,6 +1223,7 @@ async function loadData(){
   __loadDataInflight=(async()=>{
     try{ return await _loadDataReal(); }
     finally{
+      try{ atualizarContadoresMenu(); }catch(e){}
       __loadDataInflight=null;
       if(__loadDataAgain){ __loadDataAgain=false; loadData(); }
     }
@@ -2072,7 +2074,32 @@ function aplicarLocalLote(id,campos){
   if(l) Object.assign(l,campos);
   return l;
 }
+/* Os números que cada página tem ficam visíveis já no menu: dá para ver o
+   estado da fábrica sem entrar em nada. Só leitura — não mexe em conta. */
+function atualizarContadoresMenu(){
+  try{
+    const mes=monthKeyLocal();
+    const abertos=lotes.filter(l=>{const s=getStatusOperacionalLote(l);return s!=="Concluído"&&s!=="Cancelado";}).length;
+    const pecas=registros.reduce((s,r)=>s+toNumber(r.qtd,0),0);
+    const mapa={
+      lotes:{v:abertos, alerta:abertos>0, t:abertos+(abertos===1?" OF em aberto":" OFs em aberto")},
+      funcionarios:{v:funcionarios.filter(f=>f.status!=="Inativo").length, t:"funcionários ativos"},
+      producao:{v:pecas>=1000?(pecas/1000).toFixed(1).replace(".",",")+"k":pecas, t:pecas.toLocaleString("pt-BR")+" peças lançadas"},
+      gastos:{v:gastos.filter(g=>(g.competencia||"")===mes).length, t:"lançamentos em "+formatMonthLabel(mes)},
+      clientes:{v:clientes.length, t:"clientes cadastrados"}
+    };
+    document.querySelectorAll(".nav-btn[data-page]").forEach(b=>{
+      const d=mapa[b.getAttribute("data-page")];
+      let c=b.querySelector(".nb-contador");
+      if(!d){ if(c) c.remove(); return; }
+      if(!c){ c=document.createElement("span"); c.className="nb-contador"; b.appendChild(c); }
+      c.textContent=d.v; c.title=d.t||"";
+      c.classList.toggle("alerta",!!d.alerta);
+    });
+  }catch(e){ console.warn("CONTADORES_MENU",e); }
+}
 function redesenharPaginaAtual(){
+  try{ atualizarContadoresMenu(); }catch(e){}
   try{
     const fn={dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,
       lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,
@@ -2092,6 +2119,7 @@ function alvoRolagem(){
   return (se && se.scrollHeight>se.clientHeight+4) ? se : null;
 }
 function redesenharPreservandoRolagem(){
+  try{ atualizarContadoresMenu(); }catch(e){}
   const el=alvoRolagem();
   const y=el?el.scrollTop:(window.scrollY||0);
   redesenharPaginaAtual();
@@ -2686,7 +2714,10 @@ function renderLotes(){
     }).join('');
     const priorBadge=l.prioridade&&l.prioridade!=="Normal"?`<span class="prior-badge prior-${normalize(l.prioridade)}">${l.prioridade==="Urgente"?"🔴":l.prioridade==="Alta"?"🟠":"🟢"} ${l.prioridade}</span>`:"";
     const podeConcluir=statusReal!=="Concluído"&&statusReal!=="Cancelado";
-    return `<div class="of2-card" style="--ofc:${sm.c}">
+    /* a faixa na borda esquerda diz o estado sem precisar ler o card */
+    const faixa=statusReal==="Concluído"?"concluido":statusReal==="Cancelado"?"cancelado"
+      :normalize(l.prioridade||"Normal");
+    return `<div class="of2-card" data-prior="${faixa}" style="--ofc:${sm.c}">
       <div class="of2-head">
         <div class="of2-head-l">
           <div class="of2-badge">OF ${l.numeroOf}</div>
@@ -5015,6 +5046,43 @@ function renderMetas(){
   const mBatidas=[pF,pL,pM,pP].filter(p=>p>=100).length;
 
   const barCls=s=>s==='over'?'ok':s;
+  /* Sete dias em uma linha: o número do mês não diz se está subindo ou caindo. */
+  const ymdDia=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const seteDias=()=>{
+    const hoje=new Date(), dias=[];
+    for(let i=6;i>=0;i--){ const d=new Date(hoje); d.setDate(hoje.getDate()-i);
+      dias.push({chave:ymdDia(d), rot:String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")}); }
+    return dias;
+  };
+  const sparkline=(vals,rotIni,rotFim)=>{
+    if(!vals.length) return "";
+    const w=280,h=34,max=Math.max(...vals,1);
+    const pts=vals.map((v,i)=>[(i/(vals.length-1||1))*w, h-2-(v/max)*(h-6)]);
+    const linha=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+    return `<div class="spark-box">
+      <svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+        <path class="spark-area" d="${linha} L${w} ${h} L0 ${h} Z"/>
+        <path class="spark-linha" d="${linha}"/>
+      </svg>
+      <div class="spark-rot"><span>${rotIni} — últimos 7 dias</span><b>${rotFim}</b></div>
+    </div>`;
+  };
+  /* peças lançadas por dia */
+  const diasJan=seteDias();
+  const pecasDia=diasJan.map(d=>registros.reduce((s,r)=>{
+    const dt=safeDate(r.criadoEm); return s+((dt&&ymdDia(dt)===d.chave)?toNumber(r.qtd,0):0); },0));
+  /* faturamento por dia: lotes que foram concluídos naquele dia */
+  const fatDia=diasJan.map(d=>lotes.reduce((s,l)=>{
+    if(getStatusOperacionalLote(l)!=="Concluído") return s;
+    const dt=safeDate(l.concluidoEm||l.updatedAt||l.updatedEm);
+    return s+((dt&&ymdDia(dt)===d.chave)?calcFaturamentoLote(l):0); },0));
+  const temDado=a=>a.some(v=>v>0);
+  const sparkDe={
+    "Faturamento": temDado(fatDia)
+      ? sparkline(fatDia,diasJan[0].rot,fmtMoney(fatDia[fatDia.length-1])+" hoje") : "",
+    "Produção (peças)": temDado(pecasDia)
+      ? sparkline(pecasDia,diasJan[0].rot,pecasDia[pecasDia.length-1].toLocaleString("pt-BR")+" pçs hoje") : ""
+  };
   const metaRow=(label,valueStr,targetStr,p,st,lb)=>{
     const c=barCls(st);
     return `<div class="bar-row">
@@ -5023,6 +5091,7 @@ function renderMetas(){
       <div class="bar-track"><div class="bar-fill ${c}" style="width:${Math.min(p,100)}%"></div></div>
       <div class="bar-pct">${p}%</div>
       <div class="bar-status ${barCls(lb.cls)}">${lb.txt}</div>
+      ${sparkDe[label]||""}
     </div>`;
   };
   const kpi=(l,v,s,scls='')=>`<div class="krb"><div class="krb-l">${l}</div><div class="krb-v">${v}</div><div class="krb-s ${scls}">${s}</div></div>`;
@@ -5895,7 +5964,7 @@ function renderAuditoria(){
   document.addEventListener('DOMContentLoaded', ()=>{
     const nav=document.querySelector('.sb-nav');
     if(nav && !$('nav-clientes')){
-      nav.insertAdjacentHTML('beforeend', `<div class="nav-sec">Admin</div><button class="nav-btn" data-page="clientes" id="nav-clientes" onclick="navigate('clientes')"><span class="nb-icon">👤</span> Clientes</button><button class="nav-btn" data-page="lixeira" id="nav-lixeira" onclick="navigate('lixeira')"><span class="nb-icon">🗑</span> Lixeira</button><button class="nav-btn" data-page="auditoria" id="nav-auditoria" onclick="navigate('auditoria')"><span class="nb-icon">🕘</span> Auditoria</button>`);
+      nav.insertAdjacentHTML('beforeend', `<div class="nav-sec">Admin</div><button class="nav-btn" data-page="clientes" id="nav-clientes" onclick="navigate('clientes')"><span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></span><span class="nb-txt">Clientes</span></button><button class="nav-btn" data-page="lixeira" id="nav-lixeira" onclick="navigate('lixeira')"><span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span><span class="nb-txt">Lixeira</span></button><button class="nav-btn" data-page="auditoria" id="nav-auditoria" onclick="navigate('auditoria')"><span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M3.6 8.4L6.2 9.8"/></svg></span><span class="nb-txt">Auditoria</span></button>`);
     }
     document.querySelectorAll('.nav-btn').forEach(btn=>{ if(!btn.dataset.page && btn.id?.startsWith('nav-')) btn.dataset.page=btn.id.replace('nav-',''); });
     const main=document.querySelector('main.main');
@@ -12279,12 +12348,12 @@ input,select,textarea,button{font-size:16px;}
     </div>
     <div class="topbar-center">
       <div class="topbar-pills">
-        <button class="tp-btn active" id="tp-dashboard" onclick="navigate('dashboard')"><span class="tp-icon">📊</span>Dashboard</button>
-        <button class="tp-btn" id="tp-lotes" onclick="navigate('lotes')"><span class="tp-icon">📦</span>Lotes</button>
-        <button class="tp-btn" id="tp-producao" onclick="navigate('producao')"><span class="tp-icon">⚡</span>Produção</button>
-        <button class="tp-btn" id="tp-controlehora" onclick="navigate('controlehora')"><span class="tp-icon">⏱</span>Hora</button>
-        <button class="tp-btn" id="tp-historico" onclick="navigate('historico')"><span class="tp-icon">📋</span>Histórico</button>
-        <button class="tp-btn" id="tp-bancohoras" onclick="navigate('bancohoras')"><span class="tp-icon">⏱</span>Horas</button>
+        <button class="tp-btn active" id="tp-dashboard" onclick="navigate('dashboard')"><span class="tp-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="12" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="13" rx="1"/><rect x="17" y="3" width="4" height="17" rx="1"/></svg></span>Dashboard</button>
+        <button class="tp-btn" id="tp-lotes" onclick="navigate('lotes')"><span class="tp-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></span>Lotes</button>
+        <button class="tp-btn" id="tp-producao" onclick="navigate('producao')"><span class="tp-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/></svg></span>Produção</button>
+        <button class="tp-btn" id="tp-controlehora" onclick="navigate('controlehora')"><span class="tp-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Hora</button>
+        <button class="tp-btn" id="tp-historico" onclick="navigate('historico')"><span class="tp-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span>Histórico</button>
+        <button class="tp-btn" id="tp-bancohoras" onclick="navigate('bancohoras')"><span class="tp-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M3 12h2M19 12h2"/></svg></span>Horas</button>
       </div>
     </div>
     <div class="topbar-actions">
@@ -12326,19 +12395,19 @@ input,select,textarea,button{font-size:16px;}
       </div>
       <nav class="sb-nav">
         <div class="nav-sec">Principal</div>
-      <button class="nav-btn active" id="nav-dashboard" data-page="dashboard" onclick="navigate('dashboard')">   <span class="nb-icon">📊</span> Dashboard</button>
-      <button class="nav-btn"        id="nav-lotes" data-page="lotes" onclick="navigate('lotes')">       <span class="nb-icon">📦</span> Lotes (OF)</button>
+      <button class="nav-btn active" id="nav-dashboard" data-page="dashboard" onclick="navigate('dashboard')">   <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="12" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="13" rx="1"/><rect x="17" y="3" width="4" height="17" rx="1"/></svg></span><span class="nb-txt">Dashboard</span></button>
+      <button class="nav-btn"        id="nav-lotes" data-page="lotes" onclick="navigate('lotes')">       <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></span><span class="nb-txt">Lotes (OF)</span></button>
       <div class="nav-sec">Operacional</div>
-      <button class="nav-btn"        id="nav-funcionarios" data-page="funcionarios" onclick="navigate('funcionarios')"><span class="nb-icon">👥</span> Funcionários</button>
-      <button class="nav-btn"        id="nav-producao" data-page="producao" onclick="navigate('producao')">    <span class="nb-icon">⚡</span> Produção</button>
-      <button class="nav-btn"        id="nav-controlehora" data-page="controlehora" onclick="navigate('controlehora')"> <span class="nb-icon">⏱</span> Controle por Hora</button>
-      <button class="nav-btn"        id="nav-gastos" data-page="gastos" onclick="navigate('gastos')">      <span class="nb-icon">💸</span> Gastos</button>
-      <button class="nav-btn"        id="nav-historico" data-page="historico" onclick="navigate('historico')">   <span class="nb-icon">📋</span> Histórico</button>
-      <button class="nav-btn"        id="nav-bancohoras" data-page="bancohoras" onclick="navigate('bancohoras')">  <span class="nb-icon">⏱</span> Banco de Horas</button>
+      <button class="nav-btn"        id="nav-funcionarios" data-page="funcionarios" onclick="navigate('funcionarios')"><span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></span><span class="nb-txt">Funcionários</span></button>
+      <button class="nav-btn"        id="nav-producao" data-page="producao" onclick="navigate('producao')">    <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/></svg></span><span class="nb-txt">Produção</span></button>
+      <button class="nav-btn"        id="nav-controlehora" data-page="controlehora" onclick="navigate('controlehora')"> <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="nb-txt">Controle por Hora</span></button>
+      <button class="nav-btn"        id="nav-gastos" data-page="gastos" onclick="navigate('gastos')">      <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span class="nb-txt">Gastos</span></button>
+      <button class="nav-btn"        id="nav-historico" data-page="historico" onclick="navigate('historico')">   <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span><span class="nb-txt">Histórico</span></button>
+      <button class="nav-btn"        id="nav-bancohoras" data-page="bancohoras" onclick="navigate('bancohoras')">  <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M3 12h2M19 12h2"/></svg></span><span class="nb-txt">Banco de Horas</span></button>
       <div class="nav-sec">Relatórios</div>
-      <button class="nav-btn"        id="nav-fat-cliente" data-page="fat-cliente" onclick="navigate('fat-cliente')"><span class="nb-icon">💼</span> Fat. por Cliente</button>
-      <button class="nav-btn"        id="nav-relatorio" data-page="relatorio" onclick="navigate('relatorio')">   <span class="nb-icon">📄</span> Relatório</button>
-      <button class="nav-btn"        id="nav-backup" data-page="backup" onclick="navigate('backup')">      <span class="nb-icon">💾</span> Backup & Config</button>
+      <button class="nav-btn"        id="nav-fat-cliente" data-page="fat-cliente" onclick="navigate('fat-cliente')"><span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M2 12h20"/></svg></span><span class="nb-txt">Fat. por Cliente</span></button>
+      <button class="nav-btn"        id="nav-relatorio" data-page="relatorio" onclick="navigate('relatorio')">   <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg></span><span class="nb-txt">Relatório</span></button>
+      <button class="nav-btn"        id="nav-backup" data-page="backup" onclick="navigate('backup')">      <span class="nb-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></span><span class="nb-txt">Backup & Config</span></button>
     </nav>
       <div class="sb-foot">
         <div style="font-size:10px;color:var(--t3);padding:6px 10px 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mello Style v91</div>
@@ -18362,6 +18431,63 @@ main,.main{ padding-bottom:96px!important; }
 @media (max-width:640px){
   body:not(.desktop-forced) .rs-linha{ grid-template-columns:1fr auto; }
   body:not(.desktop-forced) .rs-vals{ grid-column:1 / -1; font-size:12.5px; }
+}
+
+/* ═══════ acabamento: ícones, contadores, faixa da OF e mini-gráfico ═══════ */
+
+/* ícone de traço: herda a cor do texto, então acompanha tema e item ativo */
+.nb-icon,.tp-btn .tp-icon{
+  width:18px;height:18px;flex:0 0 18px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:0;line-height:0;color:currentColor;opacity:.68;
+}
+.nav-btn.active .nb-icon,.tp-btn.active .tp-icon{ opacity:1; }
+.nb-icon .ico,.tp-icon .ico{
+  width:18px;height:18px;stroke:currentColor;fill:none;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;
+}
+
+/* item do menu: ícone · texto · contador */
+.nav-btn{ display:flex!important; align-items:center; gap:11px; width:100%; text-align:left; }
+.nav-btn > .nb-txt{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nb-contador{
+  font-family:var(--fm); font-size:11px; font-weight:700; letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums; padding:2px 7px; border-radius:999px;
+  background:var(--bg4); color:var(--t3); border:1px solid var(--bd); flex:0 0 auto;
+}
+.nav-btn.active .nb-contador{ background:var(--accent)!important; color:var(--on-accent)!important; border-color:var(--accent)!important; }
+.nb-contador.alerta{ background:var(--warning-soft); color:var(--warning); border-color:var(--warning-line); }
+
+/* faixa de prioridade na borda esquerda do card da OF */
+.of2-card{ position:relative; overflow:hidden; padding-left:23px!important; }
+.of2-card::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--faixa,transparent); }
+.of2-card[data-prior="urgente"]  { --faixa:var(--danger); }
+.of2-card[data-prior="alta"]     { --faixa:var(--warning); }
+.of2-card[data-prior="normal"]   { --faixa:var(--bd2); }
+.of2-card[data-prior="baixa"]    { --faixa:var(--bd2); }
+.of2-card[data-prior="concluido"]{ --faixa:var(--success); }
+.of2-card[data-prior="cancelado"]{ --faixa:var(--t4); }
+
+/* mini-gráfico dentro da linha de meta */
+.spark-box{ grid-column:1 / -1; margin-top:12px; padding-top:10px; border-top:1px solid var(--bd);
+  max-width:560px; }
+.spark{ display:block; width:100%; height:40px; }
+.spark-linha{ fill:none; stroke:var(--accent); stroke-width:1.8; stroke-linejoin:round; stroke-linecap:round; }
+.spark-area{ fill:var(--accent-soft); stroke:none; }
+.spark-rot{ display:flex; justify-content:space-between; align-items:baseline; margin-top:5px;
+  font-size:10px; color:var(--t4); letter-spacing:.04em; text-transform:uppercase; }
+.spark-rot b{ font-family:var(--fm); font-size:11.5px; color:var(--accent); font-weight:700;
+  text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums; }
+
+/* números de largura fixa: as colunas param de dançar quando o valor muda */
+.kpi-v,.rc-v,.metric-value,.fin-value,.of2-stat-v,.of2-prog-pct,.krb-v,.lf-v,
+.bar-values,.bar-pct,.nb-contador,.rs-vals,td,.td-mono,.gc-footer-v{
+  font-variant-numeric:tabular-nums;
+}
+
+/* cabeçalho de tabela que gruda ao rolar */
+.tbl-wrap thead th,.table-wrap thead th{
+  position:sticky; top:0; z-index:3; background:var(--bg3);
+  box-shadow:inset 0 -1px 0 var(--bd);
 }
 </style>
 
