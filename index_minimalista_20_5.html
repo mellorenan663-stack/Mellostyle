@@ -1447,6 +1447,7 @@ window.deletarFuncionario=async id=>{
   catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
 };
 function renderFuncionarios(){
+  try{ renderReajusteSalarios(); }catch(e){ console.error("REAJ_PAINEL",e); }
   const tb=$("func-tbody");if(!tb)return;
   const fMap={};registros.forEach(r=>{fMap[r.funcionarioId]=(fMap[r.funcionarioId]||0)+(r.qtd||0);});
   const sorted=[...funcionarios].sort((a,b)=>(fMap[b.id]||0)-(fMap[a.id]||0));
@@ -3194,6 +3195,75 @@ window.lancarEncargos=async function(){
     toast(`Encargos: ${msg} (${fmtMoney(total)} no mês)`);
     await loadData();
   }catch(e){ console.error("ENCARGOS_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
+};
+
+/* O reajuste da tabela de encargos mexe no INSS e no FGTS. O SALÁRIO fica no
+   cadastro da funcionária (no banco), e é ele que a folha, o 13º e as férias
+   usam — então o aumento precisa chegar lá também. Isto aqui confere, uma a
+   uma, se já chegou. Casa pelo primeiro nome, que é como a tabela é escrita. */
+function primeiroNome(v){ return normalize(v||"").trim().split(/\s+/)[0]||""; }
+function conferirReajusteSalarios(){
+  return encargosReajustados().map(novo=>{
+    const base=ENCARGOS_FUNCIONARIAS.find(x=>x.nome===novo.nome)||{};
+    const f=funcionarios.find(x=>primeiroNome(x.nome)===primeiroNome(novo.nome));
+    const atual=f?centavos(f.salario):null;
+    let estado="sem cadastro";
+    if(f) estado = atual===novo.salario ? "aplicado"
+                 : atual===centavos(base.salario) ? "pendente"
+                 : "diferente";
+    return {nome:novo.nome, id:f?f.id:null, nomeCadastro:f?f.nome:null,
+            antigo:centavos(base.salario), esperado:novo.salario, atual, estado, obj:f};
+  });
+}
+function renderReajusteSalarios(){
+  const box=$("reaj-salarios"); if(!box) return;
+  const linhas=conferirReajusteSalarios();
+  const pendentes=linhas.filter(l=>l.estado==="pendente");
+  const pct=(REAJUSTE_ENCARGOS*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+  const rotulo={aplicado:"✓ aplicado",pendente:"aguardando",diferente:"valor diferente","sem cadastro":"sem cadastro"};
+  box.innerHTML=`
+    <div class="chd">Reajuste de ${pct} no salário</div>
+    <div class="rs-nota">O reajuste já vale para o INSS e o FGTS lançados nos gastos. O salário fica no
+      cadastro de cada uma e é a base da folha, do 13º e das férias — veja abaixo se já chegou lá.</div>
+    <div class="rs-lista">${linhas.map(l=>`
+      <div class="rs-linha rs-${l.estado.replace(" ","-")}">
+        <span class="rs-nome">${l.nomeCadastro||l.nome}</span>
+        <span class="rs-vals">${l.atual==null
+          ? `<em>não encontrei no cadastro</em>`
+          : l.estado==="aplicado"
+            ? fmtMoney(l.atual)
+            : `${fmtMoney(l.atual)} <span class="rs-seta">→</span> <b>${fmtMoney(l.esperado)}</b>`}</span>
+        <span class="rs-tag">${rotulo[l.estado]}</span>
+      </div>`).join("")}</div>
+    ${pendentes.length
+      ? `<button type="button" class="btn-save rs-btn" onclick="aplicarReajusteSalarios()">Aplicar nos ${pendentes.length} que faltam</button>`
+      : `<div class="rs-ok">Nada pendente — os salários do cadastro já estão com o reajuste.</div>`}`;
+}
+/* Aplica o reajuste só em quem está aguardando, com os valores à vista. */
+window.aplicarReajusteSalarios=async function(){
+  const pendentes=conferirReajusteSalarios().filter(l=>l.estado==="pendente");
+  if(!pendentes.length){ toast("Nenhum salário pendente de reajuste.","warn"); return; }
+  const btn=document.querySelector(".rs-btn");
+  if(btn){ if(btn.disabled) return; btn.disabled=true; btn.textContent="Aplicando..."; }
+  const somaDe=pendentes.reduce((s,l)=>s+l.atual,0), somaPara=pendentes.reduce((s,l)=>s+l.esperado,0);
+  const pct=(REAJUSTE_ENCARGOS*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+  if(!confirm(`Reajustar ${pendentes.length} salário(s) em ${pct}?\n\n`
+    +pendentes.map(l=>`• ${l.nomeCadastro}: ${fmtMoney(l.atual)} → ${fmtMoney(l.esperado)}`).join("\n")
+    +`\n\nFolha dessas: ${fmtMoney(somaDe)} → ${fmtMoney(somaPara)} (${fmtMoney(somaPara-somaDe)} a mais por mês)`
+    +`\n\nO 13º e as férias passam a ser calculados pelo salário novo.`)){
+    if(btn){ btn.disabled=false; renderReajusteSalarios(); } return; }
+  try{
+    requireAuthUser();
+    await Promise.all(pendentes.map(l=>updateDoc(doc(db,"funcionarios",l.id),withOwner({
+      salario:l.esperado, updatedEm:Timestamp.now()
+    }))));
+    pendentes.forEach(l=>{ if(l.obj) l.obj.salario=l.esperado; });
+    try{ addAuditoria("reajustou","funcionarios",
+      `${pendentes.length} salário(s) em ${pct} · ${fmtMoney(somaDe)} → ${fmtMoney(somaPara)}`); }catch(e){}
+    toast(`${pendentes.length} salário(s) reajustado(s) (${fmtMoney(somaPara-somaDe)} a mais na folha)`);
+    await loadData();
+  }catch(e){ console.error("REAJUSTE_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
+  finally{ if(btn){ btn.disabled=false; } renderReajusteSalarios(); }
 };
 
 /* Reajuste (dissídio) sobre o salário das funcionárias ativas. O salário é a
@@ -6158,7 +6228,7 @@ applyTheme(getConfig().tema);
     'iniciarCronometroProducao','pausarCronometroProducao','continuarCronometroProducao','zerarCronometroProducao','finalizarCronometroProducao','salvarControleProducaoHora','editarControleProducaoHora','deletarControleProducaoHora','filtrarProdutividadeHora','toggleControleHoraEtapaOutra',
     'aplicarFiltros','limparFiltros','histVerMais','filtrarLotes','setLoteFilter','toggleCategoriaOutros','toggleCategoriaOutrosEdit','gerarPreviewRelatorio','baixarRelatorioCSV','imprimirRelatorio','baixarBackupJSON','baixarBackupExcel','restaurarBackupJSON','salvarConfiguracoes','copiarRegrasFirebase','toggleNav','closeNav','toggleGastosDrawer','closeGastosDrawer','closeAllTransientUI','toggleLayout','propagarGastosFixos','filtrarGastosMes',
     'gastoSetTipo','gastoSetCategoria','gastoSetOrdem','gastoFiltrarCategoria','gastoLimparFiltros','exportarGastosCSV','exportarGastosExcel','exportarFatClienteExcel','gastoMesNav','gastoMesToggleTodos',
-    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos','reajustarSalarios','previewHoras',
+    'abrirLeitorNota','abrirLeitorOF','fecharLeitorNota','escolherFotoNota','processarNotaImagem','usarDadosNota','setChaveIA','reforcarLeituraIA','lancarEncargos','reajustarSalarios','aplicarReajusteSalarios','previewHoras',
     'renderFatCliente','salvarClienteEFechar','salvarClienteInline','abrirModalNovoCliente','fecharModalNovoCliente','salvarClienteFirebase','deletarClienteFirebase',
     'dashNavMes','dashSetMes','renderFolhaPagamento','calcFolhaPagamento'
   ].forEach(expose);
@@ -12496,6 +12566,7 @@ input,select,textarea,button{font-size:16px;}
           <span style="font-size:11px;color:var(--t3);">Jornada é ajustada automaticamente pela escala</span>
         </div>
       </div>
+      <div class="card" id="reaj-salarios"></div>
       <div class="card">
         <div class="chd">Equipe</div>
         <div class="tbl-wrap"><table>
@@ -18266,6 +18337,32 @@ body:not(.mobile-view) .topbar-brand{ display:none!important; }
 /* O botão flutuante de Modo PC/Celular ficava por cima da última linha de
    cada página. Sobra reservada embaixo para dar para rolar além dele. */
 main,.main{ padding-bottom:96px!important; }
+
+/* ── painel do reajuste de salário ── */
+#reaj-salarios:empty{ display:none; }
+.rs-nota{ font-size:12px; color:var(--t3); line-height:1.5; margin:-2px 0 14px; max-width:70ch; }
+.rs-lista{ display:flex; flex-direction:column; gap:1px; background:var(--bd); border:1px solid var(--bd);
+  border-radius:var(--ui-r-sm); overflow:hidden; }
+.rs-linha{ display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:14px;
+  padding:11px 14px; background:var(--bg2); }
+.rs-nome{ font-weight:600; font-size:13.5px; color:var(--t); min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rs-vals{ font-family:var(--fm); font-size:13px; color:var(--t2); white-space:nowrap; }
+.rs-vals b{ color:var(--t); }
+.rs-vals em{ font-family:var(--fh); font-style:normal; font-size:12px; color:var(--t4); }
+.rs-seta{ color:var(--t4); margin:0 3px; }
+.rs-tag{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+  padding:3px 9px; border-radius:999px; white-space:nowrap;
+  background:var(--bg4); color:var(--t3); border:1px solid var(--bd); }
+.rs-aplicado .rs-tag{ background:var(--success-soft); color:var(--success); border-color:var(--success-line); }
+.rs-pendente .rs-tag{ background:var(--warning-soft); color:var(--warning); border-color:var(--warning-line); }
+.rs-diferente .rs-tag{ background:var(--danger-soft); color:var(--danger); border-color:var(--danger-line); }
+.rs-btn{ margin-top:14px; }
+.rs-ok{ margin-top:12px; font-size:12.5px; color:var(--success); font-weight:600; }
+@media (max-width:640px){
+  body:not(.desktop-forced) .rs-linha{ grid-template-columns:1fr auto; }
+  body:not(.desktop-forced) .rs-vals{ grid-column:1 / -1; font-size:12.5px; }
+}
 </style>
 
 
