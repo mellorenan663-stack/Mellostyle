@@ -2362,7 +2362,7 @@ document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{
 
 /* ── 1. base ───────────────────────────────────────────────────────── */
 :root{
-  --tk1:#7C9CFF; --tk2:#3AE7F0; --tk3:#B08CFF;
+  --tk1:#7C9CFF; --tk2:#3AE7F0; --tk3:#96bcf5;
   --tk-grid:rgba(124,156,255,.075);
   --tk-edge:rgba(124,156,255,.20);
   --tk-mono:ui-monospace,"DM Mono",SFMono-Regular,Menlo,Consolas,monospace;
@@ -2373,7 +2373,7 @@ body{
     linear-gradient(var(--tk-grid) 1px,transparent 1px),
     linear-gradient(90deg,var(--tk-grid) 1px,transparent 1px),
     radial-gradient(90% 50% at 10% 0%,rgba(58,231,240,.07),transparent 62%),
-    radial-gradient(90% 55% at 100% 100%,rgba(176,140,255,.08),transparent 62%)!important;
+    radial-gradient(90% 55% at 100% 100%,rgba(150,188,245,.08),transparent 62%)!important;
   background-size:30px 30px,30px 30px,100% 100%,100% 100%!important;
   background-attachment:fixed!important;
 }
@@ -2690,5 +2690,9 @@ html,body{ background-image:none!important; background:var(--bg)!important; }
 :is(button,a,input,select,textarea,[tabindex]):focus-visible{
   outline:2px solid var(--accent); outline-offset:2px;
 }
+
+/* O botão "Novo lote" flutua no rodapé e cobria a última linha da lista.
+   Sobra embaixo para dar para rolar além dele. */
+body{ padding-bottom:96px; }
 </style>
 </body></html>
