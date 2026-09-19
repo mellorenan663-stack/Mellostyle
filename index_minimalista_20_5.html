@@ -1929,9 +1929,28 @@ window.toggleControleHoraEtapaOutra=toggleControleHoraEtapaOutra;
 /* ══════════════════════════════════════════════════════════════
    LOTES
 ══════════════════════════════════════════════════════════════ */
+/* calcProg era O(lotes × lançamentos): para cada lote ele varria a lista
+   inteira de lançamentos. Com 900 lotes e 9 mil lançamentos o Dashboard
+   travava mais de um segundo. Este índice é montado uma vez por carga —
+   `registros` só é trocado por inteiro, nunca editado no lugar, então comparar
+   a identidade da lista basta para saber se precisa remontar. */
+let __regLista=null,__regPorLote=null;
+function registrosDoLote(loteId){
+  if(__regLista!==registros){
+    __regPorLote=new Map();
+    for(const r of registros){
+      const k=r.loteId; if(!k) continue;
+      let a=__regPorLote.get(k);
+      if(!a){ a=[]; __regPorLote.set(k,a); }
+      a.push(r);
+    }
+    __regLista=registros;
+  }
+  return __regPorLote.get(loteId)||[];
+}
 function calcProg(lote){
   const meta=toNumber(lote?.qtdTotal,0);
-  const regsLote=registros.filter(r=>r.loteId===lote.id);
+  const regsLote=registrosDoLote(lote?.id);
   const porEtapa={};
   ETAPAS.forEach(e=>porEtapa[e]=0);
   regsLote.forEach(r=>{
@@ -5052,54 +5071,7 @@ function renderMetas(){
   const mBatidas=[pF,pL,pM,pP].filter(p=>p>=100).length;
 
   const barCls=s=>s==='over'?'ok':s;
-  /* Sete dias em uma linha: o número do mês não diz se está subindo ou caindo. */
-  const ymdDia=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-  const seteDias=()=>{
-    const hoje=new Date(), dias=[];
-    for(let i=6;i>=0;i--){ const d=new Date(hoje); d.setDate(hoje.getDate()-i);
-      dias.push({chave:ymdDia(d), rot:String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")}); }
-    return dias;
-  };
-  const sparkline=(vals,rotIni,rotFim)=>{
-    if(!vals.length) return "";
-    const w=280,h=34,max=Math.max(...vals,1);
-    const pts=vals.map((v,i)=>[(i/(vals.length-1||1))*w, h-2-(v/max)*(h-6)]);
-    const linha=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
-    return `<div class="spark-box">
-      <svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-        <path class="spark-area" d="${linha} L${w} ${h} L0 ${h} Z"/>
-        <path class="spark-linha" d="${linha}"/>
-      </svg>
-      <div class="spark-rot"><span>${rotIni} — últimos 7 dias</span><b>${rotFim}</b></div>
-    </div>`;
-  };
-  /* peças lançadas por dia */
-  const diasJan=seteDias();
-  const pecasDia=diasJan.map(d=>registros.reduce((s,r)=>{
-    const dt=safeDate(r.criadoEm); return s+((dt&&ymdDia(dt)===d.chave)?toNumber(r.qtd,0):0); },0));
-  /* faturamento por dia: lotes que foram concluídos naquele dia */
-  const fatDia=diasJan.map(d=>lotes.reduce((s,l)=>{
-    if(getStatusOperacionalLote(l)!=="Concluído") return s;
-    const dt=safeDate(l.concluidoEm||l.updatedAt||l.updatedEm);
-    return s+((dt&&ymdDia(dt)===d.chave)?calcFaturamentoLote(l):0); },0));
-  const temDado=a=>a.some(v=>v>0);
-  const sparkDe={
-    "Faturamento": temDado(fatDia)
-      ? sparkline(fatDia,diasJan[0].rot,fmtMoney(fatDia[fatDia.length-1])+" hoje") : "",
-    "Produção (peças)": temDado(pecasDia)
-      ? sparkline(pecasDia,diasJan[0].rot,pecasDia[pecasDia.length-1].toLocaleString("pt-BR")+" pçs hoje") : ""
-  };
-  const metaRow=(label,valueStr,targetStr,p,st,lb)=>{
-    const c=barCls(st);
-    return `<div class="bar-row">
-      <div class="bar-label"><span class="bar-dot ${c}"></span>${label}</div>
-      <div class="bar-values">${valueStr}<span class="bar-target"> / ${targetStr}</span></div>
-      <div class="bar-track"><div class="bar-fill ${c}" style="width:${Math.min(p,100)}%"></div></div>
-      <div class="bar-pct">${p}%</div>
-      <div class="bar-status ${barCls(lb.cls)}">${lb.txt}</div>
-      ${sparkDe[label]||""}
-    </div>`;
-  };
+
   const kpi=(l,v,s,scls='')=>`<div class="krb"><div class="krb-l">${l}</div><div class="krb-v">${v}</div><div class="krb-s ${scls}">${s}</div></div>`;
   /* O que está pegando fogo, no máximo três linhas. Quando não há nada, o
      bloco vira uma linha só dizendo que está tudo certo. */
