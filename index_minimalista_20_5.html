@@ -2656,8 +2656,19 @@ function renderLotes(){
   // Performance: cache de status por lote + totais globais calculados UMA vez (não por lote)
   const __statusCache=new Map();
   const statusDe=l=>{ let v=__statusCache.get(l); if(v===undefined){ v=getStatusOperacionalLote(l); __statusCache.set(l,v); } return v; };
-  const totalPecasGlobal=Math.max(1,registros.reduce((s,r)=>s+(r.qtd||0),0));
-  const custoGeralGlobal=funcionarios.reduce((s,f)=>s+(f.salario||0),0)+gastos.reduce((s,g)=>s+(g.valor||0),0);
+  /* O custo por peça vem do mês em que o lote cai — o mesmo número que o
+     Dashboard e o Relatório usam. Antes misturava um mês de salário com TODOS
+     os gastos já lançados dividido por TODAS as peças de todos os tempos, o
+     que ia distorcendo mais a cada mês de histórico. Uma entrada por mês. */
+  const __custoPeca=new Map();
+  const custoPorPecaDoMes=mes=>{
+    if(!__custoPeca.has(mes)){
+      let v=0;
+      try{ v=toNumber(calcResumoMensal(mes).custoPorPeca,0); }catch(e){ v=0; }
+      __custoPeca.set(mes,v);
+    }
+    return __custoPeca.get(mes);
+  };
   if($("lote-competencia")&&!$("lote-competencia").value) $("lote-competencia").value=monthKeyLocal();
 
   // Filtro por mês (padrão: mês atual; "todos" mostra tudo)
@@ -2710,13 +2721,28 @@ function renderLotes(){
   }
   const alertas=lotesEscopo.filter(l=>l.prazo&&statusDe(l)!=="Concluído"&&statusDe(l)!=="Cancelado").filter(l=>Math.round((new Date(l.prazo+"T00:00:00")-hoje)/(864e5))<=3);
   const alertaHtml=alertas.length&&filtroAtivo==="todos"&&!busca?`<div class="alertas-box">${alertas.map(l=>{const p=prazoInfo(l.prazo);return`<div class="alerta-row ${p.urgente?"venc":"alerta-warn"}">${p.urgente?"🚨":"⏰"} <strong>OF ${l.numeroOf}</strong> — ${l.produto}: ${p.urgente?"PRAZO VENCIDO!":"vence em "+p.diff+" dia(s)"} (${p.label})</div>`;}).join("")}</div>`:"";
+  /* Desenhar 900 cards de uma vez congelava a tela por dois segundos. Mostra
+     os primeiros e o resto sob demanda — o filtro e a busca continuam valendo
+     sobre a lista inteira, só o desenho é que é por partes. */
+  const PASSO=60;
+  if(window.__lotesMostrar===undefined||window.__lotesChave!==(filtroAtivo+"|"+busca+"|"+verTodos+"|"+window._loteMesFiltro))
+    { window.__lotesMostrar=PASSO; window.__lotesChave=filtroAtivo+"|"+busca+"|"+verTodos+"|"+window._loteMesFiltro; }
+  const totalVisiveis=lotesVisiveis.length;
+  const mostrando=Math.min(window.__lotesMostrar||PASSO,totalVisiveis);
+  const maisHtml=mostrando<totalVisiveis
+    ? `<div class="of2-mais"><button type="button" class="btn-outline" onclick="lotesMostrarMais()">Mostrar mais ${Math.min(PASSO,totalVisiveis-mostrando)} — ${totalVisiveis-mostrando} restantes</button></div>`
+    : "";
+  lotesVisiveis=lotesVisiveis.slice(0,mostrando);
   c.innerHTML=alertaHtml+lotesVisiveis.map(l=>{
    try{
     const progLote=calcProg(l),produzido=progLote.produzido,pct=progLote.pct,statusReal=statusDe(l),sm=statusMeta(statusReal);
     const meta=l.qtdTotal||0,rest=Math.max(0,meta-produzido);
-    const custoProp=produzido>0?(produzido/totalPecasGlobal)*custoGeralGlobal:0;
-    const fat=calcFaturamentoLote(l),lucro=fat-custoProp;
     const competenciaLote=getLoteCompetenciaFinal(l);
+    const custoProp=produzido>0?produzido*custoPorPecaDoMes(competenciaLote):0;
+    const fat=calcFaturamentoLote(l),lucro=fat-custoProp;
+    /* Sem produção lançada não existe custo, e mostrar o faturamento inteiro
+       como lucro faria parecer 100% de margem numa OF que nem começou. */
+    const temCusto=produzido>0&&custoProp>0;
     const competenciaTxt=formatMonthLabel(competenciaLote);
     const pipeline=calcPipeline(l);
     const temProd=ETAPAS.some(e=>pipeline.porEtapa[e]>0);
@@ -2760,13 +2786,21 @@ function renderLotes(){
       </div>
       <div class="of2-stats">
         <div class="of2-stat"><span class="of2-stat-l">Faturamento</span><span class="of2-stat-v">${fmtMoney(fat)}</span></div>
-        <div class="of2-stat"><span class="of2-stat-l">Lucro est.</span><span class="of2-stat-v ${lucro>=0?'pos':'neg'}">${fmtMoney(lucro)}</span></div>
+        <div class="of2-stat"><span class="of2-stat-l">Lucro est.</span>${temCusto
+          ?`<span class="of2-stat-v ${lucro>=0?'pos':'neg'}">${fmtMoney(lucro)}</span>`
+          :`<span class="of2-stat-v of2-stat-vazio" title="O lucro só aparece depois que houver produção lançada, para descontar o custo.">—</span>`}</div>
         <div class="of2-stat"><span class="of2-stat-l">Valor / peça</span><span class="of2-stat-v">${fmtMoney(l.valorPeca)}</span></div>
         <div class="of2-stat"><span class="of2-stat-l">Cai em</span><span class="of2-stat-v txt">${competenciaTxt}</span></div>
       </div>
-      ${(l.tamanhos||l.observacoes)?`<div class="of2-hints">${l.tamanhos?`<span>📐 ${l.tamanhos}</span>`:''}${l.observacoes?`<span>💬 ${l.observacoes}</span>`:''}</div>`:''}
+      ${(l.tamanhos||l.observacoes)?`<div class="of2-hints">${l.tamanhos?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3H3v6h18z"/><path d="M7 9v3M12 9v3M17 9v3"/><path d="M3 15h18v6H3z"/></svg> ${l.tamanhos}</span>`:''}${l.observacoes?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 17 0z"/></svg> ${l.observacoes}</span>`:''}</div>`:''}
       <div class="of2-etapas-wrap">
-        <div class="of2-etapas-hd"><span>Etapas de produção</span>${temProd?`<span class="of2-etapas-done">${pipeline.completas.toLocaleString('pt-BR')} peça${pipeline.completas!==1?'s':''} concluída${pipeline.completas!==1?'s':''}</span>`:''}</div>
+        <div class="of2-etapas-hd"><span>Etapas de produção</span>${
+          temProd
+            ? `<span class="of2-etapas-done">${pipeline.completas.toLocaleString('pt-BR')} pçs passaram por todas as etapas</span>`
+            : (statusReal==="Concluído"
+                ? `<span class="of2-etapas-nota">concluída sem lançamento por etapa</span>`
+                : '')
+        }</div>
         <div class="of2-etapas">${etapasHtml}</div>
         ${temProd&&pipeline.minVal!==pipeline.maxVal?`<div class="of2-gargalo">⚠ Gargalo em <strong>${pipeline.gargaloEtapa}</strong> — ${pipeline.minVal===0?'não iniciada':`${(pipeline.maxVal-pipeline.minVal).toLocaleString('pt-BR')} pçs atrás`}</div>`:''}
       </div>
@@ -2779,12 +2813,16 @@ function renderLotes(){
      console.error("LOTE_RENDER_ERROR", l?.numeroOf||l?.id, err);
      return `<div class="lote-card" style="border-color:rgba(248,113,113,.4)"><div class="lc-top"><div class="lc-id"><div class="of-tag">OF</div><div><div class="lc-num">${l?.numeroOf||"—"}</div><div class="lc-prod" style="color:var(--red)">⚠ Erro ao exibir este lote (dado inconsistente). Os demais carregaram normalmente.</div></div></div></div></div>`;
    }
-  }).join("");
+  }).join("")+maisHtml;
   }catch(err){
     console.error("RENDER_LOTES_FATAL",err);
     if(c) c.innerHTML='<div class="empty-state"><div class="ei">⚠</div><p>Não foi possível carregar os lotes agora. Atualize a página (Ctrl+Shift+R). Se continuar, me avise.</p></div>';
   }
 }
+window.lotesMostrarMais=function(){
+  window.__lotesMostrar=(window.__lotesMostrar||60)+60;
+  renderLotes();
+};
 window._loteFilter="todos";
 window.setLoteFilter=function(f,btn){
   window._loteFilter=f;
@@ -4118,7 +4156,9 @@ function renderGastos(){
       :'<div class="gx-vazio">Sem histórico nos últimos 6 meses.</div>'}`;
   }
 
-  /* ── Compromissos futuros ── */
+  /* ── Compromissos futuros ──
+     O cartão de cima já diz "nenhuma parcela futura"; repetir isso num painel
+     inteiro só ocupava meia tela para não dizer nada. */
   const futBox=$("gastos-futuros");
   if(futBox){
     const hoje=monthKeyLocal();
@@ -4167,7 +4207,7 @@ function renderGastos(){
   /* ── Lista ── */
   const cont=$("gastos-lista");if(!cont)return;
   if(!dados.length){
-    cont.innerHTML='<div class="empty-state"><div class="ei">💸</div><p>Nenhum gasto para os filtros selecionados.</p></div>';
+    cont.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><p>Nenhum gasto para os filtros selecionados.</p></div>';
     return;
   }
   // dia em que o gasto foi adicionado (criadoEm); cai para a data do gasto se faltar
@@ -4193,7 +4233,19 @@ function renderGastos(){
 
   const grupos={};
   dados.forEach(g=>{const k=g.competencia||"Sem data";(grupos[k]=grupos[k]||[]).push(g);});
-  const keys=Object.keys(grupos).sort((a,b)=>b.localeCompare(a));
+  const keysTodas=Object.keys(grupos).sort((a,b)=>b.localeCompare(a));
+  /* Com "ver todos os meses" a tabela chegava a 1.800 linhas e a tela
+     congelava por mais de um segundo. Desenha os meses mais recentes e o
+     resto sob demanda — os totais do topo continuam somando tudo. */
+  const PASSO_G=6;
+  const chaveG=keysTodas.join(",")+"|"+dados.length;
+  if(window.__gastosChave!==chaveG){ window.__gastosChave=chaveG; window.__gastosMeses=PASSO_G; }
+  const mostrandoG=Math.min(window.__gastosMeses||PASSO_G,keysTodas.length);
+  const keys=keysTodas.slice(0,mostrandoG);
+  const faltamG=keysTodas.length-mostrandoG;
+  const maisG=faltamG>0
+    ? `<div class="gx-mais"><button type="button" class="btn-outline" onclick="gastosMostrarMais()">Mostrar mais ${Math.min(PASSO_G,faltamG)} ${faltamG===1?"mês":"meses"} — ${faltamG} ${faltamG===1?"restante":"restantes"}</button></div>`
+    : "";
   cont.innerHTML=keys.map(k=>{
     const linhas=ordenar(grupos[k]);
     const tf=somaGastos(linhas.filter(gastoEhFixo)), tv=somaGastos(linhas.filter(g=>!gastoEhFixo(g)));
@@ -4220,8 +4272,12 @@ function renderGastos(){
           <td class="td-mono gx-td-val">${fmtMoney(tf+tv)}</td><td></td></tr></tfoot>
       </table></div>
     </div>`;
-  }).join("");
+  }).join("")+maisG;
 }
+window.gastosMostrarMais=function(){
+  window.__gastosMeses=(window.__gastosMeses||6)+6;
+  renderGastos();
+};
 
 /* ── Leitor por foto: tela e fluxo (cupom de gasto ou ficha de OF) ── */
 let __notaLida=null, __notaModo="gasto", __notaArquivo=null;
@@ -5736,7 +5792,7 @@ function renderBackup(){
     <div class="bk-stat"><span class="bk-n">${funcionarios.length}</span><span class="bk-l">👥 Funcionários</span></div>
     <div class="bk-stat"><span class="bk-n">${lotes.length}</span><span class="bk-l">📦 Lotes (OF)</span></div>
     <div class="bk-stat"><span class="bk-n">${registros.length}</span><span class="bk-l">⚡ Registros</span></div>
-    <div class="bk-stat"><span class="bk-n">${gastos.length}</span><span class="bk-l">💸 Gastos</span></div>
+    <div class="bk-stat"><span class="bk-n">${gastos.length}</span><span class="bk-l"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Gastos</span></div>
     <div class="bk-stat"><span class="bk-n">${pontos.length}</span><span class="bk-l">⏱ Pontos</span></div>
     <div class="bk-stat accent"><span class="bk-n">${total}</span><span class="bk-l">📋 Total docs</span></div>`;
 }
@@ -12468,7 +12524,7 @@ input,select,textarea,button{font-size:16px;}
         />
         <div id="global-search-dropdown"></div>
       </div>
-      <button class="btn-gastos-quick" onclick="toggleGastosDrawer()">💸 Gastos</button>
+      <button class="btn-gastos-quick" onclick="toggleGastosDrawer()"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Gastos</button>
       <button class="btn-theme-quick" id="theme-chip-label" onclick="cycleTheme()" title="Alternar claro/escuro">🌙 Escuro</button>
       <button class="btn-theme-quick" id="cor-chip-label" onclick="cycleCor()" title="Alternar azul marinho / prata">🎨 Azul</button>
       <button class="btn-topbar-refresh" onclick="loadData()">↻</button>
@@ -12834,7 +12890,7 @@ input,select,textarea,button{font-size:16px;}
               <option value="Empréstimo">💳 Empréstimo</option>
               <option value="Mercado">🛒 Mercado</option>
               <option value="Mecânico">🔧 Mecânico</option>
-              <option value="Encargos">👥 Encargos</option>
+              <option value="Encargos"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg> Encargos</option>
               <option value="Outros">✏️ Outros</option>
             </select>
           </div>
@@ -12919,18 +12975,18 @@ input,select,textarea,button{font-size:16px;}
           </div>
           <div class="gx-acoes-grupo">
             <span class="gx-acoes-rot">Baixar</span>
-            <button class="btn-save" onclick="exportarGastosExcel()" title="Planilha do Excel: lançamentos, resumo por categoria e por mês">📊 Excel</button>
+            <button class="btn-save" onclick="exportarGastosExcel()" title="Planilha do Excel: lançamentos, resumo por categoria e por mês"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l6 6M15 13l-6 6"/></svg> Excel</button>
             <button class="btn-outline" onclick="exportarGastosCSV()" title="Baixa os gastos visíveis em CSV">⭳ CSV</button>
           </div>
           <div class="gx-acoes-grupo">
             <span class="gx-acoes-rot">Lançar no mês</span>
-            <button class="btn-outline" onclick="propagarGastosFixos()" title="Copia os gastos fixos do mês anterior para o mês atual, sem duplicar">📋 Fixos do mês anterior</button>
-            <button class="btn-outline" onclick="lancarEncargos()" title="Lança INSS e FGTS das funcionárias como gasto fixo do mês, sem duplicar. Se já estiverem lançados com valor antigo, atualiza para o valor reajustado.">👥 Encargos</button>
+            <button class="btn-outline" onclick="propagarGastosFixos()" title="Copia os gastos fixos do mês anterior para o mês atual, sem duplicar"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Fixos do mês anterior</button>
+            <button class="btn-outline" onclick="lancarEncargos()" title="Lança INSS e FGTS das funcionárias como gasto fixo do mês, sem duplicar. Se já estiverem lançados com valor antigo, atualiza para o valor reajustado."><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg> Encargos</button>
           </div>
         </div>
       </div>
 
-      <div id="gastos-lista"><div class="empty-state"><div class="ei">💸</div><p>Nenhum gasto.</p></div></div>
+      <div id="gastos-lista"><div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><p>Nenhum gasto.</p></div></div>
     </div>
 
     <!-- BANCO DE HORAS -->
@@ -13389,7 +13445,7 @@ input,select,textarea,button{font-size:16px;}
             <option value="Aluguel">🏠 Aluguel</option><option value="Linha">🧵 Linha</option>
             <option value="Café">☕ Café</option><option value="Empréstimo">💳 Empréstimo</option>
             <option value="Mercado">🛒 Mercado</option><option value="Mecânico">🔧 Mecânico</option>
-            <option value="Encargos">👥 Encargos</option><option value="Outros">✏️ Outros</option>
+            <option value="Encargos"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg> Encargos</option><option value="Outros">✏️ Outros</option>
           </select>
         </div>
         <div class="ff" id="edit-wrap-categoria-outros" style="display:none">
@@ -18734,6 +18790,26 @@ main,.main{ padding-bottom:96px!important; }
   .dsh-pct{ flex-direction:column; align-items:flex-start; gap:4px; }
   .dsh-pct span{ text-align:left; }
 }
+
+/* lucro sem produção lançada */
+.of2-stat-vazio{ color:var(--t4)!important; font-weight:600!important; cursor:help; }
+/* nota quando o lote foi concluído sem lançamento por etapa */
+.of2-etapas-nota{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--t4); }
+/* botão de ver o resto da lista */
+.of2-mais{ display:flex; justify-content:center; padding:6px 0 2px; }
+.of2-mais button{ font-size:12.5px!important; padding:10px 20px!important; }
+
+/* ícone de traço dentro de botão de ação */
+.ico-btn{ width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round; vertical-align:-3px; margin-right:6px; opacity:.85; }
+.ico-min{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round; vertical-align:-2px; margin-right:5px; opacity:.7; }
+.ico-vazio{ width:34px; height:34px; stroke:currentColor; fill:none; stroke-width:1.4;
+  stroke-linecap:round; stroke-linejoin:round; opacity:.5; }
+/* ver o resto dos meses de gasto */
+.gx-mais{ display:flex; justify-content:center; padding:4px 0 10px; }
+.gx-mais button{ font-size:12.5px!important; padding:10px 20px!important; }
 </style>
 
 
