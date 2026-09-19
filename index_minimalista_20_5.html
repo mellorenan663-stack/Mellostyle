@@ -1988,7 +1988,7 @@ function getStatusOperacionalLote(lote){
 }
 function calcPipeline(lote){
   const meta=toNumber(lote?.qtdTotal,0);
-  const regsLote=registros.filter(r=>r.loteId===lote.id);
+  const regsLote=registrosDoLote(lote?.id);   // mesmo índice do calcProg
   const porEtapa={};
   const porEtapaRaw={};
   ETAPAS.forEach(e=>{porEtapa[e]=0;porEtapaRaw[e]=0;});
