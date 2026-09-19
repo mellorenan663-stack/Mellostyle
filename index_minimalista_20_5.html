@@ -4709,10 +4709,16 @@ window.gastoMesToggleTodos=function(){
 
 function renderDashboard(){
   const agora=new Date(),h=agora.getHours();
-  const saud=h<12?"Bom dia ☀️":h<18?"Boa tarde 🌤":"Boa noite 🌙";
+  const saud=h<12?"Bom dia":h<18?"Boa tarde":"Boa noite";
   const dataFmt=agora.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   const cfgDash=getConfig();
-  if($("dash-greeting"))$("dash-greeting").innerHTML=`<span class="live-dot"></span>${saud}, ${cfgDash.empresa} · ${dataFmt.charAt(0).toUpperCase()+dataFmt.slice(1)}`;
+  /* Sem emoji na primeira linha da tela: o nome da empresa em destaque, a data
+     apagada e o estado do sistema como etiqueta, não como bolinha solta. */
+  if($("dash-greeting"))$("dash-greeting").innerHTML=
+    `<span class="ds-ola">${saud}, ${cfgDash.empresa}</span>`
+    +`<span class="ds-sep">·</span>`
+    +`<span class="ds-data">${dataFmt.charAt(0).toUpperCase()+dataFmt.slice(1)}</span>`
+    +`<span class="ds-viva"><i></i>sistema no ar</span>`;
 
   // ── MÊS SELECIONADO ──
   const mesHojeStr=monthKeyLocal();
@@ -5095,26 +5101,142 @@ function renderMetas(){
     </div>`;
   };
   const kpi=(l,v,s,scls='')=>`<div class="krb"><div class="krb-l">${l}</div><div class="krb-v">${v}</div><div class="krb-s ${scls}">${s}</div></div>`;
+  /* O que está pegando fogo, no máximo três linhas. Quando não há nada, o
+     bloco vira uma linha só dizendo que está tudo certo. */
+  function blocoAtencao(){
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    const itens=[];
+    const abertos=lotes.filter(l=>{const s=getStatusOperacionalLote(l);return s!=="Concluído"&&s!=="Cancelado";});
+    abertos.forEach(l=>{
+      if(!l.prazo) return;
+      const pz=new Date(l.prazo+"T00:00:00");
+      if(isNaN(pz)) return;
+      const dias=Math.round((pz-hoje)/86400000);
+      if(dias<0) itens.push({ord:0,n:"urgente",
+        t:`OF <b>${l.numeroOf||"—"}</b>${l.produto?" ("+l.produto+")":""} venceu há <b class="num">${Math.abs(dias)} dia${Math.abs(dias)===1?"":"s"}</b>`,
+        q:"prazo estourado",id:l.id});
+      else if(dias<=3) itens.push({ord:1,n:"aviso",
+        t:`OF <b>${l.numeroOf||"—"}</b>${l.produto?" ("+l.produto+")":""} vence em <b class="num">${dias===0?"hoje":dias+" dia"+(dias===1?"":"s")}</b>`.replace("em <b class=\"num\">hoje</b>","<b class=\"num\">hoje</b>"),
+        q:"prazo perto",id:l.id});
+    });
+    const comRegistro=new Set(registros.map(r=>r.loteId).filter(Boolean));
+    abertos.forEach(l=>{
+      if(comRegistro.has(l.id)||!l.prazo) return;
+      itens.push({ord:2,n:"info",
+        t:`OF <b>${l.numeroOf||"—"}</b> ainda não teve <b>nenhuma peça lançada</b>`,
+        q:"sem produção",id:l.id});
+    });
+    itens.sort((a,b)=>a.ord-b.ord);
+    if(!itens.length) return `<div class="dsh-at"><div class="dsh-at-ok">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+      <span>Nada precisa de atenção agora — <b>nenhuma OF atrasada e nenhum prazo nos próximos 3 dias</b>.</span>
+    </div></div>`;
+    return `<div class="dsh-at">
+      <div class="dsh-at-hd">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        Precisa de atenção<span class="dsh-at-n">${itens.length}</span>
+      </div>
+      ${itens.slice(0,3).map(i=>`<div class="dsh-li" data-n="${i.n}">
+        <span class="dsh-marca"></span>
+        <span class="dsh-txt">${i.t}</span>
+        <span class="dsh-qd">${i.q}</span>
+        <button type="button" class="dsh-ir" onclick="navigate('lotes');setTimeout(()=>abrirModalEditarLote('${i.id}'),400)">Ver OF →</button>
+      </div>`).join("")}
+    </div>`;
+  }
+  /* ═══════ Dashboard com hierarquia ═══════
+     Um número manda na tela (o faturamento), quatro dão apoio e uma frase
+     diz como o mês fecha. A cor só aparece quando quer dizer algo: verde é
+     meta batida, cinza é "andando", vermelho é atraso. */
+
+  /* a cor e a etiqueta de cada um dos quatro de apoio */
+  const situacao=(p,inverso)=>inverso
+    ? (p>=100?{s:"estourou",t:"estourou"}:p>=85?{s:"atencao",t:"no limite"}:{s:"andando",t:"controlado"})
+    : (p>=100?{s:"batida",t:"meta batida"}:p>=60?{s:"andando",t:"no caminho"}:{s:"atraso",t:"atrasado"});
+
+  const apoio=(rot,valor,alvo,p,inverso)=>{
+    const st=situacao(p,inverso);
+    const cifrao=/^R\$/.test(valor);
+    return `<div class="dsh-ap" data-sit="${st.s}">
+      <div class="dsh-ap-l"><span class="dsh-ap-dot"></span><span class="dsh-ap-rot">${rot}</span>
+        <span class="dsh-ap-tag">${st.t}</span></div>
+      <div class="dsh-ap-v">${cifrao?`<small>R$</small>${valor.replace(/^R\$\s*/,"")}`:valor}</div>
+      <div class="dsh-ap-s"><b>${p}%</b> de ${alvo}</div>
+      <div class="dsh-ap-bar"><i style="width:${Math.min(p,100)}%"></i></div>
+    </div>`;
+  };
+
+  /* faturamento acumulado dia a dia, com a linha da meta por cima */
+  const ymdDia2=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const porDia=[]; let acumulado=0;
+  for(let i=1;i<=diaAtual;i++){
+    const chave=ymdDia2(new Date(mesY,mesM-1,i));
+    acumulado+=lotes.reduce((s,l)=>{
+      if(getStatusOperacionalLote(l)!=="Concluído") return s;
+      const dt=safeDate(l.concluidoEm||l.updatedAt||l.updatedEm);
+      return s+((dt&&ymdDia2(dt)===chave)?calcFaturamentoLote(l):0);
+    },0);
+    porDia.push(acumulado);
+  }
+  const grafico=()=>{
+    if(porDia.length<2||acumulado<=0) return "";
+    const w=420,h=130,teto=Math.max(mFat,acumulado)||1;
+    const pts=porDia.map((v,i)=>[(i/(porDia.length-1))*w, h-4-(v/teto)*(h-14)]);
+    const d=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+    const yMeta=(h-4-(mFat/teto)*(h-14)).toFixed(1);
+    return `<div class="dsh-graf">
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+        <path class="a" d="${d} L${w} ${h} L0 ${h} Z"/>
+        <line class="m" x1="0" y1="${yMeta}" x2="${w}" y2="${yMeta}"/>
+        <path class="l" d="${d}"/>
+      </svg>
+      <div class="dsh-graf-rot"><span>acumulado no mês</span><span>tracejado = meta</span></div>
+    </div>`;
+  };
+
+  /* projeção: usa o mesmo ritmo que o rodapé já mostrava, para os dois números
+     nunca discordarem */
+  const projecao=projVal(fat);
+  const difProj=projecao-mFat;
+  const difPctProj=mFat>0?Math.round(difProj/mFat*100):0;
+  const frase=isMesAtual&&projecao>0
+    ? `No ritmo de hoje o mês fecha em <b>${fmtMoney(projecao)}</b> — `
+      +`<span class="${difProj>=0?"pos":"neg"}">${difProj>=0?"+":"−"}${fmtMoney(Math.abs(difProj))} `
+      +`(${difProj>=0?"+":"−"}${Math.abs(difPctProj)}%)</span> ${difProj>=0?"acima":"abaixo"} da meta. `
+      +`${mBatidas} de 4 metas batidas até agora.`
+    : `${mBatidas} de 4 metas batidas neste mês.`;
+
   el.innerHTML=`<div class="metas-section">
-    <div class="metas-section-hd">
-      <div class="metas-section-title">Metas do mês — ${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
-      <button class="metas-edit-btn" onclick="navigate('configuracoes')">⚙ Editar metas</button>
+    <div class="dsh-mes">
+      <span class="dsh-mes-l">${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</span>
+      <span class="dsh-mes-barra"><i style="width:${Math.round(diaAtual/totalDiasMes*100)}%"></i></span>
+      <span class="dsh-mes-d">dia ${diaAtual} de ${totalDiasMes}</span>
+      <button class="metas-edit-btn dsh-edit" onclick="navigate('configuracoes')">Editar metas</button>
     </div>
 
-    <div class="card bars-panel">
-      ${metaRow('Faturamento',fmtMoney(fat),fmtMoney(mFat),pF,stF,lbF)}
-      ${metaRow('Lucro líquido',fmtMoney(lucro),fmtMoney(mLucro),pL,stL,lbL)}
-      ${metaRow('Margem de lucro',margem+'%',mMargem+'%',pM,stM,lbM)}
-      ${metaRow('Teto de custo',fmtMoney(custo),fmtMoney(mCusto),pC,stC,lbC)}
-      ${metaRow('Produção (peças)',pecas.toLocaleString('pt-BR'),mPecas.toLocaleString('pt-BR')+' pçs',pP,stP,lbP)}
+    <div class="dsh-heroi" data-sit="${pF>=100?"batida":"andando"}">
+      <div class="dsh-heroi-l">
+        <div class="dsh-rot">Faturamento do mês</div>
+        <div class="dsh-num"><small>R$</small>${fmtMoney(fat).replace(/^R\$\s*/,"")}</div>
+        <div class="dsh-meta">de <b>${fmtMoney(mFat)}</b> de meta</div>
+        <div class="dsh-track"><i style="width:${Math.min(pF,100)}%"></i></div>
+        <div class="dsh-pct"><b>${pF}%</b><span>${isMesAtual?`${diasRestantes} dias restantes · precisa de ${diasRestantes>0?fmtMoney(Math.max(0,Math.round((mFat-fat)/diasRestantes))):"—"} por dia`:"mês fechado"}</span></div>
+      </div>
+      ${grafico()}
+      <div class="dsh-frase">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"/><path d="M9 21h6"/></svg>
+        <div>${frase}</div>
+      </div>
     </div>
-    <div class="ledger-foot">
-      <div class="lf-item"><span class="lf-v ${mBatidas>=3?'pos':mBatidas>=1?'':'neg'}">${mBatidas}/4</span><span class="lf-l">metas batidas</span></div>
-      <div class="lf-item"><span class="lf-v">${diaAtual}/${totalDiasMes}</span><span class="lf-l">${diasRestantes} dias restantes</span></div>
-      <div class="lf-item"><span class="lf-v">${fracaoMes>0?Math.round(fat/fracaoMes/mFat*100):0}%</span><span class="lf-l">ritmo do faturamento</span></div>
-      <div class="lf-item"><span class="lf-v">${diasRestantes>0?fmtMoney(Math.max(0,Math.round((mFat-fat)/diasRestantes))):'—'}</span><span class="lf-l">precisa/dia p/ bater</span></div>
-      <div class="lf-item"><span class="lf-v ${stC==='ok'?'pos':stC==='warn'?'':'neg'}">${pC}%</span><span class="lf-l">do teto de custo usado</span></div>
+
+    <div class="dsh-apoio">
+      ${apoio('Lucro líquido',fmtMoney(lucro),fmtMoney(mLucro),pL,false)}
+      ${apoio('Margem de lucro',margem+'%',mMargem+'%',pM,false)}
+      ${apoio('Teto de custo',fmtMoney(custo),fmtMoney(mCusto),pC,true)}
+      ${apoio('Produção',pecas.toLocaleString('pt-BR'),mPecas.toLocaleString('pt-BR')+' pçs',pP,false)}
     </div>
+
+    ${blocoAtencao()}
   </div>`;
 
   // ── ATÉ O MOMENTO — mesmo estilo dos cards de meta, abaixo das metas ──
@@ -18488,6 +18610,157 @@ main,.main{ padding-bottom:96px!important; }
 .tbl-wrap thead th,.table-wrap thead th{
   position:sticky; top:0; z-index:3; background:var(--bg3);
   box-shadow:inset 0 -1px 0 var(--bd);
+}
+
+/* ═══════════ Dashboard com hierarquia ═══════════ */
+
+/* saudação */
+#dash-greeting{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+.ds-ola{ font-size:13px; color:var(--t2); font-weight:600; }
+.ds-sep{ color:var(--t4); }
+.ds-data{ font-size:13px; color:var(--t3); }
+.ds-viva{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--success); }
+.ds-viva i{ width:6px; height:6px; border-radius:50%; background:var(--success); display:block; }
+
+/* linha do mês */
+.dsh-mes{ display:flex; align-items:center; gap:14px; margin:0 0 18px; }
+.dsh-mes-l{ font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--t3); white-space:nowrap; }
+.dsh-mes-barra{ flex:1; min-width:40px; height:3px; border-radius:2px; background:var(--bg4); overflow:hidden; }
+.dsh-mes-barra i{ display:block; height:100%; background:var(--t4); border-radius:2px; }
+.dsh-mes-d{ font-family:var(--fm); font-size:11px; color:var(--t3); white-space:nowrap;
+  font-variant-numeric:tabular-nums; }
+/* o botão de editar metas é secundário: não pode competir com o herói.
+   Precisa do #dash-metas na frente para passar na regra que o pinta de realce. */
+#dash-metas .dsh-edit,.dsh-edit{
+  flex:0 0 auto; background:transparent!important; background-image:none!important;
+  border:1px solid var(--bd)!important; color:var(--t3)!important; box-shadow:none!important;
+  font-size:11px!important; font-weight:600!important; padding:5px 12px!important;
+  border-radius:999px!important;
+}
+#dash-metas .dsh-edit:hover,.dsh-edit:hover{ border-color:var(--accent)!important; color:var(--accent)!important; }
+
+/* herói */
+.dsh-heroi{
+  display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:38px;
+  background:var(--bg2); border:1px solid var(--bd); border-radius:16px;
+  padding:30px 32px 26px; box-shadow:var(--ui-sombra);
+}
+.dsh-heroi-l{ min-width:0; }
+.dsh-rot{ font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--t3); }
+.dsh-num{ font-family:var(--fm); font-size:54px; font-weight:800; letter-spacing:-.035em;
+  line-height:1.02; color:var(--t); margin:10px 0 6px; font-variant-numeric:tabular-nums; }
+.dsh-num small{ font-size:26px; font-weight:700; color:var(--t3); margin-right:6px; letter-spacing:-.02em; }
+.dsh-meta{ font-size:13px; color:var(--t3); }
+.dsh-meta b{ color:var(--t2); font-weight:600; font-variant-numeric:tabular-nums; }
+.dsh-track{ height:6px; border-radius:3px; background:var(--bg4); overflow:hidden; margin-top:18px; }
+/* enquanto não bate a meta a barra é neutra: verde só quando bate */
+.dsh-track i{ display:block; height:100%; border-radius:3px; background:var(--t3); }
+.dsh-heroi[data-sit="batida"] .dsh-track i{ background:var(--success); }
+.dsh-pct{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:9px; }
+.dsh-pct b{ font-family:var(--fm); font-size:20px; font-weight:800; color:var(--t);
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.dsh-pct span{ font-size:11.5px; color:var(--t3); text-align:right; }
+
+/* gráfico do herói */
+.dsh-graf{ display:flex; flex-direction:column; justify-content:flex-end; min-width:0; }
+.dsh-graf svg{ width:100%; height:130px; display:block; }
+.dsh-graf .l{ fill:none; stroke:var(--accent); stroke-width:2.2; stroke-linejoin:round; stroke-linecap:round; }
+.dsh-graf .a{ fill:var(--accent-soft); stroke:none; }
+.dsh-graf .m{ stroke:var(--t4); stroke-width:1; stroke-dasharray:3 4; opacity:.6; }
+.dsh-graf-rot{ display:flex; justify-content:space-between; margin-top:8px; font-size:10px;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--t4); }
+
+/* a frase que fecha o raciocínio */
+.dsh-frase{ grid-column:1 / -1; display:flex; align-items:flex-start; gap:11px;
+  margin-top:22px; padding-top:20px; border-top:1px solid var(--bd);
+  font-size:14px; line-height:1.55; color:var(--t2); }
+.dsh-frase svg{ width:17px; height:17px; flex:0 0 17px; margin-top:2px; stroke:var(--accent);
+  fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.dsh-frase b{ color:var(--t); font-weight:700; font-variant-numeric:tabular-nums; }
+.dsh-frase .pos{ color:var(--success); font-weight:700; }
+.dsh-frase .neg{ color:var(--danger); font-weight:700; }
+
+/* os quatro de apoio: separados por fio, não por caixa */
+.dsh-apoio{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:14px;
+  background:var(--bg2); border:1px solid var(--bd); border-radius:16px; overflow:hidden;
+  box-shadow:var(--ui-sombra); }
+.dsh-ap{ padding:22px 24px; border-left:1px solid var(--bd); min-width:0; }
+.dsh-ap:first-child{ border-left:0; }
+.dsh-ap-l{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; row-gap:7px; }
+.dsh-ap-dot{ width:7px; height:7px; border-radius:50%; flex:0 0 7px; background:var(--t4); }
+.dsh-ap-rot{ font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--t3); }
+.dsh-ap-tag{ font-size:9.5px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+  padding:2px 7px; border-radius:999px; border:1px solid var(--bd); background:var(--bg4); color:var(--t3); }
+.dsh-ap-v{ font-family:var(--fm); font-size:27px; font-weight:800; letter-spacing:-.03em;
+  color:var(--t); margin:11px 0 5px; font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dsh-ap-v small{ font-size:15px; color:var(--t3); font-weight:700; margin-right:3px; }
+.dsh-ap-s{ font-size:11.5px; color:var(--t3); }
+.dsh-ap-s b{ font-weight:700; font-variant-numeric:tabular-nums; }
+.dsh-ap-bar{ height:3px; border-radius:2px; background:var(--bg4); margin-top:13px; overflow:hidden; }
+.dsh-ap-bar i{ display:block; height:100%; border-radius:2px; background:var(--t3); }
+/* cor só quando quer dizer algo */
+.dsh-ap[data-sit="batida"]   .dsh-ap-dot,.dsh-ap[data-sit="batida"]   .dsh-ap-bar i{ background:var(--success); }
+.dsh-ap[data-sit="atencao"]  .dsh-ap-dot,.dsh-ap[data-sit="atencao"]  .dsh-ap-bar i{ background:var(--warning); }
+.dsh-ap[data-sit="atraso"]   .dsh-ap-dot,.dsh-ap[data-sit="atraso"]   .dsh-ap-bar i,
+.dsh-ap[data-sit="estourou"] .dsh-ap-dot,.dsh-ap[data-sit="estourou"] .dsh-ap-bar i{ background:var(--danger); }
+.dsh-ap[data-sit="batida"]   .dsh-ap-tag{ background:var(--success-soft); color:var(--success); border-color:var(--success-line); }
+.dsh-ap[data-sit="atencao"]  .dsh-ap-tag{ background:var(--warning-soft); color:var(--warning); border-color:var(--warning-line); }
+.dsh-ap[data-sit="atraso"]   .dsh-ap-tag,
+.dsh-ap[data-sit="estourou"] .dsh-ap-tag{ background:var(--danger-soft); color:var(--danger); border-color:var(--danger-line); }
+
+/* precisa de atenção */
+.dsh-at{ margin-top:14px; background:var(--bg2); border:1px solid var(--bd); border-radius:16px;
+  box-shadow:var(--ui-sombra); overflow:hidden; }
+.dsh-at-hd{ display:flex; align-items:center; gap:9px; padding:15px 24px 13px;
+  font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--t3); border-bottom:1px solid var(--bd); }
+.dsh-at-hd svg{ width:15px; height:15px; stroke:var(--warning); fill:none; stroke-width:1.8;
+  stroke-linecap:round; stroke-linejoin:round; }
+.dsh-at-n{ margin-left:auto; font-family:var(--fm); font-size:11px; font-weight:800;
+  color:var(--warning); background:var(--warning-soft); border:1px solid var(--warning-line);
+  border-radius:999px; padding:1px 8px; letter-spacing:0; }
+.dsh-li{ display:flex; align-items:center; gap:14px; padding:14px 24px; border-top:1px solid var(--bd); }
+.dsh-li:first-of-type{ border-top:0; }
+.dsh-marca{ width:3px; align-self:stretch; border-radius:2px; flex:0 0 3px; background:var(--t4); }
+.dsh-li[data-n="urgente"] .dsh-marca{ background:var(--danger); }
+.dsh-li[data-n="aviso"]   .dsh-marca{ background:var(--warning); }
+.dsh-txt{ flex:1; min-width:0; font-size:13.5px; color:var(--t2); line-height:1.45; }
+.dsh-txt b{ color:var(--t); font-weight:700; }
+.dsh-txt .num{ font-family:var(--fm); font-variant-numeric:tabular-nums; }
+.dsh-qd{ font-size:11px; color:var(--t4); white-space:nowrap; letter-spacing:.03em; }
+.dsh-ir{ font-size:11.5px!important; font-weight:700!important; color:var(--accent)!important;
+  white-space:nowrap; border:1px solid var(--accent-line)!important; background:var(--accent-soft)!important;
+  padding:5px 12px!important; border-radius:999px!important; cursor:pointer; }
+.dsh-ir:hover{ background:var(--accent)!important; color:var(--on-accent)!important; border-color:var(--accent)!important; }
+.dsh-at-ok{ display:flex; align-items:center; gap:11px; padding:20px 24px; font-size:13.5px; color:var(--t3); }
+.dsh-at-ok svg{ width:18px; height:18px; flex:0 0 18px; stroke:var(--success); fill:none;
+  stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.dsh-at-ok b{ color:var(--t2); font-weight:600; }
+
+@media (max-width:1120px){
+  .dsh-heroi{ grid-template-columns:minmax(0,1fr); gap:22px; }
+  .dsh-apoio{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dsh-ap:nth-child(3){ border-left:0; }
+  .dsh-ap:nth-child(n+3){ border-top:1px solid var(--bd); }
+}
+@media (max-width:760px){
+  .dsh-li{ flex-wrap:wrap; }
+  .dsh-qd{ order:3; }
+  .dsh-ir{ order:4; margin-left:auto; }
+}
+@media (max-width:640px){
+  .dsh-apoio{ grid-template-columns:minmax(0,1fr); }
+  .dsh-ap{ border-left:0!important; border-top:1px solid var(--bd); }
+  .dsh-ap:first-child{ border-top:0; }
+  .dsh-num{ font-size:38px; }
+  .dsh-num small{ font-size:20px; }
+  .dsh-heroi{ padding:22px 18px 20px; }
+  .dsh-mes{ flex-wrap:wrap; }
+  .dsh-pct{ flex-direction:column; align-items:flex-start; gap:4px; }
+  .dsh-pct span{ text-align:left; }
 }
 </style>
 
