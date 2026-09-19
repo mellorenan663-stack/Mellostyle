@@ -2117,6 +2117,15 @@ function atualizarContadoresMenu(){
     });
   }catch(e){ console.warn("CONTADORES_MENU",e); }
 }
+/* Redesenhar a lista a cada tecla trava a digitação quando há muita coisa
+   cadastrada. Espera o dedo parar por um instante e redesenha uma vez só.
+   O valor digitado é guardado na hora — só o desenho é que espera. */
+const __buscaTimers={};
+function aoDigitar(chave,fn,espera=200){
+  clearTimeout(__buscaTimers[chave]);
+  __buscaTimers[chave]=setTimeout(()=>{ try{ fn(); }catch(e){ console.warn("BUSCA",e); } },espera);
+}
+window.aoDigitar=aoDigitar;   // o oninput do HTML roda no escopo global
 function redesenharPaginaAtual(){
   try{ atualizarContadoresMenu(); }catch(e){}
   try{
@@ -6010,15 +6019,33 @@ function escapeHtml(s){ return String(s??'').replace(/[&<>\"']/g, m=>({ '&':'&am
 function renderClientes(){
   const cont=$('clientes-list');
   const busca=normalize($('cliente-busca')?.value||'');
-  const lista=clientesCadastro.filter(c=>!busca || normalize([c.nome,c.contato,c.telefone,c.cidade,c.obs].join(' ')).includes(busca));
-  if($('cliente-total')) $('cliente-total').textContent=String(clientesCadastro.length);
-  if($('cliente-ativos')) $('cliente-ativos').textContent=String(clientesCadastro.filter(c=>String(c.status||'Ativo')==='Ativo').length);
+  /* A lista é a MESMA que a OF usa: vem do banco, não do navegador. */
+  const lista=clientes.filter(c=>!busca || normalize([c.nome,c.contato,c.telefone,c.cidade,c.obs].join(' ')).includes(busca));
+  if($('cliente-total')) $('cliente-total').textContent=String(clientes.length);
+  if($('cliente-ativos')) $('cliente-ativos').textContent=String(clientes.filter(c=>String(c.status||'Ativo')==='Ativo').length);
   const usados=new Set(lotes.map(l=>safeText(l.cliente)).filter(Boolean));
-  if($('cliente-com-of')) $('cliente-com-of').textContent=String(clientesCadastro.filter(c=>usados.has(safeText(c.nome))).length);
+  if($('cliente-com-of')) $('cliente-com-of').textContent=String(clientes.filter(c=>usados.has(safeText(c.nome))).length);
   if(!cont) return;
-  if(!lista.length){ cont.innerHTML='<div class="empty-state"><div class="ei">👤</div><p>Nenhum cliente cadastrado.</p></div>'; return; }
-  cont.innerHTML=lista.map(c=>{
-    const stats=(getClientesResumo().find(x=>x.cliente===c.nome))||{lotes:0,pecas:0,faturamento:0};
+  /* Quem já tinha clientes salvos só no navegador não pode perdê-los: enquanto
+     houver algum que não esteja no banco, aparece o convite para trazer. */
+  const nomesBanco=new Set(clientes.map(c=>normalize(c.nome)));
+  const soNoNavegador=(clientesCadastro||[]).filter(c=>c&&c.nome&&!nomesBanco.has(normalize(c.nome)));
+  const avisoLocal=soNoNavegador.length
+    ? `<div class="cli-import">
+        <div class="cli-import-txt"><b>${soNoNavegador.length} cliente${soNoNavegador.length>1?'s':''}</b>
+          ${soNoNavegador.length>1?'estão salvos':'está salvo'} só neste navegador e
+          ${soNoNavegador.length>1?'somem':'some'} se os dados forem limpos.
+          ${soNoNavegador.length>1?'Traga-os':'Traga-o'} para o banco para aparecerem também na hora de cadastrar uma OF.</div>
+        <button type="button" class="btn-save" onclick="importarClientesDoNavegador()">Trazer para o banco</button>
+      </div>`
+    : '';
+  if(!lista.length){ cont.innerHTML=avisoLocal+'<div class="empty-state"><div class="ei">'
+    +'<svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>'
+    +'</div><p>Nenhum cliente cadastrado.</p></div>'; return; }
+  /* getClientesResumo varre lotes e registros; calcular uma vez só, não por cliente */
+  const resumoPorCliente=new Map((getClientesResumo()||[]).map(x=>[x.cliente,x]));
+  cont.innerHTML=avisoLocal+lista.map(c=>{
+    const stats=resumoPorCliente.get(c.nome)||{lotes:0,pecas:0,faturamento:0};
     return `<div class="client-card">
       <div class="client-top"><div><div class="client-name">${escapeHtml(c.nome)}</div><div class="client-sub">${escapeHtml(c.contato||'Sem contato')} • ${escapeHtml(c.telefone||'Sem telefone')}</div></div><span class="chip ${String(c.status||'Ativo')==='Ativo'?'gchip-fixo':'chip-cn'}">${escapeHtml(c.status||'Ativo')}</span></div>
       <div class="client-grid">
@@ -6032,29 +6059,87 @@ function renderClientes(){
     </div>`;
   }).join('');
 }
-window.salvarCliente = function(){
+window.salvarCliente = async function(){
   const nome=safeText($('cliente-nome')?.value), contato=safeText($('cliente-contato')?.value), telefone=safeText($('cliente-telefone')?.value), email=safeText($('cliente-email')?.value), cidade=safeText($('cliente-cidade')?.value), status=$('cliente-status')?.value||'Ativo', obs=safeText($('cliente-obs')?.value);
-  if(!nome){ toast('Nome do cliente é obrigatório','err'); return; }
-  const item={id:uuid12(),nome,contato,telefone,email,cidade,status,obs,criadoEm:new Date().toISOString(),ownerId:getCurrentUserId()||null,empresaId:getConfig().empresaId||null};
-  clientesCadastro=[item,...clientesCadastro]; saveClientesStore(clientesCadastro); addAuditoria('criou','cliente',nome); renderClientes();
-  ['cliente-nome','cliente-contato','cliente-telefone','cliente-email','cliente-cidade','cliente-obs'].forEach(id=>{ if($(id)) $(id).value=''; }); if($('cliente-status')) $('cliente-status').value='Ativo'; toast('Cliente cadastrado!');
+  if(!nome) return void erroNoCampo('cliente-nome','Falta o nome do cliente');
+  if(clientes.some(c=>normalize(c.nome)===normalize(nome)))
+    return void erroNoCampo('cliente-nome','Esse cliente já está cadastrado');
+  const btn=document.querySelector('button[onclick="salvarCliente()"]');
+  if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML='Salvando...'; }
+  try{
+    requireAuthUser();
+    await addDoc(collection(db,'clientes'),withOwner({nome,contato,telefone,email,cidade,status,obs,criadoEm:Timestamp.now()}));
+    addAuditoria('criou','cliente',nome);
+    ['cliente-nome','cliente-contato','cliente-telefone','cliente-email','cliente-cidade','cliente-obs'].forEach(id=>{ if($(id)) $(id).value=''; });
+    if($('cliente-status')) $('cliente-status').value='Ativo';
+    toast('Cliente cadastrado!'); await loadData();
+  }catch(e){ console.error('SAVE_ERROR',e); toast(firebaseErrorMessage(e),'err'); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||'+ Salvar cliente'; } }
+};
+/* Traz para o banco os clientes que ficaram só no navegador. Não apaga a
+   cópia local — se algo der errado, ela continua lá. */
+window.importarClientesDoNavegador = async function(){
+  const nomesBanco=new Set(clientes.map(c=>normalize(c.nome)));
+  const faltando=(clientesCadastro||[]).filter(c=>c&&c.nome&&!nomesBanco.has(normalize(c.nome)));
+  if(!faltando.length){ toast('Nenhum cliente para trazer.','warn'); return; }
+  if(!confirm(`Trazer ${faltando.length} cliente(s) do navegador para o banco?\n\n`
+    +faltando.slice(0,8).map(c=>'• '+c.nome).join('\n')
+    +(faltando.length>8?`\n… e mais ${faltando.length-8}`:'')
+    +'\n\nA cópia do navegador continua onde está.')) return;
+  const btn=document.querySelector('.cli-import button');
+  if(btn){ btn.disabled=true; btn.textContent='Trazendo...'; }
+  try{
+    requireAuthUser();
+    await Promise.all(faltando.map(c=>addDoc(collection(db,'clientes'),withOwner({
+      nome:safeText(c.nome),contato:safeText(c.contato),telefone:safeText(c.telefone),
+      email:safeText(c.email),cidade:safeText(c.cidade),status:c.status||'Ativo',
+      obs:safeText(c.obs),criadoEm:Timestamp.now()
+    }))));
+    addAuditoria('importou','cliente',faltando.length+' do navegador');
+    toast(`${faltando.length} cliente(s) agora estão no banco.`);
+    await loadData();
+  }catch(e){ console.error('SAVE_ERROR',e); toast(firebaseErrorMessage(e),'err'); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Trazer para o banco'; } }
 };
 window.editarCliente = function(id){
-  const c=clientesCadastro.find(x=>x.id===id); if(!c) return;
+  const c=clientes.find(x=>x.id===id); if(!c) return;
   $('edit-cliente-id').value=c.id; $('edit-cliente-nome').value=c.nome||''; $('edit-cliente-contato').value=c.contato||''; $('edit-cliente-telefone').value=c.telefone||''; $('edit-cliente-email').value=c.email||''; $('edit-cliente-cidade').value=c.cidade||''; $('edit-cliente-status').value=c.status||'Ativo'; $('edit-cliente-obs').value=c.obs||'';
   $('modal-editar-cliente').classList.add('open'); document.body.style.overflow='hidden';
 };
 window.fecharModalEditarCliente = function(){ $('modal-editar-cliente').classList.remove('open'); document.body.style.overflow=''; };
-window.salvarEdicaoCliente = function(){
-  const id=$('edit-cliente-id').value; const idx=clientesCadastro.findIndex(x=>x.id===id); if(idx===-1) return;
-  const nome=safeText($('edit-cliente-nome').value); if(!nome){ toast('Nome obrigatório','err'); return; }
-  clientesCadastro[idx]={...clientesCadastro[idx],nome,contato:safeText($('edit-cliente-contato').value),telefone:safeText($('edit-cliente-telefone').value),email:safeText($('edit-cliente-email').value),cidade:safeText($('edit-cliente-cidade').value),status:$('edit-cliente-status').value||'Ativo',obs:safeText($('edit-cliente-obs').value),updatedEm:new Date().toISOString()};
-  saveClientesStore(clientesCadastro); addAuditoria('editou','cliente',nome); fecharModalEditarCliente(); renderClientes(); toast('Cliente atualizado!');
+window.salvarEdicaoCliente = async function(){
+  const id=$('edit-cliente-id').value;
+  const atual=clientes.find(x=>x.id===id); if(!atual) return;
+  const nome=safeText($('edit-cliente-nome').value);
+  if(!nome) return void erroNoCampo('edit-cliente-nome','Falta o nome do cliente');
+  if(clientes.some(c=>c.id!==id&&normalize(c.nome)===normalize(nome)))
+    return void erroNoCampo('edit-cliente-nome','Já existe outro cliente com esse nome');
+  const btn=document.querySelector('button[onclick="salvarEdicaoCliente()"]');
+  if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML='Salvando...'; }
+  try{
+    requireAuthUser();
+    await updateDoc(doc(db,'clientes',id),withOwner({
+      nome,contato:safeText($('edit-cliente-contato').value),telefone:safeText($('edit-cliente-telefone').value),
+      email:safeText($('edit-cliente-email').value),cidade:safeText($('edit-cliente-cidade').value),
+      status:$('edit-cliente-status').value||'Ativo',obs:safeText($('edit-cliente-obs').value),
+      updatedEm:Timestamp.now()}));
+    addAuditoria('editou','cliente',nome);
+    fecharModalEditarCliente(); toast('Cliente atualizado!'); await loadData();
+  }catch(e){ console.error('SAVE_ERROR',e); toast(firebaseErrorMessage(e),'err'); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||'Salvar'; } }
 };
-window.deletarCliente = function(id){
-  const idx=clientesCadastro.findIndex(x=>x.id===id); if(idx===-1) return; const item=clientesCadastro[idx];
-  if(!confirm('Mover cliente para lixeira?')) return;
-  addLixeira('cliente','clientes_local',item); addAuditoria('removeu','cliente',item.nome); clientesCadastro.splice(idx,1); saveClientesStore(clientesCadastro); renderClientes(); toast('Cliente movido para lixeira!');
+window.deletarCliente = async function(id){
+  const item=clientes.find(x=>x.id===id); if(!item) return;
+  const usado=lotes.filter(l=>normalize(safeText(l.cliente))===normalize(safeText(item.nome))).length;
+  if(!confirm(`Remover o cliente ${item.nome}?`
+    +(usado?`\n\n${usado} OF(s) estão no nome dele — elas continuam como estão.`:'')
+    +'\n\nEle vai para a Lixeira e dá para restaurar de lá.')) return;
+  try{
+    requireAuthUser();
+    await deleteDoc(doc(db,'clientes',id));
+    addAuditoria('removeu','cliente',item.nome);
+    toast('Cliente movido para a Lixeira.'); await loadData();
+  }catch(e){ console.error('SAVE_ERROR',e); toast(firebaseErrorMessage(e),'err'); }
 };
 /* o cartão da lixeira mostra o nome do registro, não o da coleção do banco */
 const LIXEIRA_ROTULO={lotes:'Lote',funcionarios:'Funcionário',registros:'Produção',gastos:'Gasto',
@@ -6123,7 +6208,7 @@ function renderAuditoria(){
       <div class="page" id="page-clientes"><div class="phd"><div class="ptitle">Clientes</div><div class="psub">Cadastro comercial, contatos e visão por cliente</div></div>
         <div class="summary-bar" style="margin-bottom:16px"><div class="sb-item"><div class="sb-l">Clientes</div><div class="sb-v ac" id="cliente-total">0</div></div><div class="sb-item"><div class="sb-l">Ativos</div><div class="sb-v" id="cliente-ativos">0</div></div><div class="sb-item"><div class="sb-l">Com OF</div><div class="sb-v green" id="cliente-com-of">0</div></div></div>
         <div class="card" style="margin-bottom:16px"><div class="chd">Novo Cliente</div><div class="fg"><div class="ff"><label>Nome *</label><input id="cliente-nome" type="text" placeholder="Nome do cliente"/></div><div class="ff"><label>Contato</label><input id="cliente-contato" type="text" placeholder="Responsável"/></div><div class="ff"><label>Telefone</label><input id="cliente-telefone" type="text" placeholder="WhatsApp"/></div><div class="ff"><label>Email</label><input id="cliente-email" type="email" placeholder="Email"/></div><div class="ff"><label>Cidade</label><input id="cliente-cidade" type="text" placeholder="Cidade/UF"/></div><div class="ff"><label>Status</label><select id="cliente-status"><option>Ativo</option><option>Inativo</option></select></div><div class="ff" style="grid-column:span 2"><label>Observações</label><input id="cliente-obs" type="text" placeholder="Observações comerciais"/></div></div><div class="fa"><button class="btn-save" onclick="salvarCliente()">+ Salvar cliente</button></div></div>
-        <div class="card" style="margin-bottom:16px"><div class="fg"><div class="ff"><label>Buscar cliente</label><input id="cliente-busca" type="text" placeholder="Nome, contato, cidade..." oninput="renderClientes()"/></div></div></div>
+        <div class="card" style="margin-bottom:16px"><div class="fg"><div class="ff"><label>Buscar cliente</label><input id="cliente-busca" type="text" placeholder="Nome, contato, cidade..." oninput="aoDigitar('clientes',renderClientes)"/></div></div></div>
         <div class="client-list" id="clientes-list"></div>
       </div>
       <div class="page" id="page-lixeira"><div class="phd"><div class="ptitle">Lixeira</div><div class="psub">Recupere itens removidos com segurança</div></div><div class="summary-bar" style="margin-bottom:16px"><div class="sb-item"><div class="sb-l">Itens</div><div class="sb-v ac" id="lixeira-total">0</div></div></div><div class="client-list" id="lixeira-list"></div></div>
@@ -12696,7 +12781,7 @@ input,select,textarea,button{font-size:16px;}
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;position:relative;">
           <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:13px;pointer-events:none;">🔍</span>
-          <input id="lotes-busca" type="text" placeholder="Buscar OF, produto, cliente..." oninput="filtrarLotes()" style="width:100%;padding:9px 13px 9px 34px;border-radius:var(--r2);background:var(--bg3);border:1px solid var(--bd2);color:var(--t);font-size:13px;outline:none;"/>
+          <input id="lotes-busca" type="text" placeholder="Buscar OF, produto, cliente..." oninput="aoDigitar('lotes',filtrarLotes)" style="width:100%;padding:9px 13px 9px 34px;border-radius:var(--r2);background:var(--bg3);border:1px solid var(--bd2);color:var(--t);font-size:13px;outline:none;"/>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;" id="lotes-filter-btns">
           <button class="lf-btn active" data-filter="todos" onclick="setLoteFilter('todos',this)">Todos</button>
@@ -12819,7 +12904,7 @@ input,select,textarea,button{font-size:16px;}
         </div>
       </div>
       <div class="card"><div class="chd">Histórico recente</div>
-        <div class="fg" style="margin-bottom:12px"><div class="ff"><label>Busca rápida</label><input id="prod-busca" type="text" placeholder="Nome, etapa, OF, observação..." oninput="uiState.prodBusca=this.value;renderProducao()"/></div></div>
+        <div class="fg" style="margin-bottom:12px"><div class="ff"><label>Busca rápida</label><input id="prod-busca" type="text" placeholder="Nome, etapa, OF, observação..." oninput="uiState.prodBusca=this.value;aoDigitar('renderProducao',renderProducao)"/></div></div>
         <div class="tbl-wrap"><table style="min-width:620px;">
           <thead><tr><th>Data/Hora</th><th>Funcionário</th><th>Etapa</th><th>Qtd</th><th>Lote</th><th>Valor</th><th>Obs</th><th></th></tr></thead>
           <tbody id="prod-tbody"><tr><td colspan="7" class="td-empty">Carregando...</td></tr></tbody>
@@ -12839,7 +12924,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>📅 Dia</label><input id="filtro-dia" type="date" oninput="if(this.value)$('filtro-mes').value='';aplicarFiltros()"/></div>
           <div class="ff"><label>📆 Mês</label><input id="filtro-mes" type="month" oninput="if(this.value)$('filtro-dia').value='';aplicarFiltros()"/></div>
           <div class="ff"><label>▣ Lote</label><select id="filtro-lote" onchange="aplicarFiltros()"><option value="">Todos</option></select></div>
-          <div class="ff"><label>Busca</label><input id="hist-busca" type="text" placeholder="Nome, OF, etapa, obs..." oninput="uiState.histBusca=this.value;aplicarFiltros()"/></div>
+          <div class="ff"><label>Busca</label><input id="hist-busca" type="text" placeholder="Nome, OF, etapa, obs..." oninput="uiState.histBusca=this.value;aoDigitar('hist',aplicarFiltros)"/></div>
         </div>
         <div class="fa"><button class="btn-save" onclick="aplicarFiltros()">🔍 Filtrar</button><button class="btn-outline" style="margin-left:4px" onclick="limparFiltros()">✕ Limpar</button></div>
       </div>
@@ -12940,7 +13025,7 @@ input,select,textarea,button{font-size:16px;}
         <div class="gx-filtros-linha">
           <div class="gx-fc gx-fc-busca">
             <label for="gasto-busca">Buscar</label>
-            <input id="gasto-busca" type="text" placeholder="Descrição, categoria..." oninput="uiState.gastoBusca=this.value;renderGastos()"/>
+            <input id="gasto-busca" type="text" placeholder="Descrição, categoria..." oninput="uiState.gastoBusca=this.value;aoDigitar('gastos',renderGastos)"/>
           </div>
           <div class="gx-fc">
             <label for="gasto-filtro-tipo">Tipo</label>
@@ -13242,8 +13327,8 @@ input,select,textarea,button{font-size:16px;}
       <div class="card" style="margin-bottom:16px;">
         <div class="chd">Filtros</div>
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end;">
-          <div class="ff"><label>Busca por cliente</label><input id="fc-busca" type="text" placeholder="Nome do cliente..." oninput="uiState.fatClienteBusca=this.value;renderFatCliente()"/></div>
-          <div class="ff"><label>Filtrar por mês</label><input id="fc-mes" type="month" oninput="uiState.fatClienteMes=this.value;renderFatCliente()"/></div>
+          <div class="ff"><label>Busca por cliente</label><input id="fc-busca" type="text" placeholder="Nome do cliente..." oninput="uiState.fatClienteBusca=this.value;aoDigitar('fc',renderFatCliente)"/></div>
+          <div class="ff"><label>Filtrar por mês</label><input id="fc-mes" type="month" oninput="uiState.fatClienteMes=this.value;aoDigitar('renderFatCliente',renderFatCliente)"/></div>
           <button class="btn-outline" onclick="$('fc-busca').value='';$('fc-mes').value='';uiState.fatClienteBusca='';uiState.fatClienteMes='';renderFatCliente()" style="white-space:nowrap;height:42px;">✕ Limpar</button>
           <button class="btn-save" onclick="exportarFatClienteExcel()" title="Baixa uma planilha do Excel com o ranking e as OFs de cada cliente" style="white-space:nowrap;height:42px;">📊 Exportar Excel</button>
         </div>
@@ -18810,6 +18895,14 @@ main,.main{ padding-bottom:96px!important; }
 /* ver o resto dos meses de gasto */
 .gx-mais{ display:flex; justify-content:center; padding:4px 0 10px; }
 .gx-mais button{ font-size:12.5px!important; padding:10px 20px!important; }
+
+/* convite para trazer os clientes que ficaram só no navegador */
+.cli-import{ display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  background:var(--warning-soft); border:1px solid var(--warning-line);
+  border-radius:var(--ui-r); padding:16px 20px; margin-bottom:16px; }
+.cli-import-txt{ flex:1; min-width:240px; font-size:13px; line-height:1.5; color:var(--t2); }
+.cli-import-txt b{ color:var(--t); }
+.cli-import button{ flex:0 0 auto; }
 </style>
 
 
