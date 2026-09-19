@@ -469,10 +469,11 @@ function snapshotDocsForCurrentOwner(snap){
 function sumSnapshotQtdForCurrentOwner(snap){
   return snapshotDocsForCurrentOwner(snap).reduce((s,d)=>s+toNumber(d.qtd,0),0);
 }
+/* Devolve texto JÁ ESCAPADO: este valor vai direto para innerHTML. */
 function getLoteDisplay(l){
-  const parts=[l?.produto||"—"];
-  if(l?.cliente) parts.push("• "+l.cliente);
-  if(l?.prioridade) parts.push("• "+l.prioridade);
+  const parts=[escapeHtml(l?.produto||"—")];
+  if(l?.cliente) parts.push("• "+escapeHtml(l.cliente));
+  if(l?.prioridade) parts.push("• "+escapeHtml(l.prioridade));
   return parts.join(" ");
 }
 // ── FATURAMENTO SEMPRE PELA META FIXA DO LOTE ──────────────
@@ -1340,31 +1341,31 @@ function populateSelects(){
   if(__selectsVersao===__dadosVersao && jaMontado) return;
   __selectsVersao=__dadosVersao;
   const sf=$("prod-funcionario");
-  if(sf)sf.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
+  if(sf)sf.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const sl=$("prod-lote");
   if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes
     .filter(l=>l.status!=="Cancelado")
-    .map(l=>`<option value="${l.id}">OF ${l.numeroOf} — ${getLoteDisplay(l)}${l.status?` • ${l.status}`:''}</option>`)
+    .map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf)} — ${getLoteDisplay(l)}${l.status?` • ${l.status}`:''}</option>`)
     .join("");
   const sf2=$("bh-funcionario");
-  if(sf2)sf2.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
+  if(sf2)sf2.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const sfPonto=$("ponto-funcionario");
   if(sfPonto){
     const valorAnterior=sfPonto.value;
-    sfPonto.innerHTML='<option value="">— Selecione —</option>'+funcionarios.filter(f=>f.status!=="Inativo").map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
+    sfPonto.innerHTML='<option value="">— Selecione —</option>'+funcionarios.filter(f=>f.status!=="Inativo").map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
     if(valorAnterior && funcionarios.some(f=>f.id===valorAnterior)) sfPonto.value=valorAnterior;
   }
   const cphF=$("cph-funcionario"), cphFiltroF=$("cph-filtro-funcionario");
   const funcionariosAtivos=funcionarios.filter(f=>f.status!=="Inativo");
-  const optsFunc='<option value="">— Selecione —</option>'+funcionariosAtivos.map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
+  const optsFunc='<option value="">— Selecione —</option>'+funcionariosAtivos.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   if(cphF)cphF.innerHTML=optsFunc;
-  if(cphFiltroF)cphFiltroF.innerHTML='<option value="">Todas</option>'+funcionarios.map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
+  if(cphFiltroF)cphFiltroF.innerHTML='<option value="">Todas</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const loteOpts='<option value="">— Sem lote / avulso —</option>'+lotes.filter(l=>getStatusOperacionalLote(l)!=="Cancelado").map(l=>`<option value="${l.id}">OF ${l.numeroOf||"—"} — ${l.produto||"—"}${l.cliente?" • "+l.cliente:""}</option>`).join("");
   const cphL=$("cph-lote"), cphFiltroL=$("cph-filtro-lote");
   if(cphL)cphL.innerHTML=loteOpts;
-  if(cphFiltroL)cphFiltroL.innerHTML='<option value="">Todos</option>'+lotes.map(l=>`<option value="${l.id}">OF ${l.numeroOf||"—"} — ${l.produto||"—"}</option>`).join("");
+  if(cphFiltroL)cphFiltroL.innerHTML='<option value="">Todos</option>'+lotes.map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf||"—")} — ${escapeHtml(l.produto||"—")}</option>`).join("");
   // Preencher selects de cliente nos formulários de lote
-  const clienteOpts='<option value="">— Nenhum —</option>'+clientes.map(c=>`<option value="${c.nome}">${c.nome}</option>`).join("");
+  const clienteOpts='<option value="">— Nenhum —</option>'+clientes.map(c=>`<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`).join("");
   const lcSel=$("lote-cliente");
   if(lcSel && lcSel.tagName==="SELECT") lcSel.innerHTML=clienteOpts;
   const elcSel=$("edit-lote-cliente");
@@ -1454,7 +1455,7 @@ function renderFuncionarios(){
   const fMap={};registros.forEach(r=>{fMap[r.funcionarioId]=(fMap[r.funcionarioId]||0)+(r.qtd||0);});
   const sorted=[...funcionarios].sort((a,b)=>(fMap[b.id]||0)-(fMap[a.id]||0));
   const maxP=Math.max(1,...sorted.map(f=>fMap[f.id]||0));
-  const medals=["🥇","🥈","🥉"];
+  const medals=["md-ouro","md-prata","md-bronze"];
   if(!sorted.length){tb.innerHTML='<tr><td colspan="9" class="td-empty">Nenhum funcionário.</td></tr>';return;}
   tb.innerHTML=sorted.map((f,i)=>{
     const prod=fMap[f.id]||0,pct=Math.round((prod/maxP)*100);
@@ -1465,7 +1466,7 @@ function renderFuncionarios(){
     const meta=f.metaDia||0;
     const metaPct=meta>0?Math.round((prod/meta)*100):0;
     return`<tr>
-      <td><span class="medal">${i<3?medals[i]:`<span class="rank-n">${i+1}</span>`}</span></td>
+      <td><span class="medal">${i<3?`<span class="md ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`}</span></td>
       <td><div class="fn-cell"><div class="fn-nome">${f.nome} ${f.status==="Inativo"?"<span class='chip chip-cn sm'>Inativo</span>":""}</div><div class="fn-bar"><div style="width:${pct}%"></div></div></div></td>
       <td class="td-muted">${f.cargo||"—"}${f.telefone?`<div class="td-mini">${f.telefone}</div>`:""}</td>
       <td class="td-muted">${f.setor||"—"}${f.admissao?`<div class="td-mini">Adm: ${new Date(f.admissao+"T00:00:00").toLocaleDateString("pt-BR")}</div>`:""}</td>
@@ -1609,6 +1610,8 @@ window.salvarPonto=async()=>{
   if(!f){toast("Funcionária não encontrada","err");return;}
   const jaExiste=pontos.find(p=>p.funcionarioId===funcId&&p.data===data&&getPontoNatureza(p)===tipo&&getPontoMinutos(p,getJornadaMinForDate(f,data))===minutos);
   if(jaExiste){toast("Já existe um registro igual para esta funcionária nesta data","err");return;}
+  const trava=travarSalvar('button[onclick="salvarPonto()"]',"Registrando...");
+  if(!trava.ok) return;
   try{
     await addDoc(collection(db,"pontos"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,minutos,obs,criadoEm:Timestamp.now()}));
     [$("bh-data"),$("bh-obs")].forEach(el=>{if(el)el.value="";});
@@ -1618,6 +1621,7 @@ window.salvarPonto=async()=>{
     toast(tipo==="falta"?"Falta registrada!":"Hora extra registrada!");
     await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{ trava.solta(); }
 };
 
 window.deletarPonto=async id=>{
@@ -1662,7 +1666,7 @@ function renderBancoHoras(){
   const saldosCont=$("bh-saldos");
   if(saldosCont){
     if(!funcionarios.length){
-      saldosCont.innerHTML='<div class="empty-state"><div class="ei">⏱</div><p>Nenhum funcionário cadastrado.</p></div>';
+      saldosCont.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></div><p>Nenhum funcionário cadastrado.</p></div>';
       return;
     }
     saldosCont.innerHTML=funcionarios.map(f=>{
@@ -1694,7 +1698,7 @@ function renderBancoHoras(){
           </div></div>
           <div class="bh-item bh-item-full bh-liquido ${s.saldoMin>0?'liq-pos':s.saldoMin<0?'liq-neg':''}">
             <div class="bh-liquido-info">
-              <div class="bh-liquido-l">⚖️ Hora extra líquida</div>
+              <div class="bh-liquido-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 21h10"/><path d="M6 7h12"/><path d="M3 12l3-5 3 5a3 3 0 0 1-6 0z"/><path d="M15 12l3-5 3 5a3 3 0 0 1-6 0z"/></svg>Hora extra líquida</div>
               <div class="bh-liquido-sub">${fmtHorasCompact(s.minExtras)}h extra − ${fmtHorasCompact(s.minFaltas)}h falta → valor sobre o saldo positivo</div>
             </div>
             <div style="text-align:right;">
@@ -1703,7 +1707,7 @@ function renderBancoHoras(){
             </div>
           </div>
           <div class="bh-item bh-item-full bh-final-row">
-            <div class="bh-final-label">💰 Salário final do mês</div>
+            <div class="bh-final-label"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Salário final do mês</div>
             <div class="bh-final-eq">
               <span class="bh-eq-base">${fmtMoney(s.salarioBase)}</span>${s.admProporcional?`<span class="bh-eq-tag" style="color:var(--act-text);background:var(--act-dim);border-color:var(--act-dim);" title="Mês de admissão: ${s.admDiasTrab} de ${s.admDiasMes} dias trabalhados">proporcional ${s.admDiasTrab}/${s.admDiasMes} dias</span>`:""}
               ${s.valorExtras>0?`<span class="bh-eq-plus">+ ${fmtMoney(s.valorExtras)} <span class="bh-eq-tag green">extra</span></span>`:""}
@@ -1816,6 +1820,12 @@ async function finalizarCronometroProducao(){
     if(qtd<=0){toast("Informe a quantidade de peças feitas.","err");return;}
     const calc=calcularProdutividadeHora(qtd,tempoSegundos);
     if(!calc){toast("Não foi possível calcular peças por hora.","err");return;}
+    /* Uma medição de poucos segundos vira um número absurdo de peças/hora, e
+       esse número entra na média do relatório. Pergunta antes de gravar. */
+    if(tempoSegundos<60&&!confirm(
+      `A medição durou só ${formatarTempoSegundos(tempoSegundos)}. `
+      +`Isso daria ${Math.round(calc.pecasPorHora).toLocaleString("pt-BR")} peças por hora, `
+      +`e essa conta entra na média do relatório.\n\nGravar assim mesmo?`)) return;
     const loteId=$("cph-lote")?.value||"";
     const lote=lotes.find(l=>l.id===loteId)||null;
     if(btn){btn.disabled=true;btn.textContent="Salvando...";}
@@ -1889,7 +1899,7 @@ function renderTabelaProdutividadeHora(lista){
   if(!lista.length){tb.innerHTML='<tr><td colspan="9" class="td-empty">Nenhuma medição registrada.</td></tr>';return;}
   tb.innerHTML=lista.map(r=>{
     const d=r.data?new Date(r.data+"T12:00:00").toLocaleDateString("pt-BR"):"—";
-    const lote=r.loteNumeroOf?`OF ${r.loteNumeroOf} <div class="td-mini">${r.loteProduto||""}</div>`:"Avulso";
+    const lote=r.loteNumeroOf?`OF ${escapeHtml(r.loteNumeroOf)} <div class="td-mini">${r.loteProduto||""}</div>`:"Avulso";
     return `<tr>
       <td class="td-mono sm">${d}</td><td><div class="fn-nome" style="font-size:12px">${r.funcionarioNome||"—"}</div></td>
       <td><span class="chip ce sm">${r.etapa||"—"}</span></td><td>${lote}</td>
@@ -2191,17 +2201,21 @@ window.dashSetMes=function(val){
   if(typeof renderMetas==="function") renderMetas();
 };
 
+let __salvandoClienteFb=false;
 window.salvarClienteFirebase=async()=>{
   const nome=$("nc-nome").value.trim();
   const contato=$("nc-contato")?.value.trim()||"";
   const obs=$("nc-obs")?.value.trim()||"";
   if(!nome){toast("Nome do cliente obrigatório","err");return;}
   if(clientes.some(c=>normalize(c.nome)===normalize(nome))){toast("Cliente já cadastrado","warn");return;}
+  if(__salvandoClienteFb) return;
+  __salvandoClienteFb=true;
   try{
     await addDoc(collection(db,"clientes"),withOwner({nome,contato,obs,criadoEm:Timestamp.now()}));
     [$("nc-nome"),$("nc-contato"),$("nc-obs")].forEach(el=>{if(el)el.value="";});
     toast("Cliente cadastrado!");await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{ __salvandoClienteFb=false; }
 };
 window.deletarClienteFirebase=async id=>{
   if(!confirm("Remover este cliente? Os lotes vinculados continuam. Ele vai para a Lixeira."))return;
@@ -2227,17 +2241,17 @@ function renderFatCliente(){
   // Ranking (lista responsiva)
   const list=$("fc-ranking");
   if(!list)return;
-  if(!filtrado.length){list.innerHTML='<div class="empty-state"><div class="ei">📊</div><p>Nenhum dado encontrado.</p></div>';return;}
+  if(!filtrado.length){list.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 3L20 7"/></svg></div><p>Nenhum dado encontrado.</p></div>';return;}
   const maxFat=Math.max(1,...filtrado.map(r=>r.faturamento));
-  const medals=["🥇","🥈","🥉"];
+  const medals=["md-ouro","md-prata","md-bronze"];
   list.innerHTML=filtrado.map((r,i)=>{
     const pct=totalFat>0?Math.round((r.faturamento/totalFat)*100):0;
     const barPct=Math.round((r.faturamento/maxFat)*100);
-    const badge=i<3?medals[i]:`<span class="rank-n">${i+1}</span>`;
+    const badge=i<3?`<span class="md ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`;
     const ticketMedio=r.pecas>0?r.faturamento/r.pecas:0;
     return`<div class="fc-rank-item${i===0?' is-top':''}">
       <div class="fc-rank-badge">${badge}</div>
-      <div class="fc-rank-name">${r.cliente}</div>
+      <div class="fc-rank-name">${escapeHtml(r.cliente)}</div>
       <div class="fc-rank-fat">${fmtMoney(r.faturamento)}</div>
       <div class="fc-rank-sub">${r.pecas.toLocaleString("pt-BR")} pç · ${r.lotes} OF${r.lotes!==1?"s":""} · ${fmtMoney(ticketMedio)}/pç</div>
       <div class="fc-rank-share">${pct}% do total</div>
@@ -2248,14 +2262,14 @@ function renderFatCliente(){
   // Lista de clientes cadastrados
   const listaEl=$("fc-clientes-lista");
   if(listaEl){
-    if(!clientes.length){listaEl.innerHTML='<div class="empty-state"><div class="ei">👤</div><p>Nenhum cliente cadastrado.</p></div>';return;}
+    if(!clientes.length){listaEl.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></div><p>Nenhum cliente cadastrado.</p></div>';return;}
     listaEl.innerHTML=`<div class="tbl-wrap"><table style="min-width:400px"><thead><tr><th>Nome</th><th>Contato</th><th>Obs</th><th>OFs</th><th></th></tr></thead><tbody>${
       clientes.map(c=>{
         const nLotes=lotes.filter(l=>normalize(l.cliente||"")===normalize(c.nome)).length;
         return`<tr>
-          <td style="font-weight:700;color:var(--t);">${c.nome}</td>
-          <td class="td-muted">${c.contato||"—"}</td>
-          <td class="td-obs">${c.obs||"—"}</td>
+          <td style="font-weight:700;color:var(--t);">${escapeHtml(c.nome)}</td>
+          <td class="td-muted">${escapeHtml(c.contato||"—")}</td>
+          <td class="td-obs">${escapeHtml(c.obs||"—")}</td>
           <td class="td-mono">${nLotes}</td>
           <td class="td-actions"><button class="btn-x" onclick="deletarClienteFirebase('${c.id}')">✕</button></td>
         </tr>`;
@@ -2373,6 +2387,17 @@ function lerFormularioOF(prefixo,idIgnorar,numeroOriginal){
     observacoes:(v("obs")?.value||"").trim(),
     competenciaFaturamento:v("competencia")?.value||monthKeyLocal()};
 }
+/* Clicar duas vezes no mesmo botao gravava duas vezes: a lista so volta do
+   banco depois de gravar, entao a conferencia de repetido ainda nao enxerga o
+   primeiro. Enquanto grava, o botao fica travado. */
+function travarSalvar(seletor,rotulo){
+  const btn=document.querySelector(seletor);
+  if(!btn) return {ok:true,solta(){}};
+  if(btn.disabled) return {ok:false,solta(){}};
+  const antes=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML=rotulo||"Salvando...";
+  return {ok:true,solta(){ btn.disabled=false; btn.innerHTML=antes; }};
+}
 let __salvandoOF=false;
 window.salvarLote=async()=>{
   if(__salvandoOF) return;                       // trava contra clique duplo
@@ -2444,7 +2469,7 @@ window.abrirModalEditarLote=function(loteId){
     const ecSel=$("edit-lote-cliente");
     if(ecSel.tagName==="SELECT"){
       // repopulate in case clientes changed
-      ecSel.innerHTML='<option value="">— Nenhum —</option>'+clientes.map(c=>`<option value="${c.nome}">${c.nome}</option>`).join("");
+      ecSel.innerHTML='<option value="">— Nenhum —</option>'+clientes.map(c=>`<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`).join("");
       ecSel.value=l.cliente||"";
       // if not found as option, add a temporary one
       if(ecSel.value!==(l.cliente||"") && l.cliente){
@@ -2725,11 +2750,11 @@ function renderLotes(){
 
   if(!lotesVisiveis.length){
     const msgVazio=busca||filtroAtivo!=="todos"?"Nenhum lote encontrado":(verTodos?"Nenhum lote cadastrado":"Nenhum lote neste mês");
-    c.innerHTML='<div class="empty-state"><div class="ei">▣</div><p>'+msgVazio+'</p></div>';
+    c.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div><p>'+msgVazio+'</p></div>';
     return;
   }
   const alertas=lotesEscopo.filter(l=>l.prazo&&statusDe(l)!=="Concluído"&&statusDe(l)!=="Cancelado").filter(l=>Math.round((new Date(l.prazo+"T00:00:00")-hoje)/(864e5))<=3);
-  const alertaHtml=alertas.length&&filtroAtivo==="todos"&&!busca?`<div class="alertas-box">${alertas.map(l=>{const p=prazoInfo(l.prazo);return`<div class="alerta-row ${p.urgente?"venc":"alerta-warn"}">${p.urgente?"🚨":"⏰"} <strong>OF ${l.numeroOf}</strong> — ${l.produto}: ${p.urgente?"PRAZO VENCIDO!":"vence em "+p.diff+" dia(s)"} (${p.label})</div>`;}).join("")}</div>`:"";
+  const alertaHtml=alertas.length&&filtroAtivo==="todos"&&!busca?`<div class="alertas-box">${alertas.map(l=>{const p=prazoInfo(l.prazo);return`<div class="alerta-row ${p.urgente?"venc":"alerta-warn"}">${p.urgente?"🚨":"⏰"} <strong>OF ${escapeHtml(l.numeroOf)}</strong> — ${escapeHtml(l.produto)}: ${p.urgente?"PRAZO VENCIDO!":"vence em "+p.diff+" dia(s)"} (${p.label})</div>`;}).join("")}</div>`:"";
   /* Desenhar 900 cards de uma vez congelava a tela por dois segundos. Mostra
      os primeiros e o resto sob demanda — o filtro e a busca continuam valendo
      sobre a lista inteira, só o desenho é que é por partes. */
@@ -2761,12 +2786,12 @@ function renderLotes(){
       const isG=temProd&&etapa===pipeline.gargaloEtapa&&pipeline.minVal!==pipeline.maxVal;
       const isDone=epct===100;
       const sc=!temProd?'e-vazia':isDone?'e-done':isG?'e-gargalo':'e-ok';
-      return `<div class="of2-etapa ${sc}" title="${etapa}: ${qtd.toLocaleString('pt-BR')} pçs (${epct}%)">
-        <div class="of2-etapa-hd"><span class="of2-etapa-nome">${etapa}</span><span class="of2-etapa-pct">${temProd?epct+'%':'—'}</span></div>
+      return `<div class="of2-etapa ${sc}" title="${escapeHtml(etapa)}: ${qtd.toLocaleString('pt-BR')} pçs (${epct}%)">
+        <div class="of2-etapa-hd"><span class="of2-etapa-nome">${escapeHtml(etapa)}</span><span class="of2-etapa-pct">${temProd?epct+'%':'—'}</span></div>
         <div class="of2-etapa-bar"><div class="of2-etapa-fill" style="width:${epct}%"></div></div>
       </div>`;
     }).join('');
-    const priorBadge=l.prioridade&&l.prioridade!=="Normal"?`<span class="prior-badge prior-${normalize(l.prioridade)}">${l.prioridade==="Urgente"?"🔴":l.prioridade==="Alta"?"🟠":"🟢"} ${l.prioridade}</span>`:"";
+    const priorBadge=l.prioridade&&l.prioridade!=="Normal"?`<span class="prior-badge prior-${normalize(l.prioridade)}">${escapeHtml(l.prioridade)}</span>`:"";
     const podeConcluir=statusReal!=="Concluído"&&statusReal!=="Cancelado";
     /* a faixa na borda esquerda diz o estado sem precisar ler o card */
     const faixa=statusReal==="Concluído"?"concluido":statusReal==="Cancelado"?"cancelado"
@@ -2774,7 +2799,7 @@ function renderLotes(){
     return `<div class="of2-card" data-prior="${faixa}" style="--ofc:${sm.c}">
       <div class="of2-head">
         <div class="of2-head-l">
-          <div class="of2-badge">OF ${l.numeroOf}</div>
+          <div class="of2-badge">OF ${escapeHtml(l.numeroOf)}</div>
           <div class="of2-titles">
             <div class="of2-name">${getLoteDisplay(l)}</div>
             <div class="of2-sub">${priorBadge}${prazoBadge(l.prazo,statusReal)}</div>
@@ -2801,7 +2826,7 @@ function renderLotes(){
         <div class="of2-stat"><span class="of2-stat-l">Valor / peça</span><span class="of2-stat-v">${fmtMoney(l.valorPeca)}</span></div>
         <div class="of2-stat"><span class="of2-stat-l">Cai em</span><span class="of2-stat-v txt">${competenciaTxt}</span></div>
       </div>
-      ${(l.tamanhos||l.observacoes)?`<div class="of2-hints">${l.tamanhos?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3H3v6h18z"/><path d="M7 9v3M12 9v3M17 9v3"/><path d="M3 15h18v6H3z"/></svg> ${l.tamanhos}</span>`:''}${l.observacoes?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 17 0z"/></svg> ${l.observacoes}</span>`:''}</div>`:''}
+      ${(l.tamanhos||l.observacoes)?`<div class="of2-hints">${l.tamanhos?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3H3v6h18z"/><path d="M7 9v3M12 9v3M17 9v3"/><path d="M3 15h18v6H3z"/></svg> ${escapeHtml(l.tamanhos)}</span>`:''}${l.observacoes?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 17 0z"/></svg> ${escapeHtml(l.observacoes)}</span>`:''}</div>`:''}
       <div class="of2-etapas-wrap">
         <div class="of2-etapas-hd"><span>Etapas de produção</span>${
           temProd
@@ -2811,7 +2836,7 @@ function renderLotes(){
                 : '')
         }</div>
         <div class="of2-etapas">${etapasHtml}</div>
-        ${temProd&&pipeline.minVal!==pipeline.maxVal?`<div class="of2-gargalo">⚠ Gargalo em <strong>${pipeline.gargaloEtapa}</strong> — ${pipeline.minVal===0?'não iniciada':`${(pipeline.maxVal-pipeline.minVal).toLocaleString('pt-BR')} pçs atrás`}</div>`:''}
+        ${temProd&&pipeline.minVal!==pipeline.maxVal?`<div class="of2-gargalo">⚠ Gargalo em <strong>${escapeHtml(pipeline.gargaloEtapa)}</strong> — ${pipeline.minVal===0?'não iniciada':`${(pipeline.maxVal-pipeline.minVal).toLocaleString('pt-BR')} pçs atrás`}</div>`:''}
       </div>
       ${podeConcluir?`<div class="of2-actions">
         <button class="btn-save of2-btn" onclick="abrirModalConcluir('${l.id}')">✓ Lançar e concluir</button>
@@ -2820,12 +2845,12 @@ function renderLotes(){
     </div>`
    }catch(err){
      console.error("LOTE_RENDER_ERROR", l?.numeroOf||l?.id, err);
-     return `<div class="lote-card" style="border-color:rgba(248,113,113,.4)"><div class="lc-top"><div class="lc-id"><div class="of-tag">OF</div><div><div class="lc-num">${l?.numeroOf||"—"}</div><div class="lc-prod" style="color:var(--red)">⚠ Erro ao exibir este lote (dado inconsistente). Os demais carregaram normalmente.</div></div></div></div></div>`;
+     return `<div class="lote-card" style="border-color:rgba(248,113,113,.4)"><div class="lc-top"><div class="lc-id"><div class="of-tag">OF</div><div><div class="lc-num">${escapeHtml(l?.numeroOf||"—")}</div><div class="lc-prod" style="color:var(--red)">⚠ Erro ao exibir este lote (dado inconsistente). Os demais carregaram normalmente.</div></div></div></div></div>`;
    }
   }).join("")+maisHtml;
   }catch(err){
     console.error("RENDER_LOTES_FATAL",err);
-    if(c) c.innerHTML='<div class="empty-state"><div class="ei">⚠</div><p>Não foi possível carregar os lotes agora. Atualize a página (Ctrl+Shift+R). Se continuar, me avise.</p></div>';
+    if(c) c.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 16H3z"/><path d="M12 9v5M12 17h.01"/></svg></div><p>Não foi possível carregar os lotes agora. Atualize a página (Ctrl+Shift+R). Se continuar, me avise.</p></div>';
   }
 }
 window.lotesMostrarMais=function(){
@@ -2905,11 +2930,11 @@ window.editarRegistro=function(id){
   const r=registros.find(x=>x.id===id);if(!r)return;
   $("edit-reg-id").value=id;
   const sf=$("edit-reg-funcionario");
-  if(sf)sf.innerHTML=funcionarios.map(f=>`<option value="${f.id}"${f.id===r.funcionarioId?" selected":""}>${f.nome}</option>`).join("");
+  if(sf)sf.innerHTML=funcionarios.map(f=>`<option value="${f.id}"${f.id===r.funcionarioId?" selected":""}>${escapeHtml(f.nome)}</option>`).join("");
   const se=$("edit-reg-etapa");
   if(se)Array.from(se.options).forEach(o=>{o.selected=o.value===r.etapa;});
   const sl=$("edit-reg-lote");
-  if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes.filter(l=>l.status!=="Cancelado").map(l=>`<option value="${l.id}"${l.id===r.loteId?" selected":""}>OF ${l.numeroOf} — ${l.produto}</option>`).join("");
+  if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes.filter(l=>l.status!=="Cancelado").map(l=>`<option value="${l.id}"${l.id===r.loteId?" selected":""}>OF ${escapeHtml(l.numeroOf)} — ${l.produto}</option>`).join("");
   if($("edit-reg-qtd"))$("edit-reg-qtd").value=r.qtd||"";
   if($("edit-reg-obs"))$("edit-reg-obs").value=r.obs||"";
   $("modal-editar-registro").classList.add("open");document.body.style.overflow="hidden";
@@ -3006,7 +3031,7 @@ window.editarPonto=function(id){
   const p=pontos.find(x=>x.id===id);if(!p)return;
   $("edit-ponto-id").value=id;
   const sf=$("edit-bh-funcionario");
-  if(sf)sf.innerHTML=funcionarios.map(f=>`<option value="${f.id}"${f.id===p.funcionarioId?" selected":""}>${f.nome}</option>`).join("");
+  if(sf)sf.innerHTML=funcionarios.map(f=>`<option value="${f.id}"${f.id===p.funcionarioId?" selected":""}>${escapeHtml(f.nome)}</option>`).join("");
   if($("edit-bh-data"))$("edit-bh-data").value=p.data||"";
   if($("edit-bh-tipo"))$("edit-bh-tipo").value=getPontoNatureza(p);
   const horasEl=$("edit-bh-horas");
@@ -3053,12 +3078,12 @@ function renderProducao(){
     const loteR=lotes.find(l=>l.id===r.loteId);
     return`<tr>
       <td class="td-mono sm">${dateFmt(r.criadoEm,true)}</td>
-      <td><span class="chip cn">${r.funcionarioNome}</span></td>
-      <td><span class="chip ce">${r.etapa}</span></td>
+      <td><span class="chip cn">${escapeHtml(r.funcionarioNome)}</span></td>
+      <td><span class="chip ce">${escapeHtml(r.etapa)}</span></td>
       <td class="td-mono" style="font-weight:700;">${(r.qtd||0).toLocaleString("pt-BR")}</td>
-      <td>${r.loteNumeroOf?`<span class="chip co">OF ${r.loteNumeroOf}</span>`:"—"}</td>
+      <td>${r.loteNumeroOf?`<span class="chip co">OF ${escapeHtml(r.loteNumeroOf)}</span>`:"—"}</td>
       <td class="td-mono td-muted" style="font-size:11px;">${loteR&&loteR.qtdTotal?`${Math.min(100,Math.round((registros.filter(x=>x.loteId===r.loteId&&x.etapa===r.etapa).reduce((s,x)=>s+toNumber(x.qtd,0),0)/loteR.qtdTotal)*100))}% desta etapa`:"—"}</td>
-      <td class="td-obs">${r.obs||"—"}</td>
+      <td class="td-obs">${escapeHtml(r.obs||"—")}</td>
       <td><div class="td-actions"><button class="btn-edit" onclick="editarRegistro('${r.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarRegistro('${r.id}')">✕</button></div></td>
     </tr>`;
   }).join("");
@@ -3095,7 +3120,7 @@ window.aplicarFiltros=function(manterLimite){
   if($("hr-qtd"))$("hr-qtd").textContent=tQ.toLocaleString("pt-BR");
   if($("hr-fat"))$("hr-fat").textContent=fmtMoney(tF);
   const cont=$("hist-cont");if(!cont)return;
-  if(!dados.length){cont.innerHTML='<div class="empty-state"><div class="ei">🔍</div><p>Nenhum registro encontrado</p></div>';return;}
+  if(!dados.length){cont.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></div><p>Nenhum registro encontrado</p></div>';return;}
   // desenha só um pedaço; o resto entra pelo botão "ver mais"
   const totalReg=dados.length;
   const limite=Math.min(totalReg,Math.max(HIST_POR_VEZ,window.histLimite||HIST_POR_VEZ));
@@ -3111,11 +3136,11 @@ window.aplicarFiltros=function(manterLimite){
     <table class="htbl"><thead><tr><th>Hora</th><th>Funcionário</th><th>Etapa</th><th>Qtd</th><th>Lote</th><th>Obs</th></tr></thead>
     <tbody>${regs.map(r=>`<tr>
       <td class="td-mono sm">${(r.criadoEm?.toDate?r.criadoEm.toDate():new Date(r.criadoEm)).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</td>
-      <td><span class="chip cn sm">${r.funcionarioNome}</span></td>
-      <td><span class="chip ce sm">${r.etapa}</span></td>
+      <td><span class="chip cn sm">${escapeHtml(r.funcionarioNome)}</span></td>
+      <td><span class="chip ce sm">${escapeHtml(r.etapa)}</span></td>
       <td class="td-mono">${(r.qtd||0).toLocaleString("pt-BR")}</td>
-      <td>${r.loteNumeroOf?`<span class="chip co sm">OF ${r.loteNumeroOf}</span>`:"—"}</td>
-      <td class="td-obs">${r.obs||"—"}</td>
+      <td>${r.loteNumeroOf?`<span class="chip co sm">OF ${escapeHtml(r.loteNumeroOf)}</span>`:"—"}</td>
+      <td class="td-obs">${escapeHtml(r.obs||"—")}</td>
     </tr>`).join("")}</tbody></table></div>`;
   }).join("")
   +(limite<totalReg?`<div class="hist-mais">
@@ -3125,7 +3150,7 @@ window.aplicarFiltros=function(manterLimite){
 };
 window.limparFiltros=()=>{[$("filtro-dia"),$("filtro-mes"),$("filtro-lote"),$("hist-busca")].forEach(el=>{if(el)el.value="";});uiState.histBusca="";aplicarFiltros();};
 function renderHistorico(){
-  const s=$("filtro-lote");if(s)s.innerHTML='<option value="">Todos</option>'+lotes.map(l=>`<option value="${l.id}">OF ${l.numeroOf} — ${getLoteDisplay(l)}</option>`).join("");
+  const s=$("filtro-lote");if(s)s.innerHTML='<option value="">Todos</option>'+lotes.map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf)} — ${getLoteDisplay(l)}</option>`).join("");
   aplicarFiltros();
 }
 
@@ -3276,6 +3301,8 @@ window.lancarEncargos=async function(){
     +corrigir.map(l=>`• ${l.descricao}: ${fmtMoney(l.de)} → ${fmtMoney(l.valor)}`).join("\n"));
   if(!confirm(partes.join("\n\n")
     +`\n\nDiferença no mês: ${fmtMoney(total)}\n\nA partir do mês que vem eles se repetem sozinhos.`)) return;
+  const trava=travarSalvar('button[onclick="lancarEncargos()"]',"Lançando...");
+  if(!trava.ok) return;
   try{
     requireAuthUser();
     await Promise.all([
@@ -3292,6 +3319,7 @@ window.lancarEncargos=async function(){
     toast(`Encargos: ${msg} (${fmtMoney(total)} no mês)`);
     await loadData();
   }catch(e){ console.error("ENCARGOS_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
+  finally{ trava.solta(); }
 };
 
 /* O reajuste da tabela de encargos mexe no INSS e no FGTS. O SALÁRIO fica no
@@ -4437,7 +4465,7 @@ function blocoReforco(r,fraca){
     <div>Ficou incerto? A leitura reforçada usa o modelo mais forte e acerta
       foto difícil — custa <strong>${IA_NIVEIS.reforcado.custo}</strong> contra
       ${IA_NIVEIS.economico.custo} da econômica.</div>
-    <button type="button" class="btn-outline" onclick="reforcarLeituraIA()">🔍 Tentar leitura reforçada</button>
+    <button type="button" class="btn-outline" onclick="reforcarLeituraIA()"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Tentar leitura reforçada</button>
   </div>`;
 }
 
@@ -4909,22 +4937,22 @@ function renderCaixaEmpresa(){
   </tr>`).join("");
   el.innerHTML=`<div class="metas-section">
     <div class="metas-section-hd">
-      <div class="metas-section-title">📦 Caixa da Empresa</div>
+      <div class="metas-section-title"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Caixa da Empresa</div>
       <span class="ag-hint">Encargos de fim de ${anoFim} · 13º + férias</span>
     </div>
     <div class="cx-grid">
       <div class="cx-tile cx-tile-input">
-        <div class="cx-l">💰 Caixa atual</div>
+        <div class="cx-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Caixa atual</div>
         <div class="cx-input-wrap"><span class="cx-prefix">R$</span><input id="caixa-input" type="number" step="0.01" min="0" inputmode="decimal" value="${r.caixa||''}" placeholder="0,00" onchange="setCaixaEmpresa(this.value)"/></div>
         <div class="cx-s">o valor que você tem guardado</div>
       </div>
       <div class="cx-tile cx-tile-bad">
-        <div class="cx-l">🧾 Encargos de fim de ano</div>
+        <div class="cx-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Encargos de fim de ano</div>
         <div class="cx-v">${fmtMoney(r.totalEncargos)}</div>
         <div class="cx-s">13º ${fmtMoney(r.totalDecimo)} · férias ${fmtMoney(r.totalFerias)}</div>
       </div>
       <div class="cx-tile cx-tile-${cobre?'ok':'bad'}">
-        <div class="cx-l">📊 Saldo após encargos</div>
+        <div class="cx-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h4V10H3zM10 20h4V4h-4zM17 20h4v-7h-4z"/></svg>Saldo após encargos</div>
         <div class="cx-v ${cobre?'cx-pos':'cx-neg'}">${fmtMoney(r.saldo)}</div>
         <div class="cx-s">${cobre?'o caixa cobre os encargos ✓':'faltam '+fmtMoney(Math.abs(r.saldo))+' para cobrir'}</div>
       </div>
@@ -4947,7 +4975,7 @@ function renderCaixaEmpresa(){
           <td class="cx-num cx-total">${fmtMoney(r.totalEncargos)}</td>
         </tr></tfoot>
       </table></div>
-      <div class="cx-nota">💡 Os <strong>meses de casa</strong> são editáveis — clique no número para ajustar qualquer funcionária. Regra atual: <strong>12 meses</strong> para Ketelen; quem tem data de admissão conta a partir dela; as demais desde fevereiro. As <strong>férias</strong> são calculadas sobre <strong>20 dias</strong> (+ 1/3 constitucional). Valores projetados para dezembro.</div>
+      <div class="cx-nota"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2z"/></svg>Os <strong>meses de casa</strong> são editáveis — clique no número para ajustar qualquer funcionária. Regra atual: <strong>12 meses</strong> para Ketelen; quem tem data de admissão conta a partir dela; as demais desde fevereiro. As <strong>férias</strong> são calculadas sobre <strong>20 dias</strong> (+ 1/3 constitucional). Valores projetados para dezembro.</div>
     </div>`}
   </div>`;
 }
@@ -4999,12 +5027,12 @@ function renderFolhaPagamento(){
   </tr>`).join("");
   el.innerHTML=`<div class="metas-section">
     <div class="metas-section-hd">
-      <div class="metas-section-title">👥 Folha de Pagamento</div>
+      <div class="metas-section-title"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>Folha de Pagamento</div>
       <span class="ag-hint">${formatMonthLabel(r.mes)} · ${r.qtd} funcionária${r.qtd===1?"":"s"} ativa${r.qtd===1?"":"s"}</span>
     </div>
     <div class="cx-grid">
       <div class="cx-tile cx-tile-bad">
-        <div class="cx-l">💵 Total a pagar no mês</div>
+        <div class="cx-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Total a pagar no mês</div>
         <div class="cx-v">${fmtMoney(r.total)}</div>
         <div class="cx-s">média de ${fmtMoney(media)} por pessoa</div>
       </div>
@@ -5033,7 +5061,7 @@ function renderFolhaPagamento(){
           <td class="cx-num cx-total">${fmtMoney(r.total)}</td>
         </tr></tfoot>
       </table></div>
-      <div class="cx-nota">💡 Mesma conta da página <strong>Banco de Horas</strong>: base proporcional a quem entrou no meio do mês, mais horas extras, menos faltas.
+      <div class="cx-nota"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2z"/></svg>Mesma conta da página <strong>Banco de Horas</strong>: base proporcional a quem entrou no meio do mês, mais horas extras, menos faltas.
       ${r.bloqueados>0?`<strong>${r.bloqueados}</strong> bônus bloqueado${r.bloqueados===1?"":"s"} por saldo de horas negativo. `:""}
       Não inclui 13º e férias — esses estão no <strong>Caixa da Empresa</strong> acima.</div>
     </div>`}
@@ -5342,7 +5370,7 @@ function renderRelatorioProdutividadeHora(mes){
   const media=horas>0?pecas/horas:0;
   const porFunc=cphAgruparMedia(lista,"funcionarioNome").slice(0,8);
   const porEtapa=cphAgruparMedia(lista,"etapa").slice(0,8);
-  return `<div class="rel-section-title">⏱ Produtividade por Hora</div>
+  return `<div class="rel-section-title">Produtividade por Hora</div>
     <div class="rel-cards4" style="margin-bottom:10px">
       <div class="rel-card accent"><div class="rc-l">Peças medidas</div><div class="rc-v">${pecas.toLocaleString("pt-BR")}</div></div>
       <div class="rel-card silver"><div class="rc-l">Média geral</div><div class="rc-v">${Math.round(media).toLocaleString("pt-BR")} pçs/h</div></div>
@@ -5506,7 +5534,7 @@ window.gerarPreviewRelatorio=function(){
       <div>
         <div class="rel-section-title">Ranking de produção</div>
         <table class="rel-table rel-table-pro"><thead><tr><th>#</th><th>Funcionária</th><th class="rtd-r">Peças</th></tr></thead>
-        <tbody>${ranking.slice(0,10).map(([n,q],i)=>`<tr><td>${i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</td><td>${esc(n)}</td><td class="rtd-r"><strong>${q.toLocaleString("pt-BR")}</strong></td></tr>`).join("")||"<tr><td colspan='3' class='td-empty'>Sem produção no período.</td></tr>"}</tbody></table>
+        <tbody>${ranking.slice(0,10).map(([n,q],i)=>`<tr><td>${i+1}${i<3?"º":""}</td><td>${esc(n)}</td><td class="rtd-r"><strong>${q.toLocaleString("pt-BR")}</strong></td></tr>`).join("")||"<tr><td colspan='3' class='td-empty'>Sem produção no período.</td></tr>"}</tbody></table>
       </div>
       <div>
         <div class="rel-section-title">Clientes e categorias</div>
@@ -5712,6 +5740,14 @@ window.salvarConfiguracoes=async function(){
     metaMargem:toNumber($("cfg-meta-margem")?.value,20),
     metaCusto:toNumber($("cfg-meta-custo")?.value,17000)
   };
+  /* Meta negativa vira porcentagem sem sentido no painel. */
+  for(const [campo,rotulo] of [["cfg-meta-dia","A meta de peças por dia"],["cfg-meta-mes","A meta de peças do mês"],
+      ["cfg-meta-fat","A meta de faturamento"],["cfg-meta-lucro","A meta de lucro"],
+      ["cfg-meta-margem","A margem"],["cfg-meta-custo","A meta de custo"]]){
+    if(!naoNegativo(campo,rotulo)) return;
+  }
+  const travaCfg=travarSalvar('button[onclick="salvarConfiguracoes()"]');
+  if(!travaCfg.ok) return;
   Object.entries(cfgLocal).forEach(([k,v])=>setConfigField(k,v));
   applyTheme(getConfig().tema);
   try{
@@ -5726,6 +5762,7 @@ window.salvarConfiguracoes=async function(){
     console.error("SAVE_CONFIG_ERROR",e);
     toast("Configurações locais salvas. Firebase: "+firebaseErrorMessage(e),"warn");
   }
+  finally{ travaCfg.solta(); }
   renderConfiguracoes();
   if(currentPage==="dashboard")renderDashboard();
   if(currentPage==="relatorio")renderRelatorio();
@@ -5758,31 +5795,57 @@ window.restaurarBackupJSON=async function(){
     if(data.config) saveStoredConfig({...getStoredConfig(),...data.config});
 
     const existentes={funcionarios,lotes,gastos,pontos,registros};
+    /* A mesma data chega de duas formas: Timestamp (do banco) e texto (do
+       arquivo). Sem transformar as duas no mesmo número, nada batia e o
+       backup entrava inteiro de novo. */
+    const selo=v=>{
+      if(v===null||v===undefined||v==="") return "";
+      if(typeof v==="object"){
+        if(typeof v.seconds==="number") return String(v.seconds);
+        if(typeof v._seconds==="number") return String(v._seconds);
+        if(typeof v.toDate==="function"){ const d=v.toDate(); return Number.isNaN(d?.getTime?.())?"":String(Math.floor(d.getTime()/1000)); }
+      }
+      const d=new Date(v);
+      return Number.isNaN(d.getTime())?normalize(String(v)):String(Math.floor(d.getTime()/1000));
+    };
     const identity=(col,item)=>{
       if(!item) return "";
       if(col==="funcionarios") return normalize(item.nome||"");
       if(col==="lotes") return normalize(item.numeroOf||item.of||"");
-      if(col==="gastos") return normalize([item.descricao,item.valor,item.competencia,item.categoria].join("|"));
-      if(col==="pontos") return normalize([item.funcionarioId||item.funcionarioNome,item.data,item.tipo,item.minutos].join("|"));
-      if(col==="registros") return normalize([item.loteId||item.loteNumeroOf,item.funcionarioId||item.funcionarioNome,item.etapa,item.qtd,item.criadoEm?.seconds||item.criadoEm||""].join("|"));
+      if(col==="gastos") return normalize([item.descricao,centavos(item.valor),item.competencia,item.categoria].join("|"));
+      if(col==="pontos") return normalize([item.funcionarioId||item.funcionarioNome,item.data,item.tipo,toNumber(item.minutos,0)].join("|"));
+      if(col==="registros") return normalize([item.loteId||item.loteNumeroOf,item.funcionarioId||item.funcionarioNome,item.etapa,toNumber(item.qtd,0),selo(item.criadoEm)].join("|"));
       return normalize(JSON.stringify(item));
     };
     const seen={};
     Object.keys(colMap).forEach(col=>{seen[col]=new Set((existentes[col]||[]).map(x=>identity(col,x)).filter(Boolean));});
     let total=0, pulados=0;
-    for(const [col,itemsRaw] of Object.entries(colMap)){
-      const items=Array.isArray(itemsRaw)?itemsRaw:[];
-      for(const item of items){
-        const key=identity(col,item);
-        if(key&&seen[col].has(key)){pulados++;continue;}
-        const clean={...item};
-        delete clean.id;
-        await addDoc(collection(db,col),withOwner(clean));
-        if(key) seen[col].add(key);
-        total++;
+    /* Um backup de anos demora; sem travar o botão, um segundo clique começava
+       tudo de novo por cima do que já tinha entrado. */
+    const btnImp=document.querySelector('button[onclick="restaurarBackupJSON()"]');
+    const rotImp=btnImp?btnImp.innerHTML:"";
+    if(btnImp){ if(btnImp.disabled) return; btnImp.disabled=true; }
+    try{
+      let feitos=0;
+      for(const [col,itemsRaw] of Object.entries(colMap)){
+        const items=Array.isArray(itemsRaw)?itemsRaw:[];
+        for(const item of items){
+          feitos++;
+          if(btnImp&&feitos%25===0) btnImp.innerHTML=`Importando... ${feitos}/${totalSolicitado}`;
+          const key=identity(col,item);
+          if(key&&seen[col].has(key)){pulados++;continue;}
+          const clean={...item};
+          delete clean.id;
+          await addDoc(collection(db,col),withOwner(clean));
+          if(key) seen[col].add(key);
+          total++;
+        }
       }
-    }
-    toast(`Backup restaurado: ${total} item(ns) importado(s)${pulados?` • ${pulados} duplicado(s) pulado(s)`:""}`);
+    } finally { if(btnImp){ btnImp.disabled=false; btnImp.innerHTML=rotImp; } }
+    toast(total
+      ? `Backup restaurado: ${total} item(ns) importado(s)${pulados?` • ${pulados} já existia(m)`:""}`
+      : `Nada a importar: os ${pulados} item(ns) do arquivo já estão no sistema.`);
+    if($("backup-import-file")) $("backup-import-file").value="";
     await loadData();
   }catch(e){
     console.error("RESTORE_BACKUP_ERROR",e);
@@ -5798,12 +5861,12 @@ function renderBackup(){
   const el=$("backup-status");if(!el)return;
   const total=funcionarios.length+registros.length+lotes.length+gastos.length+pontos.length;
   el.innerHTML=`
-    <div class="bk-stat"><span class="bk-n">${funcionarios.length}</span><span class="bk-l">👥 Funcionários</span></div>
-    <div class="bk-stat"><span class="bk-n">${lotes.length}</span><span class="bk-l">📦 Lotes (OF)</span></div>
-    <div class="bk-stat"><span class="bk-n">${registros.length}</span><span class="bk-l">⚡ Registros</span></div>
-    <div class="bk-stat"><span class="bk-n">${gastos.length}</span><span class="bk-l"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Gastos</span></div>
-    <div class="bk-stat"><span class="bk-n">${pontos.length}</span><span class="bk-l">⏱ Pontos</span></div>
-    <div class="bk-stat accent"><span class="bk-n">${total}</span><span class="bk-l">📋 Total docs</span></div>`;
+    <div class="bk-stat"><span class="bk-n">${funcionarios.length}</span><span class="bk-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg> Funcionários</span></div>
+    <div class="bk-stat"><span class="bk-n">${lotes.length}</span><span class="bk-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg> Lotes (OF)</span></div>
+    <div class="bk-stat"><span class="bk-n">${registros.length}</span><span class="bk-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg> Registros</span></div>
+    <div class="bk-stat"><span class="bk-n">${gastos.length}</span><span class="bk-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Gastos</span></div>
+    <div class="bk-stat"><span class="bk-n">${pontos.length}</span><span class="bk-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Pontos</span></div>
+    <div class="bk-stat accent"><span class="bk-n">${total}</span><span class="bk-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9 11h6M9 15h4"/></svg> Total docs</span></div>`;
 }
 window.baixarBackupJSON=()=>{
   // fotos das batidas ficam fora do backup para o arquivo não ficar gigante
@@ -6168,7 +6231,7 @@ function lixeiraResumo(x){
 function renderLixeira(){
   const cont=$('lixeira-list'); if(!cont) return; const itens=getLixeiraStore();
   if($('lixeira-total')) $('lixeira-total').textContent=String(itens.length);
-  if(!itens.length){ cont.innerHTML='<div class="empty-state"><div class="ei">🗑</div><p>Lixeira vazia.</p></div>'; return; }
+  if(!itens.length){ cont.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></div><p>Lixeira vazia.</p></div>'; return; }
   cont.innerHTML=itens.map(x=>`<div class="trash-card"><div class="client-top"><div><div class="client-name">${escapeHtml(lixeiraTitulo(x))}</div><div class="client-sub">${new Date(x.quando).toLocaleString('pt-BR')} • ${escapeHtml(x.usuario)}</div></div></div><div class="td-muted" style="margin:8px 0 12px">${escapeHtml(lixeiraResumo(x))}</div><div class="fa"><button class="btn-save" onclick="restaurarDaLixeira('${x.trashId}')">Restaurar</button><button class="btn-x" onclick="excluirDefinitivoLixeira('${x.trashId}')">Excluir definitivo</button></div></div>`).join('');
 }
 window.restaurarDaLixeira = async function(trashId){
@@ -6191,7 +6254,7 @@ window.excluirDefinitivoLixeira = function(trashId){
 function renderAuditoria(){
   const cont=$('auditoria-list'); if(!cont) return; const itens=getAuditoriaStore();
   if($('audit-total')) $('audit-total').textContent=String(itens.length);
-  if(!itens.length){ cont.innerHTML='<div class="empty-state"><div class="ei">🕘</div><p>Sem auditoria ainda.</p></div>'; return; }
+  if(!itens.length){ cont.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><p>Sem auditoria ainda.</p></div>'; return; }
   cont.innerHTML=`<table class="gtbl"><thead><tr><th>Quando</th><th>Ação</th><th>Tipo</th><th>Resumo</th><th>Usuário</th></tr></thead><tbody>${itens.map(x=>`<tr><td class="td-mono sm">${new Date(x.quando).toLocaleString('pt-BR')}</td><td>${escapeHtml(x.acao)}</td><td>${escapeHtml(x.tipo)}</td><td>${escapeHtml(x.resumo)}</td><td>${escapeHtml(x.usuario)}</td></tr>`).join('')}</tbody></table>`;
 }
 
@@ -6242,6 +6305,10 @@ function renderAuditoria(){
   wrapDelete('deletarPonto','pontos',x=>x.funcionarioNome||'ponto');
   wrapDelete('deletarLote','lotes',x=>`OF ${x.numeroOf||''} ${x.produto||''}`);
   wrapDelete('deletarClienteFirebase','clientes',x=>x.nome||'cliente');
+  /* A página Clientes chama deletarCliente (não a versão "Firebase"). Sem esta
+     linha o cliente saía do banco sem passar pela Lixeira, e não dava para
+     desfazer. */
+  wrapDelete('deletarCliente','clientes',x=>x.nome||'cliente');
   wrapDelete('deletarControleProducaoHora','controleProducaoHora',x=>`${x.funcionarioNome||'medição'} • ${x.etapa||''}`);
 
   const wrapLog=(name, acao, tipo, labelResolver)=>{
@@ -7498,7 +7565,8 @@ tr:last-child td{border:none;} tr:hover td{background:var(--bg3);}
 .bk-stat{background:var(--bg3);border:1px solid var(--bd);border-radius:10px;padding:16px 18px;text-align:center;}
 .bk-stat.accent{border-color:rgba(91,141,184,.3);background:rgba(91,141,184,.07);}
 .bk-n{display:block;font-family:var(--fm);font-size:28px;font-weight:800;color:var(--accent-lt);letter-spacing:-1px;}
-.bk-l{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;}
+.bk-l{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;justify-content:center;gap:5px;}
+.bk-l .ico-min{ margin-right:0; flex-shrink:0; }
 
 /* ── EMPTY ── */
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:44px;color:var(--t3);text-align:center;gap:8px;}
@@ -12838,7 +12906,7 @@ input,select,textarea,button{font-size:16px;}
         <button class="lmb-nav" onclick="loteMesNav(1)" title="Próximo mês">▶</button>
         <button class="lmb-todos" id="lotes-mes-todos-btn" onclick="loteMesToggleTodos()">Ver todos os meses</button>
       </div>
-      <div class="lotes-grid" id="lotes-list"><div class="empty-state"><div class="ei">▣</div><p>Carregando...</p></div></div>
+      <div class="lotes-grid" id="lotes-list"><div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div><p>Carregando...</p></div></div>
     </div>
 
     <!-- FUNCIONÁRIOS -->
@@ -12848,7 +12916,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ptitle">Funcionários</div>
           <div class="psub">Equipe ordenada por produção — salários, jornada e banco de horas integrados</div>
         </div>
-        <button class="btn-outline" onclick="reajustarSalarios()" title="Aplica um reajuste em porcentagem sobre o salário de todas as funcionárias ativas" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;white-space:nowrap;">📈 Reajustar<span class="so-largo"> salários</span></button>
+        <button class="btn-outline" onclick="reajustarSalarios()" title="Aplica um reajuste em porcentagem sobre o salário de todas as funcionárias ativas" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;white-space:nowrap;"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>Reajustar<span class="so-largo"> salários</span></button>
         <button class="btn-save" id="btn-novo-func" onclick="toggleCard('func-form-card','btn-novo-func','Novo funcionário')" style="flex-shrink:0;margin-top:4px;font-size:12px;padding:8px 16px;display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="font-size:15px;line-height:0;">+</span> Novo funcionário</button>
       </div>
       <div class="card" id="func-form-card" style="margin-bottom:16px;display:none;">
@@ -12926,7 +12994,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>▣ Lote</label><select id="filtro-lote" onchange="aplicarFiltros()"><option value="">Todos</option></select></div>
           <div class="ff"><label>Busca</label><input id="hist-busca" type="text" placeholder="Nome, OF, etapa, obs..." oninput="uiState.histBusca=this.value;aoDigitar('hist',aplicarFiltros)"/></div>
         </div>
-        <div class="fa"><button class="btn-save" onclick="aplicarFiltros()">🔍 Filtrar</button><button class="btn-outline" style="margin-left:4px" onclick="limparFiltros()">✕ Limpar</button></div>
+        <div class="fa"><button class="btn-save" onclick="aplicarFiltros()"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Filtrar</button><button class="btn-outline" style="margin-left:4px" onclick="limparFiltros()">✕ Limpar</button></div>
       </div>
       <div class="hresmo" style="margin-bottom:20px;">
         <div class="hrc" style="border-left:3px solid var(--accent);padding-left:16px;">
@@ -12942,7 +13010,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="hrv green" id="hr-fat">—</div>
         </div>
       </div>
-      <div id="hist-cont"><div class="empty-state"><div class="ei">☰</div><p>Use os filtros para ver o histórico.</p></div></div>
+      <div id="hist-cont"><div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></div><p>Use os filtros para ver o histórico.</p></div></div>
     </div>
 
     <!-- GASTOS -->
@@ -13111,7 +13179,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Mês de referência</label><input id="bh-mes" type="month" onchange="renderBancoHoras()"/></div>
         </div>
         <div id="bh-saldos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
-          <div class="empty-state"><div class="ei">⏱</div><p>Nenhum funcionário.</p></div>
+          <div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></div><p>Nenhum funcionário.</p></div>
         </div>
       </div>
 
@@ -13225,11 +13293,11 @@ input,select,textarea,button{font-size:16px;}
         <div class="chd">Configurar Relatório</div>
         <div class="fg" style="margin-bottom:16px"><div class="ff" style="max-width:260px"><label>Mês de referência</label><select id="rel-mes" onchange="gerarPreviewRelatorio()"></select></div></div>
         <div class="fa" style="gap:10px;flex-wrap:wrap">
-          <button class="btn-save" onclick="gerarPreviewRelatorio()">👁 Visualizar</button>
+          <button class="btn-save" onclick="gerarPreviewRelatorio()"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/></svg>Visualizar</button>
           <button class="btn-outline" onclick="baixarRelatorioCSV()">⬇ CSV do mês</button>
-          <button class="btn-rel-print" onclick="imprimirRelatorio()">🖨 Imprimir / Salvar PDF</button>
+          <button class="btn-rel-print" onclick="imprimirRelatorio()"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="7" rx="2"/><path d="M6 14h12v7H6z"/></svg>Imprimir / Salvar PDF</button>
         </div>
-        <div style="margin-top:12px;font-size:12px;color:var(--t3)">💡 Clique em Imprimir e escolha "Salvar como PDF".</div>
+        <div style="margin-top:12px;font-size:12px;color:var(--t3)"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2z"/></svg>Clique em Imprimir e escolha "Salvar como PDF".</div>
       </div>
       <div id="rel-preview"></div>
     </div>
@@ -13241,45 +13309,45 @@ input,select,textarea,button{font-size:16px;}
         <div class="psub">Exporte, importe e configure o sistema — faça backup semanal para não perder dados</div>
       </div>
       <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(191,195,202,.04),rgba(143,148,156,.03)),var(--bg2);border-color:rgba(191,195,202,.18);">
-        <div class="chd">📊 Status do Banco de Dados</div>
+        <div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21h16"/><path d="M6 18v-7M10 18v-7M14 18v-7M18 18v-7"/><path d="M3 9l9-5 9 5z"/></svg> Status do Banco de Dados</div>
         <div id="backup-status" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-top:4px;"></div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bd);font-size:11px;color:var(--t3);">
-          🔒 Dados protegidos pelas regras do Firebase · Faça backup <strong style="color:var(--t2);">1× por semana</strong>
+          <svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Dados protegidos pelas regras do Firebase · Faça backup <strong style="color:var(--t2);">1× por semana</strong>
         </div>
       </div>
       <div class="g2">
-        <div class="card"><div class="chd">📊 Backup Excel</div><p style="font-size:13px;color:var(--t2);margin-bottom:18px;line-height:1.6">Exporta tudo em <strong>.CSV</strong> — abre no Excel ou Google Sheets. Inclui banco de horas.</p><button class="btn-save" onclick="baixarBackupExcel()" style="width:100%">⬇ Baixar Excel (.CSV)</button></div>
-        <div class="card"><div class="chd">🗄 Backup Completo (JSON)</div><p style="font-size:13px;color:var(--t2);margin-bottom:18px;line-height:1.6">Exporta em <strong>.JSON</strong> — cópia técnica completa de todos os dados.</p><button class="btn-save" onclick="baixarBackupJSON()" style="width:100%;background:var(--bg3);color:var(--t);border:1px solid var(--bd)">⬇ Baixar JSON</button></div>
+        <div class="card"><div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Backup Excel</div><p style="font-size:13px;color:var(--t2);margin-bottom:18px;line-height:1.6">Exporta tudo em <strong>.CSV</strong> — abre no Excel ou Google Sheets. Inclui banco de horas.</p><button class="btn-save" onclick="baixarBackupExcel()" style="width:100%">⬇ Baixar Excel (.CSV)</button></div>
+        <div class="card"><div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><rect x="2" y="3" width="20" height="4" rx="1"/><path d="M10 12h4"/></svg> Backup Completo (JSON)</div><p style="font-size:13px;color:var(--t2);margin-bottom:18px;line-height:1.6">Exporta em <strong>.JSON</strong> — cópia técnica completa de todos os dados.</p><button class="btn-save" onclick="baixarBackupJSON()" style="width:100%;background:var(--bg3);color:var(--t);border:1px solid var(--bd)">⬇ Baixar JSON</button></div>
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="chd">♻ Restaurar backup JSON</div>
+        <div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg> Restaurar backup JSON</div>
         <p style="font-size:13px;color:var(--t2);margin-bottom:12px;line-height:1.6">Importe um backup exportado por este sistema. Os dados serão adicionados sem apagar o que já existe.</p>
         <input id="backup-import-file" type="file" accept=".json,application/json"/>
         <button class="btn-save" onclick="restaurarBackupJSON()" style="margin-top:12px">Restaurar Backup</button>
       </div>
       <div class="card" style="margin-top:16px;background:linear-gradient(135deg,rgba(16,185,129,.05),rgba(191,195,202,.05)),var(--bg2);border-color:rgba(16,185,129,.18)">
-        <div class="chd">🗓 Lançamento histórico no arquivo</div>
+        <div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14h3"/></svg> Lançamento histórico no arquivo</div>
         <p style="font-size:13px;color:var(--t2);margin-bottom:12px;line-height:1.6">Adiciona diretamente no sistema o histórico de <strong>Março/2026</strong> sem precisar importar JSON. O botão ignora itens já lançados para evitar duplicidade.</p>
         <div style="margin-top:10px;font-size:12px;color:var(--t3)">Inclui lotes, produção e gastos. A folha mensal não entra automaticamente para não duplicar o custo da folha atual.</div>
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="chd">⚙ Configurações rápidas</div>
+        <div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg> Configurações rápidas</div>
         <div id="config-panel"></div>
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="chd">💰 DRE rápido do mês</div>
+        <div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> DRE rápido do mês</div>
         <div id="dash-dre"></div>
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="chd">🤝 Clientes em destaque</div>
+        <div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13l3 3 5-5"/><circle cx="12" cy="12" r="9"/></svg> Clientes em destaque</div>
         <div id="dash-clientes" class="summary-bar"></div>
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="chd">🧾 Maiores categorias de gasto</div>
+        <div class="chd"><svg class="ico-chd" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg> Maiores categorias de gasto</div>
         <div id="dash-categorias" style="display:grid;gap:10px"></div>
       </div>
       <div class="card" style="margin-top:16px;background:rgba(91,141,184,.04);border-color:rgba(91,141,184,.18)">
-        <div style="font-size:12px;color:var(--accent);font-weight:700;margin-bottom:7px">💡 Dica de segurança</div>
+        <div style="font-size:12px;color:var(--accent);font-weight:700;margin-bottom:7px"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2z"/></svg>Dica de segurança</div>
         <p style="font-size:13px;color:var(--t2);line-height:1.6">Este arquivo agora organiza dados por usuário dentro do app, mas a proteção real ainda depende das regras do Firebase. Faça backup pelo menos <strong>1x por semana</strong>.</p>
       </div>
     </div>
@@ -13294,28 +13362,28 @@ input,select,textarea,button{font-size:16px;}
       <!-- KPIs — grid 2x2 no mobile, 4 col no desktop -->
       <div class="kpi-row fc-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
         <div class="kpi-card kpi-noir">
-          <div class="kpi-icon-wrap">💰</div>
+          <div class="kpi-icon-wrap"><svg class="ico-kpi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
           <div class="kpi-info">
             <div class="kpi-l">Faturamento Total</div>
             <div class="kpi-v" id="fc-kpi-fat">—</div>
           </div>
         </div>
         <div class="kpi-card kpi-green">
-          <div class="kpi-icon-wrap">🧵</div>
+          <div class="kpi-icon-wrap"><svg class="ico-kpi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1l3.4 3.4"/></svg></div>
           <div class="kpi-info">
             <div class="kpi-l">Total de Peças</div>
             <div class="kpi-v" id="fc-kpi-pecas">—</div>
           </div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon-wrap">📦</div>
+          <div class="kpi-icon-wrap"><svg class="ico-kpi" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
           <div class="kpi-info">
             <div class="kpi-l">Total de OFs</div>
             <div class="kpi-v" id="fc-kpi-lotes">—</div>
           </div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon-wrap">👤</div>
+          <div class="kpi-icon-wrap"><svg class="ico-kpi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></div>
           <div class="kpi-info">
             <div class="kpi-l">Clientes Ativos</div>
             <div class="kpi-v" id="fc-kpi-clientes">—</div>
@@ -13330,7 +13398,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Busca por cliente</label><input id="fc-busca" type="text" placeholder="Nome do cliente..." oninput="uiState.fatClienteBusca=this.value;aoDigitar('fc',renderFatCliente)"/></div>
           <div class="ff"><label>Filtrar por mês</label><input id="fc-mes" type="month" oninput="uiState.fatClienteMes=this.value;aoDigitar('renderFatCliente',renderFatCliente)"/></div>
           <button class="btn-outline" onclick="$('fc-busca').value='';$('fc-mes').value='';uiState.fatClienteBusca='';uiState.fatClienteMes='';renderFatCliente()" style="white-space:nowrap;height:42px;">✕ Limpar</button>
-          <button class="btn-save" onclick="exportarFatClienteExcel()" title="Baixa uma planilha do Excel com o ranking e as OFs de cada cliente" style="white-space:nowrap;height:42px;">📊 Exportar Excel</button>
+          <button class="btn-save" onclick="exportarFatClienteExcel()" title="Baixa uma planilha do Excel com o ranking e as OFs de cada cliente" style="white-space:nowrap;height:42px;"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Exportar Excel</button>
         </div>
       </div>
 
@@ -13349,7 +13417,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Observações</label><input id="cliente-obs-inline" type="text" placeholder="Opcional"/></div>
           <button class="btn-save" onclick="salvarClienteInline()" style="white-space:nowrap;height:42px;">+ Adicionar</button>
         </div>
-        <div id="fc-clientes-lista"><div class="empty-state"><div class="ei">👤</div><p>Nenhum cliente cadastrado.</p></div></div>
+        <div id="fc-clientes-lista"><div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></div><p>Nenhum cliente cadastrado.</p></div></div>
       </div>
     </div>
 
@@ -13386,7 +13454,7 @@ input,select,textarea,button{font-size:16px;}
 <!-- MODAL NOVO CLIENTE -->
 <div id="modal-novo-cliente" class="modal-overlay" onclick="if(event.target===this)fecharModalNovoCliente()">
   <div class="modal-box" style="max-width:440px">
-    <div class="modal-hd"><div class="modal-title">👤 Novo Cliente</div><button class="modal-close" onclick="fecharModalNovoCliente()">✕</button></div>
+    <div class="modal-hd"><div class="modal-title"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>Novo Cliente</div><button class="modal-close" onclick="fecharModalNovoCliente()">✕</button></div>
     <div class="modal-body">
       <div class="fg" style="margin-bottom:0">
         <div class="ff" style="grid-column:span 2"><label>Nome do cliente *</label><input id="nc-nome" type="text" placeholder="Ex: Marca ABC"/></div>
@@ -15636,8 +15704,8 @@ tr:last-child td{ border-bottom:none!important; }
 }
 .of2-card:hover{ box-shadow:var(--shadow); transform:translateY(-2px); transition:transform .18s,box-shadow .2s; }
 .of2-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:18px; }
-.of2-head-l{ display:flex; gap:13px; align-items:flex-start; min-width:0; }
-.of2-badge{ background:var(--accent-soft); color:var(--accent-lt); font-weight:800; font-size:13px; padding:8px 13px; border-radius:12px; white-space:nowrap; letter-spacing:.3px; flex-shrink:0; }
+.of2-head-l{ display:flex; gap:13px; align-items:flex-start; min-width:0; flex-wrap:wrap; }
+.of2-badge{ background:var(--accent-soft); color:var(--accent-lt); font-weight:800; font-size:13px; padding:8px 13px; border-radius:12px; letter-spacing:.3px; flex-shrink:1; min-width:0; max-width:100%; overflow-wrap:anywhere; }
 .of2-titles{ min-width:0; }
 .of2-name{ font-size:17px; font-weight:800; color:var(--t); letter-spacing:-.4px; line-height:1.2; }
 .of2-sub{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:7px; }
@@ -18890,6 +18958,19 @@ main,.main{ padding-bottom:96px!important; }
   stroke-linecap:round; stroke-linejoin:round; vertical-align:-3px; margin-right:6px; opacity:.85; }
 .ico-min{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.7;
   stroke-linecap:round; stroke-linejoin:round; vertical-align:-2px; margin-right:5px; opacity:.7; }
+/* Medalha das tres primeiras posicoes: circulo com o numero. */
+.md{ display:inline-grid; place-items:center; width:22px; height:22px; border-radius:99px;
+  font-family:var(--fm); font-size:11px; font-weight:800; letter-spacing:0; line-height:1;
+  color:#2A1F04; box-shadow:inset 0 0 0 1px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.28); }
+.md-ouro  { background:linear-gradient(145deg,#FBD46B,#C9982A); }
+.md-prata { background:linear-gradient(145deg,#E4E8EF,#A7AEBC); }
+.md-bronze{ background:linear-gradient(145deg,#E2A46B,#A86A33); }
+.ico-chd{ width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; opacity:.8; }
+.ico-kpi{ width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:1.6;
+  stroke-linecap:round; stroke-linejoin:round; opacity:.9; }
+.metas-section-title .ico-btn,.cx-l .ico-min,.cx-nota .ico-min,
+.bh-final-label .ico-min,.bh-liquido-l .ico-min{ flex-shrink:0; }
 .ico-vazio{ width:34px; height:34px; stroke:currentColor; fill:none; stroke-width:1.4;
   stroke-linecap:round; stroke-linejoin:round; opacity:.5; }
 /* ver o resto dos meses de gasto */
@@ -18903,6 +18984,14 @@ main,.main{ padding-bottom:96px!important; }
 .cli-import-txt{ flex:1; min-width:240px; font-size:13px; line-height:1.5; color:var(--t2); }
 .cli-import-txt b{ color:var(--t); }
 .cli-import button{ flex:0 0 auto; }
+
+/* Nome de cliente ou produto muito comprido não pode empurrar o cartão para
+   fora da tela: palavra grande quebra onde der. */
+.of2-name,.of2-badge,.of2-sub,.of2-hints,.of2-stat-v,.client-name,.client-sub,
+.gx-td-desc,.td-obs,.lc-num,.lc-prod,.rank-nome,.dsh-txt{
+  overflow-wrap:anywhere; word-break:break-word; min-width:0;
+}
+.of2-card,.client-card,.trash-card{ min-width:0; }
 </style>
 
 
