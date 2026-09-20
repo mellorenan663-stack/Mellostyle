@@ -102,7 +102,10 @@ function getPontoLabel(p,jornadaMin=480){
   if(natureza==="extra") return `Hora extra — ${fmtHorasCompact(minutos)}h`;
   return p?.tipo||"Registro";
 }
-function hojeISO(){return new Date().toISOString().slice(0,10);}
+/* Data de hoje em horário do Brasil. toISOString() devolve UTC, e às 21h
+   do dia 31 lá fora já é dia 1 — o mês sairia trocado. */
+function hojeISO(){const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 function horaAgora(){return new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});}
 function minutosDeHora(hhmm){
   if(!hhmm) return null;
@@ -314,7 +317,16 @@ function canAccessDoc(item){
 }
 function safeText(v){return String(v??"").trim();}
 function normalize(v){return safeText(v).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
-function monthKeyFromDate(d){return d.toISOString().slice(0,7);}
+/* Vira nome de classe CSS: so letras, numeros e traco — nada de aspas. */
+function classeSegura(v){return normalize(v).replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"")||"normal";}
+function monthKeyFromDate(d){return monthKeyLocal(d);}
+/* Desenhos dos botoes de tema e de cor no alto da tela. */
+const ICO_LUA='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>';
+const ICO_SOL='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M19.1 4.9l-1.5 1.5M6.4 17.6l-1.5 1.5"/></svg>';
+const ICO_PALETA='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.6 0-.5-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.6-9-7.6z"/><circle cx="7.5" cy="11" r="1.1"/><circle cx="10.5" cy="7.5" r="1.1"/><circle cx="15" cy="8.5" r="1.1"/></svg>';
+window.ICO_PALETA=ICO_PALETA;
+window.ICO_CELULAR='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>';
+window.ICO_MONITOR='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
 function getStoredConfig(){
   try{return JSON.parse(localStorage.getItem("mello_config_v1")||"{}");}catch(e){return {};}
 }
@@ -440,7 +452,8 @@ function applyTheme(themeId){
   const meta=getThemeMeta(themeId),tema=meta.id;
   document.documentElement.setAttribute("data-theme",tema);
   try{localStorage.setItem("mello_theme",tema);const cfg=(typeof getStoredConfig==="function"?getStoredConfig():{})||{};cfg.tema=tema;if(typeof saveStoredConfig==="function")saveStoredConfig(cfg);}catch(_e){}
-  const chip=document.getElementById("theme-chip-label");if(chip)chip.textContent=meta.icon+" "+meta.label;
+  const chip=document.getElementById("theme-chip-label");
+  if(chip) chip.innerHTML=(tema==="claro"?ICO_SOL:ICO_LUA)+escapeHtml(meta.label);
   const select=document.getElementById("cfg-tema");if(select&&select.value!==tema)select.value=tema;
 }
 function cycleTheme(){
@@ -832,13 +845,13 @@ window.navigate=navigate;
     if(mobileActive){
       document.body.classList.add('mobile-view');
       document.body.classList.remove('desktop-forced');
-      if(icon) icon.textContent = '🖥';
+      if(icon) icon.innerHTML = window.ICO_MONITOR||'';
       if(lbl) lbl.textContent = 'Modo PC';
       if(btn) btn.title = 'Alternar para visualização PC';
     } else {
       document.body.classList.remove('mobile-view');
       document.body.classList.add('desktop-forced');
-      if(icon) icon.textContent = '📱';
+      if(icon) icon.innerHTML = window.ICO_CELULAR||'';
       if(lbl) lbl.textContent = 'Modo Celular';
       if(btn) btn.title = 'Alternar para visualização celular';
     }
@@ -1345,7 +1358,7 @@ function populateSelects(){
   const sl=$("prod-lote");
   if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes
     .filter(l=>l.status!=="Cancelado")
-    .map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf)} — ${getLoteDisplay(l)}${l.status?` • ${l.status}`:''}</option>`)
+    .map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf)} — ${getLoteDisplay(l)}${l.status?` • ${escapeHtml(l.status)}`:''}</option>`)
     .join("");
   const sf2=$("bh-funcionario");
   if(sf2)sf2.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
@@ -1360,7 +1373,7 @@ function populateSelects(){
   const optsFunc='<option value="">— Selecione —</option>'+funcionariosAtivos.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   if(cphF)cphF.innerHTML=optsFunc;
   if(cphFiltroF)cphFiltroF.innerHTML='<option value="">Todas</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
-  const loteOpts='<option value="">— Sem lote / avulso —</option>'+lotes.filter(l=>getStatusOperacionalLote(l)!=="Cancelado").map(l=>`<option value="${l.id}">OF ${l.numeroOf||"—"} — ${l.produto||"—"}${l.cliente?" • "+l.cliente:""}</option>`).join("");
+  const loteOpts='<option value="">— Sem lote / avulso —</option>'+lotes.filter(l=>getStatusOperacionalLote(l)!=="Cancelado").map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf||"—")} — ${escapeHtml(l.produto||"—")}${l.cliente?" • "+escapeHtml(l.cliente):""}</option>`).join("");
   const cphL=$("cph-lote"), cphFiltroL=$("cph-filtro-lote");
   if(cphL)cphL.innerHTML=loteOpts;
   if(cphFiltroL)cphFiltroL.innerHTML='<option value="">Todos</option>'+lotes.map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf||"—")} — ${escapeHtml(l.produto||"—")}</option>`).join("");
@@ -1467,9 +1480,9 @@ function renderFuncionarios(){
     const metaPct=meta>0?Math.round((prod/meta)*100):0;
     return`<tr>
       <td><span class="medal">${i<3?`<span class="md ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`}</span></td>
-      <td><div class="fn-cell"><div class="fn-nome">${f.nome} ${f.status==="Inativo"?"<span class='chip chip-cn sm'>Inativo</span>":""}</div><div class="fn-bar"><div style="width:${pct}%"></div></div></div></td>
-      <td class="td-muted">${f.cargo||"—"}${f.telefone?`<div class="td-mini">${f.telefone}</div>`:""}</td>
-      <td class="td-muted">${f.setor||"—"}${f.admissao?`<div class="td-mini">Adm: ${new Date(f.admissao+"T00:00:00").toLocaleDateString("pt-BR")}</div>`:""}</td>
+      <td><div class="fn-cell"><div class="fn-nome">${escapeHtml(f.nome)} ${f.status==="Inativo"?"<span class='chip chip-cn sm'>Inativo</span>":""}</div><div class="fn-bar"><div style="width:${pct}%"></div></div></div></td>
+      <td class="td-muted">${escapeHtml(f.cargo||"—")}${f.telefone?`<div class="td-mini">${escapeHtml(f.telefone)}</div>`:""}</td>
+      <td class="td-muted">${escapeHtml(f.setor||"—")}${f.admissao?`<div class="td-mini">Adm: ${new Date(f.admissao+"T00:00:00").toLocaleDateString("pt-BR")}</div>`:""}</td>
       <td class="td-mono">${fmtMoney(f.salario||0)}</td>
       <td class="td-mono ${(f.bonus||0)>0?"hi":""}">${(f.bonus||0)>0?fmtMoney(f.bonus):"—"}${meta?`<div class="td-mini">Meta: ${meta} pçs/dia</div>`:""}</td>
       <td class="td-mono">${jornadaLabel}${escalaBadge}</td>
@@ -1652,10 +1665,10 @@ function renderBancoHoras(){
         const horasBH=fmtHorasCompact(minsBH)+"h";
         return`<tr class="${natureza==="falta"?"row-falta":"row-extra"}" style="${natureza==="falta"?"background:rgba(220,38,38,.03)":"background:rgba(22,163,74,.02)"}">
           <td class="td-mono sm">${d}/${mo}/${y}</td>
-          <td><div class="fn-nome" style="font-size:12px;">${p.funcionarioNome}</div></td>
+          <td><div class="fn-nome" style="font-size:12px;">${escapeHtml(p.funcionarioNome)}</div></td>
           <td><span class="chip ${chipClass}" style="font-size:11px;">${natureza==="falta"?"Falta":"Extra"}</span></td>
           <td class="td-mono" style="color:${natureza==="falta"?"var(--red)":"var(--green)"};font-weight:700;">${horasBH}</td>
-          <td class="td-obs">${p.obs||"—"}</td>
+          <td class="td-obs">${escapeHtml(p.obs||"—")}</td>
           <td><div class="td-actions"><button class="btn-edit" onclick="editarPonto('${p.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarPonto('${p.id}')">✕</button></div></td>
         </tr>`;
       }).join("");
@@ -1680,8 +1693,8 @@ function renderBancoHoras(){
       return`<div class="bh-card">
         <div class="bh-card-top">
           <div>
-            <div class="bh-nome">${f.nome} ${bhEscalaBadge}</div>
-            <div style="font-size:10px;color:var(--t3);margin-top:2px;">${f.cargo||f.setor||"—"}</div>
+            <div class="bh-nome">${escapeHtml(f.nome)} ${bhEscalaBadge}</div>
+            <div style="font-size:10px;color:var(--t3);margin-top:2px;">${escapeHtml(f.cargo||f.setor||"—")}</div>
           </div>
           <div class="bh-saldo ${saldoPos?"saldo-pos":"saldo-neg"}">${saldoLabel}</div>
         </div>
@@ -1899,14 +1912,14 @@ function renderTabelaProdutividadeHora(lista){
   if(!lista.length){tb.innerHTML='<tr><td colspan="9" class="td-empty">Nenhuma medição registrada.</td></tr>';return;}
   tb.innerHTML=lista.map(r=>{
     const d=r.data?new Date(r.data+"T12:00:00").toLocaleDateString("pt-BR"):"—";
-    const lote=r.loteNumeroOf?`OF ${escapeHtml(r.loteNumeroOf)} <div class="td-mini">${r.loteProduto||""}</div>`:"Avulso";
+    const lote=r.loteNumeroOf?`OF ${escapeHtml(r.loteNumeroOf)} <div class="td-mini">${escapeHtml(r.loteProduto||"")}</div>`:"Avulso";
     return `<tr>
-      <td class="td-mono sm">${d}</td><td><div class="fn-nome" style="font-size:12px">${r.funcionarioNome||"—"}</div></td>
-      <td><span class="chip ce sm">${r.etapa||"—"}</span></td><td>${lote}</td>
+      <td class="td-mono sm">${d}</td><td><div class="fn-nome" style="font-size:12px">${escapeHtml(r.funcionarioNome||"—")}</div></td>
+      <td><span class="chip ce sm">${escapeHtml(r.etapa||"—")}</span></td><td>${lote}</td>
       <td class="td-mono hi">${toNumber(r.qtdPecas,0).toLocaleString("pt-BR")}</td>
       <td class="td-mono">${formatarTempoSegundos(r.tempoSegundos||0)}</td>
       <td class="td-mono" style="font-weight:800;color:var(--accent-lt)">${Math.round(toNumber(r.pecasPorHora,0)).toLocaleString("pt-BR")} pçs/h</td>
-      <td class="td-obs">${r.observacao||"—"}</td>
+      <td class="td-obs">${escapeHtml(r.observacao||"—")}</td>
       <td><div class="td-actions"><button class="btn-edit" onclick="editarControleProducaoHora('${r.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarControleProducaoHora('${r.id}')">✕</button></div></td>
     </tr>`;
   }).join("");
@@ -1944,6 +1957,14 @@ window.toggleControleHoraEtapaOutra=toggleControleHoraEtapaOutra;
    travava mais de um segundo. Este índice é montado uma vez por carga —
    `registros` só é trocado por inteiro, nunca editado no lugar, então comparar
    a identidade da lista basta para saber se precisa remontar. */
+let __loteLista=null,__lotePorId=null;
+/* Procurar a OF pelo id varrendo a lista inteira, uma vez por linha da tela,
+   fica caro quando ha milhares de OFs. */
+function loteDoId(id){
+  if(!id) return null;
+  if(__loteLista!==lotes){ __lotePorId=new Map(lotes.map(l=>[l.id,l])); __loteLista=lotes; }
+  return __lotePorId.get(id)||null;
+}
 let __regLista=null,__regPorLote=null;
 function registrosDoLote(loteId){
   if(__regLista!==registros){
@@ -2263,9 +2284,16 @@ function renderFatCliente(){
   const listaEl=$("fc-clientes-lista");
   if(listaEl){
     if(!clientes.length){listaEl.innerHTML='<div class="empty-state"><div class="ei"><svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></div><p>Nenhum cliente cadastrado.</p></div>';return;}
+    /* Conta as OFs de todos os clientes numa passada só. */
+    const ofsPorCliente=new Map();
+    for(const l of lotes){
+      const k=normalize(l.cliente||"");
+      if(!k) continue;
+      ofsPorCliente.set(k,(ofsPorCliente.get(k)||0)+1);
+    }
     listaEl.innerHTML=`<div class="tbl-wrap"><table style="min-width:400px"><thead><tr><th>Nome</th><th>Contato</th><th>Obs</th><th>OFs</th><th></th></tr></thead><tbody>${
       clientes.map(c=>{
-        const nLotes=lotes.filter(l=>normalize(l.cliente||"")===normalize(c.nome)).length;
+        const nLotes=ofsPorCliente.get(normalize(c.nome))||0;
         return`<tr>
           <td style="font-weight:700;color:var(--t);">${escapeHtml(c.nome)}</td>
           <td class="td-muted">${escapeHtml(c.contato||"—")}</td>
@@ -2550,7 +2578,7 @@ window.abrirModalConcluir=function(loteId){
   if(!funcionarios.length){container.innerHTML='<p class="td-empty">Nenhum funcionário.</p>';}
   else{container.innerHTML=funcionarios.map((f,i)=>`
     <div class="mf-row">
-      <div class="mf-info"><div class="mf-nome">${f.nome}</div><div class="mf-cargo">${f.cargo||f.setor||"—"}</div></div>
+      <div class="mf-info"><div class="mf-nome">${escapeHtml(f.nome)}</div><div class="mf-cargo">${escapeHtml(f.cargo||f.setor||"—")}</div></div>
       <div class="mf-fields">
         <div class="mf-field"><label>Etapa</label>
           <select id="mf-etapa-${f.id}">${ETAPAS.map((e,ei)=>`<option${ei===i%ETAPAS.length?" selected":""}>${e}</option>`).join("")}</select>
@@ -2791,11 +2819,11 @@ function renderLotes(){
         <div class="of2-etapa-bar"><div class="of2-etapa-fill" style="width:${epct}%"></div></div>
       </div>`;
     }).join('');
-    const priorBadge=l.prioridade&&l.prioridade!=="Normal"?`<span class="prior-badge prior-${normalize(l.prioridade)}">${escapeHtml(l.prioridade)}</span>`:"";
+    const priorBadge=l.prioridade&&l.prioridade!=="Normal"?`<span class="prior-badge prior-${classeSegura(l.prioridade)}">${escapeHtml(l.prioridade)}</span>`:"";
     const podeConcluir=statusReal!=="Concluído"&&statusReal!=="Cancelado";
     /* a faixa na borda esquerda diz o estado sem precisar ler o card */
     const faixa=statusReal==="Concluído"?"concluido":statusReal==="Cancelado"?"cancelado"
-      :normalize(l.prioridade||"Normal");
+      :classeSegura(l.prioridade||"Normal");
     return `<div class="of2-card" data-prior="${faixa}" style="--ofc:${sm.c}">
       <div class="of2-head">
         <div class="of2-head-l">
@@ -2891,7 +2919,17 @@ window.salvarRegistro=async()=>{
   try{
     const funcId=$("prod-funcionario")?.value||"",etapa=$("prod-etapa")?.value||"";
     const qtd=parseInt($("prod-qtd")?.value,10)||0,obs=$("prod-obs")?.value.trim()||"",loteId=$("prod-lote")?.value||"";
-    if(!funcId||!etapa||!qtd){toast("Preencha funcionário, etapa e quantidade","err");return;}
+    if(!funcId||!etapa){toast("Preencha funcionário, etapa e quantidade","err");return;}
+    /* min="1" no campo nao segura nada: o navegador deixa digitar -30, e uma
+       quantidade negativa SUBTRAI da producao, do ranking e do bonus. */
+    const brutoQtd=String($("prod-qtd")?.value||"").trim();
+    if(brutoQtd&&!/^\d+$/.test(brutoQtd))
+      return void erroNoCampo("prod-qtd", Number(brutoQtd)<0
+        ? "A quantidade não pode ser negativa"
+        : "A quantidade tem que ser um número inteiro de peças");
+    if(!Number.isFinite(qtd)||qtd<1)
+      return void erroNoCampo("prod-qtd","Informe quantas peças foram feitas");
+
     const func=funcionarios.find(f=>f.id===funcId),lote=lotes.find(l=>l.id===loteId);
     if(loteId && !lote){toast("Lote selecionado não foi encontrado","err");return;}
     if(lote?.status==="Cancelado"){toast("Não é possível lançar produção em lote cancelado","err");return;}
@@ -2934,7 +2972,7 @@ window.editarRegistro=function(id){
   const se=$("edit-reg-etapa");
   if(se)Array.from(se.options).forEach(o=>{o.selected=o.value===r.etapa;});
   const sl=$("edit-reg-lote");
-  if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes.filter(l=>l.status!=="Cancelado").map(l=>`<option value="${l.id}"${l.id===r.loteId?" selected":""}>OF ${escapeHtml(l.numeroOf)} — ${l.produto}</option>`).join("");
+  if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes.filter(l=>l.status!=="Cancelado").map(l=>`<option value="${l.id}"${l.id===r.loteId?" selected":""}>OF ${escapeHtml(l.numeroOf)} — ${escapeHtml(l.produto)}</option>`).join("");
   if($("edit-reg-qtd"))$("edit-reg-qtd").value=r.qtd||"";
   if($("edit-reg-obs"))$("edit-reg-obs").value=r.obs||"";
   $("modal-editar-registro").classList.add("open");document.body.style.overflow="hidden";
@@ -2950,7 +2988,17 @@ window.salvarEdicaoRegistro=async()=>{
     const qtd=parseInt($("edit-reg-qtd")?.value,10)||0;
     const obs=$("edit-reg-obs")?.value.trim()||"";
     const loteId=$("edit-reg-lote")?.value||null;
-    if(!funcionarioId||!etapa||!qtd){toast("Preencha funcionário, etapa e quantidade","err");return;}
+    if(!funcionarioId||!etapa){toast("Preencha funcionário, etapa e quantidade","err");return;}
+    /* min="1" no campo nao segura nada: o navegador deixa digitar -30, e uma
+       quantidade negativa SUBTRAI da producao, do ranking e do bonus. */
+    const brutoQtdEd=String($("edit-reg-qtd")?.value||"").trim();
+    if(brutoQtdEd&&!/^\d+$/.test(brutoQtdEd))
+      return void erroNoCampo("edit-reg-qtd", Number(brutoQtdEd)<0
+        ? "A quantidade não pode ser negativa"
+        : "A quantidade tem que ser um número inteiro de peças");
+    if(!Number.isFinite(qtd)||qtd<1)
+      return void erroNoCampo("edit-reg-qtd","Informe quantas peças foram feitas");
+
     const func=funcionarios.find(f=>f.id===funcionarioId);
     const lote=loteId?lotes.find(l=>l.id===loteId):null;
     if(loteId && !lote){toast("Lote selecionado não foi encontrado","err");return;}
@@ -3075,14 +3123,14 @@ function renderProducao(){
   dados.sort((a,b)=>{const da=a.criadoEm?.toDate?a.criadoEm.toDate():new Date(a.criadoEm);const db2=b.criadoEm?.toDate?b.criadoEm.toDate():new Date(b.criadoEm);return db2-da;});
   if(!dados.length){tb.innerHTML='<tr><td colspan="8" class="td-empty">Nenhum registro.</td></tr>';return;}
   tb.innerHTML=dados.slice(0,100).map(r=>{
-    const loteR=lotes.find(l=>l.id===r.loteId);
+    const loteR=loteDoId(r.loteId);
     return`<tr>
       <td class="td-mono sm">${dateFmt(r.criadoEm,true)}</td>
       <td><span class="chip cn">${escapeHtml(r.funcionarioNome)}</span></td>
       <td><span class="chip ce">${escapeHtml(r.etapa)}</span></td>
       <td class="td-mono" style="font-weight:700;">${(r.qtd||0).toLocaleString("pt-BR")}</td>
       <td>${r.loteNumeroOf?`<span class="chip co">OF ${escapeHtml(r.loteNumeroOf)}</span>`:"—"}</td>
-      <td class="td-mono td-muted" style="font-size:11px;">${loteR&&loteR.qtdTotal?`${Math.min(100,Math.round((registros.filter(x=>x.loteId===r.loteId&&x.etapa===r.etapa).reduce((s,x)=>s+toNumber(x.qtd,0),0)/loteR.qtdTotal)*100))}% desta etapa`:"—"}</td>
+      <td class="td-mono td-muted" style="font-size:11px;">${loteR&&loteR.qtdTotal?`${Math.min(100,Math.round((registrosDoLote(r.loteId).reduce((s,x)=>s+(x.etapa===r.etapa?toNumber(x.qtd,0):0),0)/loteR.qtdTotal)*100))}% desta etapa`:"—"}</td>
       <td class="td-obs">${escapeHtml(r.obs||"—")}</td>
       <td><div class="td-actions"><button class="btn-edit" onclick="editarRegistro('${r.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarRegistro('${r.id}')">✕</button></div></td>
     </tr>`;
@@ -3352,7 +3400,7 @@ function renderReajusteSalarios(){
       cadastro de cada uma e é a base da folha, do 13º e das férias — veja abaixo se já chegou lá.</div>
     <div class="rs-lista">${linhas.map(l=>`
       <div class="rs-linha rs-${l.estado.replace(" ","-")}">
-        <span class="rs-nome">${l.nomeCadastro||l.nome}</span>
+        <span class="rs-nome">${escapeHtml(l.nomeCadastro||l.nome)}</span>
         <span class="rs-vals">${l.atual==null
           ? `<em>não encontrei no cadastro</em>`
           : l.estado==="aplicado"
@@ -3416,6 +3464,8 @@ window.reajustarSalarios=async function(){
     +mudancas.map(m=>`• ${m.nome}: ${fmtMoney(m.de)} → ${fmtMoney(m.para)}`).join("\n")
     +`\n\nFolha: ${fmtMoney(somaDe)} → ${fmtMoney(somaPara)} (${fmtMoney(somaPara-somaDe)} a mais por mês)`
     +`\n\nO 13º e as férias passam a ser calculados pelo salário novo.`)) return;
+  const travaReaj=travarSalvar('button[onclick="reajustarSalarios()"]',"Reajustando...");
+  if(!travaReaj.ok) return;
   try{
     requireAuthUser();
     await Promise.all(mudancas.map(m=>updateDoc(doc(db,"funcionarios",m.id),withOwner({
@@ -3427,6 +3477,7 @@ window.reajustarSalarios=async function(){
     toast(`${mudancas.length} salário(s) reajustado(s) em ${pctTxt} (${fmtMoney(somaPara-somaDe)} a mais na folha)`);
     await loadData();
   }catch(e){ console.error("REAJUSTE_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
+  finally{ travaReaj.solta(); }
 };
 
 window.propagarGastosFixos=async function(){
@@ -3441,6 +3492,8 @@ window.propagarGastosFixos=async function(){
   const paraIncluir=fixosAnt.filter(g=>!nomesAtual.has(normalize(g.descricao)));
   if(!paraIncluir.length){toast("Todos os gastos fixos do mês anterior já existem em "+formatMonthLabel(mesAtual)+".","warn");return;}
   if(!confirm(`Propagar ${paraIncluir.length} gasto(s) fixo(s) de ${formatMonthLabel(mesAnterior)} para ${formatMonthLabel(mesAtual)}?`))return;
+  const travaProp=travarSalvar('button[onclick="propagarGastosFixos()"]',"Lançando...");
+  if(!travaProp.ok) return;
   try{
     requireAuthUser();
     await Promise.all(paraIncluir.map(g=>addDoc(collection(db,"gastos"),withOwner({
@@ -3450,6 +3503,7 @@ window.propagarGastosFixos=async function(){
     toast(`${paraIncluir.length} gasto(s) fixo(s) propagado(s) para ${formatMonthLabel(mesAtual)}!`);
     await loadData();
   }catch(e){console.error("PROPAGAR_GASTOS_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  finally{ travaProp.solta(); }
 };
 
 
@@ -4327,11 +4381,11 @@ function leitorTextos(modo){
   const sub=comIA
     ? "A foto é enviada para a IA da Anthropic para leitura"
     : "A foto é lida aqui no aparelho, sem sair para a internet";
-  if(modo==="of") return {titulo:"📷 Ler ficha de OF", sub, usar:"Usar estes dados",
+  if(modo==="of") return {titulo:'<svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>Ler ficha de OF', sub, usar:"Usar estes dados",
     dica:comIA
       ? "Fotografe a ficha inteira. A IA lê até foto torta, amassada ou dentro do plástico. A imagem é enviada para a Anthropic e cobrada na sua chave."
       : "Fotografe a ficha inteira, bem iluminada e sem dobras. Funciona melhor com ficha impressa; escrita à mão ou dentro do plástico o leitor erra bastante."};
-  return {titulo:"📷 Ler nota fiscal", sub, usar:"Usar este valor",
+  return {titulo:'<svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>Ler nota fiscal', sub, usar:"Usar este valor",
     dica:comIA
       ? "Tire a foto do cupom inteiro. A IA lê até foto torta ou amassada. A imagem é enviada para a Anthropic e cobrada na sua chave."
       : "Tire a foto do cupom inteiro, bem iluminado e sem dobras. A leitura acontece no seu aparelho — a imagem não é enviada para lugar nenhum."};
@@ -4344,7 +4398,7 @@ window.abrirLeitorNota=function(modo){
   const inp=$("nota-arquivo"); if(inp) inp.value="";
   const prev=$("nota-preview"); if(prev){ prev.src=""; prev.style.display="none"; }
   const btn=$("nota-usar"); if(btn){ btn.style.display="none"; btn.textContent=t.usar; }
-  if($("nota-titulo")) $("nota-titulo").textContent=t.titulo;
+  if($("nota-titulo")) $("nota-titulo").innerHTML=t.titulo;   /* titulo fixo, com icone */
   if($("nota-sub")) $("nota-sub").textContent=t.sub;
   ocrEstado(`<div class="nota-dica">${t.dica}</div>`);
   $("modal-nota")?.classList.add("open");
@@ -4827,7 +4881,7 @@ function renderDashboard(){
   /* Sem emoji na primeira linha da tela: o nome da empresa em destaque, a data
      apagada e o estado do sistema como etiqueta, não como bolinha solta. */
   if($("dash-greeting"))$("dash-greeting").innerHTML=
-    `<span class="ds-ola">${saud}, ${cfgDash.empresa}</span>`
+    `<span class="ds-ola">${saud}, ${escapeHtml(cfgDash.empresa)}</span>`
     +`<span class="ds-sep">·</span>`
     +`<span class="ds-data">${dataFmt.charAt(0).toUpperCase()+dataFmt.slice(1)}</span>`
     +`<span class="ds-viva"><i></i>sistema no ar</span>`;
@@ -4928,7 +4982,7 @@ function renderCaixaEmpresa(){
   const stCob=cobre?'ok':pctCob>=60?'warn':'bad';
   const totalRemun=r.itens.reduce((s,x)=>s+x.remun,0);
   const rows=r.itens.map(it=>`<tr>
-    <td><div class="cx-nome">${it.nome}</div></td>
+    <td><div class="cx-nome">${escapeHtml(it.nome)}</div></td>
     <td class="cx-center"><input class="cx-meses" type="number" min="0" max="12" value="${it.meses}" onchange="setProvisaoMesesFunc('${it.id}',this.value)" title="Meses de casa até dezembro — clique para ajustar"/></td>
     <td class="cx-num">${fmtMoney(it.remun)}</td>
     <td class="cx-num">${fmtMoney(it.decimo)}</td>
@@ -5037,12 +5091,12 @@ function renderFolhaPagamento(){
         <div class="cx-s">média de ${fmtMoney(media)} por pessoa</div>
       </div>
       <div class="cx-tile">
-        <div class="cx-l">📋 Salários base</div>
+        <div class="cx-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9 11h6M9 15h4"/></svg>Salários base</div>
         <div class="cx-v">${fmtMoney(r.totalBase)}</div>
         <div class="cx-s">${r.totalBonus>0?"+ "+fmtMoney(r.totalBonus)+" de bônus":"sem bônus neste mês"}</div>
       </div>
       <div class="cx-tile">
-        <div class="cx-l">⏱ Extras e descontos</div>
+        <div class="cx-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 21h10"/><path d="M6 7h12"/><path d="M3 12l3-5 3 5a3 3 0 0 1-6 0z"/><path d="M15 12l3-5 3 5a3 3 0 0 1-6 0z"/></svg>Extras e descontos</div>
         <div class="cx-v">${r.totalExtras-r.totalDesconto>=0?"+":"−"}${fmtMoney(Math.abs(r.totalExtras-r.totalDesconto))}</div>
         <div class="cx-s">${fmtMoney(r.totalExtras)} em extras · ${fmtMoney(r.totalDesconto)} em faltas</div>
       </div>
@@ -5178,17 +5232,17 @@ function renderMetas(){
       if(isNaN(pz)) return;
       const dias=Math.round((pz-hoje)/86400000);
       if(dias<0) itens.push({ord:0,n:"urgente",
-        t:`OF <b>${l.numeroOf||"—"}</b>${l.produto?" ("+l.produto+")":""} venceu há <b class="num">${Math.abs(dias)} dia${Math.abs(dias)===1?"":"s"}</b>`,
+        t:`OF <b>${escapeHtml(l.numeroOf||"—")}</b>${l.produto?" ("+escapeHtml(l.produto)+")":""} venceu há <b class="num">${Math.abs(dias)} dia${Math.abs(dias)===1?"":"s"}</b>`,
         q:"prazo estourado",id:l.id});
       else if(dias<=3) itens.push({ord:1,n:"aviso",
-        t:`OF <b>${l.numeroOf||"—"}</b>${l.produto?" ("+l.produto+")":""} vence em <b class="num">${dias===0?"hoje":dias+" dia"+(dias===1?"":"s")}</b>`.replace("em <b class=\"num\">hoje</b>","<b class=\"num\">hoje</b>"),
+        t:`OF <b>${escapeHtml(l.numeroOf||"—")}</b>${l.produto?" ("+escapeHtml(l.produto)+")":""} vence em <b class="num">${dias===0?"hoje":dias+" dia"+(dias===1?"":"s")}</b>`.replace("em <b class=\"num\">hoje</b>","<b class=\"num\">hoje</b>"),
         q:"prazo perto",id:l.id});
     });
     const comRegistro=new Set(registros.map(r=>r.loteId).filter(Boolean));
     abertos.forEach(l=>{
       if(comRegistro.has(l.id)||!l.prazo) return;
       itens.push({ord:2,n:"info",
-        t:`OF <b>${l.numeroOf||"—"}</b> ainda não teve <b>nenhuma peça lançada</b>`,
+        t:`OF <b>${escapeHtml(l.numeroOf||"—")}</b> ainda não teve <b>nenhuma peça lançada</b>`,
         q:"sem produção",id:l.id});
     });
     itens.sort((a,b)=>a.ord-b.ord);
@@ -5377,8 +5431,8 @@ function renderRelatorioProdutividadeHora(mes){
       <div class="rel-card"><div class="rc-l">Horas medidas</div><div class="rc-v">${horas.toLocaleString("pt-BR",{maximumFractionDigits:1})}h</div></div>
       <div class="rel-card"><div class="rc-l">Medições</div><div class="rc-v">${lista.length}</div></div>
     </div>
-    <div class="rel-2col"><div><div class="rel-section-title">Ranking por funcionária</div><table class="rel-table"><tbody>${porFunc.map((x,i)=>`<tr><td>${i+1}. ${x.nome}</td><td class="rtd-r"><strong>${Math.round(x.media)} pçs/h</strong></td></tr>`).join("")}</tbody></table></div>
-    <div><div class="rel-section-title">Média por função</div><table class="rel-table"><tbody>${porEtapa.map(x=>`<tr><td>${x.nome}</td><td class="rtd-r"><strong>${Math.round(x.media)} pçs/h</strong></td></tr>`).join("")}</tbody></table></div></div>`;
+    <div class="rel-2col"><div><div class="rel-section-title">Ranking por funcionária</div><table class="rel-table"><tbody>${porFunc.map((x,i)=>`<tr><td>${i+1}. ${escapeHtml(x.nome)}</td><td class="rtd-r"><strong>${Math.round(x.media)} pçs/h</strong></td></tr>`).join("")}</tbody></table></div>
+    <div><div class="rel-section-title">Média por função</div><table class="rel-table"><tbody>${porEtapa.map(x=>`<tr><td>${escapeHtml(x.nome)}</td><td class="rtd-r"><strong>${Math.round(x.media)} pçs/h</strong></td></tr>`).join("")}</tbody></table></div></div>`;
 }
 function renderRelatorio(){
   const sel=$("rel-mes");if(!sel)return;
@@ -5694,8 +5748,8 @@ function renderConfiguracoes(){
   const el=$("config-panel"); if(!el) return;
   const cfg=getConfig();
   el.innerHTML=`<div class="config-tip" style="margin-bottom:12px;padding:12px 14px;border:1px solid var(--bd);border-radius:14px;background:var(--bg3);font-size:12px;color:var(--t2)">Escala automática aplicada: Ketelen = 7h por dia. Demais funcionárias = 9h30 por dia e 6h na sexta.</div><div class="fg" style="margin-top:10px">
-    <div class="ff"><label>Nome da empresa</label><input id="cfg-empresa" type="text" value="${cfg.empresa}"/></div>
-    <div class="ff"><label>ID da empresa</label><input id="cfg-empresa-id" type="text" value="${cfg.empresaId}" placeholder="ex: mello-style"/></div>
+    <div class="ff"><label>Nome da empresa</label><input id="cfg-empresa" type="text" value="${escapeHtml(cfg.empresa)}"/></div>
+    <div class="ff"><label>ID da empresa</label><input id="cfg-empresa-id" type="text" value="${escapeHtml(cfg.empresaId)}" placeholder="ex: mello-style"/></div>
     <div class="ff"><label>Perfil de acesso</label><select id="cfg-perfil"><option ${cfg.perfil==="admin"?"selected":""}>admin</option><option ${cfg.perfil==="gerente"?"selected":""}>gerente</option><option ${cfg.perfil==="operador"?"selected":""}>operador</option><option ${cfg.perfil==="financeiro"?"selected":""}>financeiro</option></select></div>
     <div class="ff"><label>Tema visual</label><select id="cfg-tema">${THEME_OPTIONS.map(t=>`<option value="${t.id}" ${cfg.tema===t.id?"selected":""}>${t.icon} ${t.label}</option>`).join("")}</select></div>
     <div class="ff"><label>Meta do dia (pçs)</label><input id="cfg-meta-dia" type="number" min="0" value="${cfg.metaDia}"/></div>
@@ -5706,7 +5760,7 @@ function renderConfiguracoes(){
     <div class="ff"><label>Teto de custo/mês (R$)</label><input id="cfg-meta-custo" type="number" min="0" step="0.01" value="${cfg.metaCusto}"/></div>
   </div>
   <div class="ia-box">
-    <div class="ia-hd">🤖 Leitura de foto por IA <span class="ia-status ${getChaveIA()?"is-on":""}">${getChaveIA()?"ativa neste aparelho":"desligada"}</span></div>
+    <div class="ia-hd"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>Leitura de foto por IA <span class="ia-status ${getChaveIA()?"is-on":""}">${getChaveIA()?"ativa neste aparelho":"desligada"}</span></div>
     <div class="ia-txt">Sem chave, a foto é lida pelo leitor do próprio aparelho — funciona bem em papel impresso e plano, mas erra em foto torta, amassada ou dentro do plástico. Com uma chave da Anthropic, a foto é lida por IA e acerta esses casos.<br><br>
       <strong>Custo:</strong> a leitura padrão é a econômica, cerca de <strong>1 centavo por foto</strong> (~R$ 1 a cada 100 fotos). Se o resultado sair incerto, aparece um botão para tentar a leitura reforçada, que custa ~R$ 0,20 — só roda se você clicar, nunca sozinha.</div>
     <div class="ia-linha">
@@ -5714,7 +5768,7 @@ function renderConfiguracoes(){
       <button type="button" class="btn-save" onclick="setChaveIA(document.getElementById('cfg-ia-chave').value)">Salvar chave</button>
       ${getChaveIA()?`<button type="button" class="btn-outline" onclick="setChaveIA('')">Remover</button>`:""}
     </div>
-    <div class="ia-nota">🔒 A chave fica salva <strong>só neste aparelho</strong> — nunca entra no arquivo do sistema nem no Firebase, então quem abre o link não usa a sua chave. Crie a sua em <strong>console.anthropic.com</strong>. Com a chave ativa, a foto sai do aparelho e vai para a Anthropic; sem ela, nada sai.</div>
+    <div class="ia-nota"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>A chave fica salva <strong>só neste aparelho</strong> — nunca entra no arquivo do sistema nem no Firebase, então quem abre o link não usa a sua chave. Crie a sua em <strong>console.anthropic.com</strong>. Com a chave ativa, a foto sai do aparelho e vai para a Anthropic; sem ela, nada sai.</div>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
     ${THEME_OPTIONS.map(t=>`<button type="button" class="theme-swatch ${cfg.tema===t.id?"active":""}" onclick="applyTheme('${t.id}');document.getElementById('cfg-tema').value='${t.id}'">${t.icon} ${t.label}</button>`).join("")}
@@ -5957,8 +6011,8 @@ function renderGastosDrawer(){
     return`<div class="gd-item">
       <div class="gd-item-ico">${ico}</div>
       <div class="gd-item-info">
-        <div class="gd-item-desc">${g.descricao}</div>
-        <div class="gd-item-meta">${g.categoria||'—'} • ${g.tipo==='fixo'?'Fixo':'Variável'}</div>
+        <div class="gd-item-desc">${escapeHtml(g.descricao)}</div>
+        <div class="gd-item-meta">${escapeHtml(g.categoria||'—')} • ${g.tipo==='fixo'?'Fixo':'Variável'}</div>
       </div>
       <div class="gd-item-val">${fmtMoney(g.valor)}</div>
       <button class="gd-item-del" onclick="deletarGastoDrawer('${g.id}')">✕</button>
@@ -6236,6 +6290,10 @@ function renderLixeira(){
 }
 window.restaurarDaLixeira = async function(trashId){
   const itens=getLixeiraStore(); const found=itens.find(x=>x.trashId===trashId); if(!found) return;
+  /* Tira da lixeira ANTES de gravar: dois cliques rápidos restauravam o mesmo
+     item duas vezes, porque o segundo ainda o encontrava na lista. Se a
+     gravação falhar, ele volta para a lixeira logo abaixo. */
+  saveLixeiraStore(itens.filter(x=>x.trashId!==trashId));
   try{
     if(found.collectionName==='clientes_local'){
       clientesCadastro=[found.item,...clientesCadastro]; saveClientesStore(clientesCadastro);
@@ -6244,8 +6302,13 @@ window.restaurarDaLixeira = async function(trashId){
       await addDoc(collection(db,found.collectionName), withOwner(payload));
       await _loadDataBase();
     }
-    saveLixeiraStore(itens.filter(x=>x.trashId!==trashId)); addAuditoria('restaurou','lixeira',found.tipo); renderLixeira(); if(currentPage==='clientes') renderClientes(); toast('Item restaurado!');
-  }catch(e){ toast('Erro ao restaurar: '+firebaseErrorMessage(e),'err'); }
+    addAuditoria('restaurou','lixeira',found.tipo); renderLixeira(); if(currentPage==='clientes') renderClientes(); toast('Item restaurado!');
+  }catch(e){
+    const agora=getLixeiraStore();
+    if(!agora.some(x=>x.trashId===trashId)) saveLixeiraStore([found,...agora]);
+    renderLixeira();
+    toast('Erro ao restaurar: '+firebaseErrorMessage(e),'err');
+  }
 };
 window.excluirDefinitivoLixeira = function(trashId){
   if(!confirm('Excluir definitivamente da lixeira?')) return;
@@ -6692,6 +6755,8 @@ window.showSkeletons=showSkeletons;
 
 /* ── BUSCA GLOBAL ──────────────────────────────────────────────── */
 let _gsTimeout=null;
+const GS_PESSOA='<svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
+const GS_CAIXA='<svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>';
 function globalSearch(query){
   const q=(query||'').trim().toLowerCase();
   const drop=document.getElementById('global-search-dropdown');
@@ -6704,14 +6769,14 @@ function globalSearch(query){
   // Buscar funcionárias
   (typeof funcionarios!=='undefined'?funcionarios:[]).forEach(f=>{
     if(f.nome && f.nome.toLowerCase().includes(q)){
-      results.push({icon:'👩‍💼',label:f.nome,sub:f.cargo||f.setor||'Funcionária',page:'funcionarios'});
+      results.push({icon:GS_PESSOA,label:f.nome,sub:f.cargo||f.setor||'Funcionária',page:'funcionarios'});
     }
   });
   // Buscar lotes/OFs
   (typeof lotes!=='undefined'?lotes:[]).forEach(l=>{
     const haystack=((l.numeroOf||'')+' '+(l.produto||'')+' '+(l.cliente||'')).toLowerCase();
     if(haystack.includes(q)){
-      results.push({icon:'▣',label:`OF ${l.numeroOf||'—'} — ${l.produto||'—'}`,sub:l.cliente||l.status||'Lote',page:'lotes'});
+      results.push({icon:GS_CAIXA,label:`OF ${l.numeroOf||'—'} — ${l.produto||'—'}`,sub:l.cliente||l.status||'Lote',page:'lotes'});
     }
   });
   if(!results.length){
@@ -6720,8 +6785,8 @@ function globalSearch(query){
     drop.innerHTML=results.slice(0,8).map((r,i)=>`
       <div class="gs-result-item" onclick="navigate('${r.page}');document.getElementById('global-search-input').value='';document.getElementById('global-search-dropdown').classList.remove('open');">
         <span class="gs-result-icon">${r.icon}</span>
-        <span class="gs-result-label">${r.label}</span>
-        <span class="gs-result-sub">${r.sub}</span>
+        <span class="gs-result-label">${escapeHtml(r.label)}</span>
+        <span class="gs-result-sub">${escapeHtml(r.sub)}</span>
       </div>
     `).join('');
   }
@@ -12665,7 +12730,7 @@ input,select,textarea,button{font-size:16px;}
         <span>Sem conexão</span>
       </div>
       <div id="global-search-wrap" style="position:relative;">
-        <span class="global-search-icon" aria-hidden="true">🔍</span>
+        <span class="global-search-icon" aria-hidden="true"><svg class="ico-busca" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></span>
         <input
           id="global-search-input"
           type="search"
@@ -12678,8 +12743,8 @@ input,select,textarea,button{font-size:16px;}
         <div id="global-search-dropdown"></div>
       </div>
       <button class="btn-gastos-quick" onclick="toggleGastosDrawer()"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Gastos</button>
-      <button class="btn-theme-quick" id="theme-chip-label" onclick="cycleTheme()" title="Alternar claro/escuro">🌙 Escuro</button>
-      <button class="btn-theme-quick" id="cor-chip-label" onclick="cycleCor()" title="Alternar azul marinho / prata">🎨 Azul</button>
+      <button class="btn-theme-quick" id="theme-chip-label" onclick="cycleTheme()" title="Alternar claro/escuro"><svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>Escuro</button>
+      <button class="btn-theme-quick" id="cor-chip-label" onclick="cycleCor()" title="Alternar azul marinho / prata"><svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.6 0-.5-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.6-9-7.6z"/><circle cx="7.5" cy="11" r="1.1"/><circle cx="10.5" cy="7.5" r="1.1"/><circle cx="15" cy="8.5" r="1.1"/></svg>Azul</button>
       <button class="btn-topbar-refresh" onclick="loadData()">↻</button>
     </div>
   </div>
@@ -12864,7 +12929,7 @@ input,select,textarea,button{font-size:16px;}
         <div class="chd">Nova Ordem de Fabricação</div>
         <div class="nota-cta">
           <button type="button" class="btn-outline nota-btn" onclick="abrirLeitorOF()">
-            📷 Ler ficha de OF pela foto
+            <svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>Ler ficha de OF pela foto
           </button>
           <span class="nota-cta-txt">Preenche os campos sozinho — você só confere e salva</span>
         </div>
@@ -12989,8 +13054,8 @@ input,select,textarea,button{font-size:16px;}
       <div class="card" style="margin-bottom:16px">
         <div class="chd">Filtros</div>
         <div class="fg" style="margin-bottom:14px">
-          <div class="ff"><label>📅 Dia</label><input id="filtro-dia" type="date" oninput="if(this.value)$('filtro-mes').value='';aplicarFiltros()"/></div>
-          <div class="ff"><label>📆 Mês</label><input id="filtro-mes" type="month" oninput="if(this.value)$('filtro-dia').value='';aplicarFiltros()"/></div>
+          <div class="ff"><label><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14h3"/></svg>Dia</label><input id="filtro-dia" type="date" oninput="if(this.value)$('filtro-mes').value='';aplicarFiltros()"/></div>
+          <div class="ff"><label><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Mês</label><input id="filtro-mes" type="month" oninput="if(this.value)$('filtro-dia').value='';aplicarFiltros()"/></div>
           <div class="ff"><label>▣ Lote</label><select id="filtro-lote" onchange="aplicarFiltros()"><option value="">Todos</option></select></div>
           <div class="ff"><label>Busca</label><input id="hist-busca" type="text" placeholder="Nome, OF, etapa, obs..." oninput="uiState.histBusca=this.value;aoDigitar('hist',aplicarFiltros)"/></div>
         </div>
@@ -13026,7 +13091,7 @@ input,select,textarea,button{font-size:16px;}
         <div class="chd">Novo Gasto</div>
         <div class="nota-cta">
           <button type="button" class="btn-outline nota-btn" onclick="abrirLeitorNota()">
-            📷 Ler nota fiscal pela foto
+            <svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>Ler nota fiscal pela foto
           </button>
           <span class="nota-cta-txt">Preenche o valor sozinho — você só confere e salva</span>
         </div>
@@ -13427,7 +13492,7 @@ input,select,textarea,button{font-size:16px;}
 
 <!-- BOTÃO LAYOUT TOGGLE -->
 <button type="button" class="btn-layout-toggle" id="layout-toggle-btn" onclick="toggleLayout()" title="Alternar entre visualização celular e PC" style="bottom:18px;right:18px;font-size:11px;padding:8px 15px;border-radius:40px;gap:6px;letter-spacing:.3px;opacity:.85;">
-  <span class="lt-icon" id="lt-icon" style="font-size:14px;">📱</span>
+  <span class="lt-icon" id="lt-icon"><svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></span>
   <span id="lt-label">Modo Celular</span>
 </button>
 
@@ -13438,7 +13503,7 @@ input,select,textarea,button{font-size:16px;}
     <div class="modal-alert"><span>📦</span><span id="modal-lote-restante">—</span></div>
     <input type="hidden" id="modal-lote-id"/>
     <div class="modal-pipeline-resumo" id="modal-pipeline-resumo" style="display:none">
-      <div class="modal-pipeline-label">📊 Progresso atual por etapa</div>
+      <div class="modal-pipeline-label"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h4V10H3zM10 20h4V4h-4zM17 20h4v-7h-4z"/></svg>Progresso atual por etapa</div>
       <div id="modal-pipeline-grid"></div>
     </div>
     <div class="modal-inst">Informe a etapa e quantas peças cada funcionário produziu. Deixe <strong>0</strong> ou vazio quem não participou.</div>
@@ -13558,7 +13623,7 @@ input,select,textarea,button{font-size:16px;}
 <div id="modal-nota" class="modal-overlay" onclick="if(event.target===this)fecharLeitorNota()">
   <div class="modal-box md">
     <div class="modal-hd">
-      <div><div class="modal-title" id="nota-titulo">📷 Ler nota fiscal</div>
+      <div><div class="modal-title" id="nota-titulo"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>Ler nota fiscal</div>
            <div class="modal-lote-sub" id="nota-sub">A foto é lida aqui no aparelho, sem sair para a internet</div></div>
       <button class="modal-close" onclick="fecharLeitorNota()">✕</button>
     </div>
@@ -18965,6 +19030,15 @@ main,.main{ padding-bottom:96px!important; }
 .md-ouro  { background:linear-gradient(145deg,#FBD46B,#C9982A); }
 .md-prata { background:linear-gradient(145deg,#E4E8EF,#A7AEBC); }
 .md-bronze{ background:linear-gradient(145deg,#E2A46B,#A86A33); }
+.ico-busca{ width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.8;
+  stroke-linecap:round; stroke-linejoin:round; display:block; opacity:.8; }
+.global-search-icon{ display:flex; align-items:center; }
+.btn-layout-toggle .lt-icon{ display:inline-flex; align-items:center; }
+.btn-layout-toggle .ico-chip{ margin-right:0; vertical-align:0; }
+.ico-chip{ width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round; vertical-align:-2px; margin-right:6px; }
+.btn-theme-quick{ display:inline-flex; align-items:center; }
+.btn-theme-quick .ico-chip{ vertical-align:0; flex-shrink:0; }
 .ico-chd{ width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.7;
   stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; opacity:.8; }
 .ico-kpi{ width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:1.6;
@@ -19229,7 +19303,7 @@ main,.main{ padding-bottom:96px!important; }
       var folha=document.getElementById("skin-platina");
       if(folha) folha.media=prata?"all":"not all";
       var b=document.getElementById("cor-chip-label");
-      if(b) b.textContent=prata?"🎨 Prata":"🎨 Azul";
+      if(b) b.innerHTML=(window.ICO_PALETA||"")+(prata?"Prata":"Azul");
       if(salvar) localStorage.setItem(CHAVE,prata?"platina":"navy");
     }catch(e){ console.warn("COR",e); }
   }
