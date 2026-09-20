@@ -347,7 +347,8 @@ function getConfig(){
     perfil:cfg.perfil||"admin",
     tema:normalizeThemeId(cfg.tema),
     caixaEmpresa:Number(cfg.caixaEmpresa)||0,
-    provisaoMeses:(cfg.provisaoMeses && typeof cfg.provisaoMeses==="object")?cfg.provisaoMeses:{}
+    provisaoMeses:(cfg.provisaoMeses && typeof cfg.provisaoMeses==="object")?cfg.provisaoMeses:{},
+    tetosCategoria:(cfg.tetosCategoria && typeof cfg.tetosCategoria==="object")?cfg.tetosCategoria:{}
   };
 }
 function setConfigField(key,val){
@@ -608,7 +609,23 @@ service cloud.firestore {
   }
 }`;
 }
+/* O resumo do mês varre lotes, registros e gastos inteiros. A página de
+   Gastos pede dois (o mês e o anterior) a cada desenho, e o painel e o
+   relatório pedem mais. Guarda o resultado enquanto os dados forem os
+   mesmos — qualquer recarga troca as listas e a conta refaz. */
+const __resumoCache=new Map();
+let __resumoFonte=null;
 function calcResumoMensal(mes){
+  const fonte=[lotes,registros,gastos,funcionarios,pontos];
+  if(!__resumoFonte||__resumoFonte.some((x,i)=>x!==fonte[i])){
+    __resumoCache.clear(); __resumoFonte=fonte;
+  }
+  if(__resumoCache.has(mes)) return __resumoCache.get(mes);
+  const r=__calcResumoMensal(mes);
+  __resumoCache.set(mes,r);
+  return r;
+}
+function __calcResumoMensal(mes){
   const regsM=registros.filter(r=>sameMonthFromTs(r.criadoEm,mes));
   const idsComRegistro=new Set(regsM.map(r=>r.loteId).filter(Boolean));
   // totalPecas/faturamento sempre vêm da meta oficial dos lotes do período.
@@ -3031,7 +3048,10 @@ window.editarGasto=function(id){
   if($("edit-gasto-valor"))$("edit-gasto-valor").value=g.valor||"";
   if($("edit-gasto-tipo"))$("edit-gasto-tipo").value=g.tipo||"fixo";
   if($("edit-gasto-competencia"))$("edit-gasto-competencia").value=g.competencia||"";
-  const cats=["Aluguel","Linha","Café","Empréstimo","Mercado","Mecânico","Outros"];
+  if($("edit-gasto-vencimento")) $("edit-gasto-vencimento").value=gastoVencimento(g);
+  if($("edit-gasto-pago")) $("edit-gasto-pago").value=(g.pago===true)?"sim":(g.pago===false)?"nao":"";
+  /* Encargos faltava aqui: abrir um INSS para editar jogava tudo em "Outros". */
+  const cats=["Aluguel","Linha","Café","Empréstimo","Mercado","Mecânico","Encargos","Outros"];
   const catSel=$("edit-gasto-categoria");
   if(catSel){
     const match=cats.includes(g.categoria)?g.categoria:"Outros";
@@ -3062,11 +3082,16 @@ window.salvarEdicaoGasto=async()=>{
   if(!descricao||!valor||!competencia){toast("Preencha descrição, valor e competência","err");return;}
   if(!naoNegativo("edit-gasto-valor","O valor do gasto")) return;
   if(!catSel){toast("Selecione uma categoria","err");return;}
+  /* Em branco, os dois campos voltam a ficar sem marca. */
+  const vencEd=$("edit-gasto-vencimento")?.value||"";
+  const pagoEd=$("edit-gasto-pago")?.value;
+  const campoPg={ vencimento:vencEd||null,
+                  pago:(pagoEd==="sim")?true:(pagoEd==="nao")?false:null };
   const btn=$("btn-salvar-edit-gasto");
   if(btn.disabled) return;
   btn.disabled=true;btn.textContent="Salvando...";
   try{
-    await updateDoc(doc(db,"gastos",id),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":null)}));
+    await updateDoc(doc(db,"gastos",id),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":null),...campoPg}));
     toast("Gasto atualizado!");fecharModalEditarGasto();await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{btn.disabled=false;btn.textContent="Salvar Alterações";}
@@ -3221,6 +3246,14 @@ window.salvarGasto=async()=>{
     const jaExiste=gastos.find(g=>g.tipo==="fixo"&&normalize(g.descricao)===normalize(descricao)&&(g.competencia||"")===competencia);
     if(jaExiste){toast("Já existe um gasto fixo '"+descricao+"' para este mês. Edite-o se necessário.","warn");return;}
   }
+  /* Vencimento e pagamento sao opcionais: em branco, o gasto fica como
+     sempre foi e nao entra em aviso nenhum. */
+  const venc=$("gasto-vencimento")?.value||"";
+  const pagoSel=$("gasto-pago")?.value;
+  const extraPg={};
+  if(venc) extraPg.vencimento=venc;
+  if(pagoSel==="sim") extraPg.pago=true;
+  else if(pagoSel==="nao") extraPg.pago=false;
   const btn=document.querySelector('button[onclick="salvarGasto()"]');
   if(btn){btn.disabled=true;btn.dataset.prevLabel=btn.innerHTML;btn.innerHTML='Salvando...';}
   try{
@@ -3238,12 +3271,13 @@ window.salvarGasto=async()=>{
         const compI=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
         docs.push(addDoc(collection(db,"gastos"),withOwner({
           descricao:`${descricao} (${i+1}/${parcelas})`,valor:vParc,tipo,categoria,
-          competencia:compI,data:compI+"-01",grupoId,parcelaNum:i+1,parcelaTotal:parcelas,criadoEm:Timestamp.now()
+          competencia:compI,data:compI+"-01",grupoId,parcelaNum:i+1,parcelaTotal:parcelas,
+          ...(i===0?extraPg:{}),criadoEm:Timestamp.now()
         })));
       }
       await Promise.all(docs);
     }else{
-      await addDoc(collection(db,"gastos"),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),criadoEm:Timestamp.now()}));
+      await addDoc(collection(db,"gastos"),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),...extraPg,criadoEm:Timestamp.now()}));
     }
     if($("gasto-desc")) $("gasto-desc").value="";
     if($("gasto-valor")) $("gasto-valor").value="";
@@ -3251,6 +3285,7 @@ window.salvarGasto=async()=>{
     if($("gasto-categoria-outros")) $("gasto-categoria-outros").value="";
     if($("wrap-categoria-outros")) $("wrap-categoria-outros").style.display="none";
     if($("gasto-parcelas")) $("gasto-parcelas").value="1";
+    if($("gasto-vencimento")) $("gasto-vencimento").value="";
     if($("gasto-parcela-preview")) $("gasto-parcela-preview").style.display="none";
     toast(parcelas>1?`${parcelas} parcelas registradas!`:"Gasto registrado!");await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
@@ -4080,6 +4115,106 @@ function compromissosFuturosGastos(){
            ultimo:[...meses].sort().pop()||"" };
 }
 
+/* ── Vencimento e pagamento ──────────────────────────────────────
+   Os dois campos sao opcionais. Sem vencimento o gasto nao entra em
+   nenhum aviso; sem marca de pagamento ele fica "não informado" — que e
+   o caso de tudo que ja estava cadastrado antes. */
+function gastoVencimento(g){
+  const v=String(g&&g.vencimento||"").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:"";
+}
+function gastoSituacao(g){                 /* pago | apagar | vencido | sem */
+  if(g&&g.pago===true) return "pago";
+  const v=gastoVencimento(g);
+  if(g&&g.pago===false) return (v&&v<hojeISO())?"vencido":"apagar";
+  return "sem";
+}
+const GASTO_SIT={
+  pago:   {r:"pago",    c:"gsit-pago"},
+  apagar: {r:"a pagar", c:"gsit-apagar"},
+  vencido:{r:"vencido", c:"gsit-vencido"},
+  sem:    {r:"marcar",  c:"gsit-sem"}
+};
+function textoPrazoGasto(d){
+  if(d===null||d===undefined) return "";
+  if(d<-1) return `venceu há ${Math.abs(d)} dias`;
+  if(d===-1) return "venceu ontem";
+  if(d===0) return "vence hoje";
+  if(d===1) return "vence amanhã";
+  return `vence em ${d} dias`;
+}
+function diasAteVencer(g){
+  const v=gastoVencimento(g); if(!v) return null;
+  const [a,m,d]=v.split("-").map(Number);
+  const alvo=new Date(a,m-1,d), hoje=new Date();
+  return Math.round((alvo-new Date(hoje.getFullYear(),hoje.getMonth(),hoje.getDate()))/86400000);
+}
+function dataCurta(v){ const p=String(v||"").split("-"); return p.length===3?p[2]+"/"+p[1]:"—"; }
+/* O que vence (ou venceu) e ainda nao foi marcado como pago. */
+function contasAPagar(lista,dentroDeDias=7){
+  const fora=[],perto=[],vencidas=[];
+  (lista||[]).forEach(g=>{
+    if(g.pago===true) return;
+    const d=diasAteVencer(g); if(d===null) return;
+    if(d<0) vencidas.push({g,d}); else if(d<=dentroDeDias) perto.push({g,d}); else fora.push({g,d});
+  });
+  const soma=a=>a.reduce((s,x)=>s+toNumber(x.g.valor,0),0);
+  vencidas.sort((a,b)=>a.d-b.d); perto.sort((a,b)=>a.d-b.d);
+  return {vencidas,perto,fora,total:soma(vencidas)+soma(perto),
+          totalVencidas:soma(vencidas),qtd:vencidas.length+perto.length};
+}
+window.marcarGastoPago=async function(id){
+  const g=gastos.find(x=>x.id===id); if(!g) return;
+  const novo=!(g.pago===true);
+  try{
+    requireAuthUser();
+    await updateDoc(doc(db,"gastos",id),withOwner({pago:novo,pagoEm:novo?Timestamp.now():null}));
+    g.pago=novo;                               /* a tela responde na hora */
+    renderGastos();
+    toast(novo?"Marcado como pago.":"Voltou para 'a pagar'.");
+    await loadData();
+  }catch(e){ console.error("PAGO_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
+};
+
+/* Cor fixa por categoria: sai do proprio nome, entao uma categoria nova
+   tambem ganha a sua e nunca troca de cor sozinha. */
+const GASTO_CORES=["#5B8DEF","#8B6FD4","#E08A4B","#3AA6A6","#C97BA8","#6B8CA8",
+                   "#4CA87A","#D4A24C","#7E8BD9","#B0705E"];
+/* As categorias do dia a dia ganham cor escolhida a dedo, para nao cairem
+   em dois azuis parecidos. O calculo em cima do nome fica para as outras. */
+const GASTO_COR_FIXA={
+  material:"#5B8DEF", infraestrutura:"#8B6FD4", encargos:"#E08A4B",
+  logistica:"#3AA6A6", manutencao:"#C97BA8", servicos:"#6B8CA8",
+  aluguel:"#8B6FD4", linha:"#5B8DEF", cafe:"#B0705E", emprestimo:"#D4A24C",
+  mercado:"#4CA87A", mecanico:"#C97BA8", outros:"#7E8BD9",
+  "sem categoria":"#6B7280"
+};
+function corDaCategoria(chave){
+  const k=String(chave||"sem");
+  if(GASTO_COR_FIXA[k]) return GASTO_COR_FIXA[k];
+  let h=0; for(let i=0;i<k.length;i++) h=(h*31+k.charCodeAt(i))>>>0;
+  return GASTO_CORES[h%GASTO_CORES.length];
+}
+function tetosCategoria(){ const t=getConfig().tetosCategoria; return (t&&typeof t==="object")?t:{}; }
+function tetoDaCategoria(chave){ return toNumber(tetosCategoria()[chave],0); }
+window.gastoDefinirTeto=function(chave,rotulo){
+  const atual=tetoDaCategoria(chave);
+  const resp=prompt(`Teto de gasto por mês para "${rotulo}" (R$):\n\n`
+    +`Deixe em branco para tirar o teto.`, atual?String(atual).replace(".",","):"");
+  if(resp===null) return;
+  const bruto=String(resp).replace(/[^\d,.-]/g,"").trim();
+  const mapa={...tetosCategoria()};
+  if(!bruto){ delete mapa[chave]; }
+  else{
+    const v=toNumber(bruto,NaN);
+    if(!Number.isFinite(v)||v<0){ toast("Valor inválido para o teto.","err"); return; }
+    if(v===0) delete mapa[chave]; else mapa[chave]=v;
+  }
+  setConfigField("tetosCategoria",mapa);
+  renderGastos();
+  toast(mapa[chave]?`Teto de ${rotulo}: ${fmtMoney(mapa[chave])} por mês.`:`Teto de ${rotulo} removido.`);
+};
+
 function gastoBadgesHtml(g){
   const b=[];
   if(toNumber(g.parcelaTotal,0)>1)
@@ -4149,28 +4284,65 @@ function renderGastos(){
       deltaHtml=`<div class="gx-delta gx-delta-neutro">sem base no mês anterior</div>`;
     }
     const fut=compromissosFuturosGastos();
+    /* Quanto da receita do mês saiu em gasto — os dois números já existiam
+       no sistema e nunca apareciam lado a lado. */
+    let fatMes=0, pesoFat=0, deltaFat="";
+    if(!gTodos){
+      try{
+        fatMes=toNumber(calcResumoMensal(gMes).faturamento,0);
+        if(fatMes>0){
+          pesoFat=total/fatMes*100;
+          const fatAnt=toNumber(calcResumoMensal(mesAnt).faturamento,0);
+          if(fatAnt>0&&totalAnt>0){
+            const antPct=totalAnt/fatAnt*100, dif=pesoFat-antPct;
+            if(Math.abs(dif)>=0.5)
+              deltaFat=` · <span class="${dif<0?"gx-bom":"gx-ruim"}">${dif<0?"abaixo":"acima"}</span> dos `
+                +`${antPct.toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:0})}% do mês passado`;
+          }
+        }
+      }catch(_e){}
+    }
+    /* O que vence e ainda não foi marcado como pago. */
+    const aPagar=contasAPagar(doPeriodo,7);
+    const temMarcacao=doPeriodo.some(g=>gastoVencimento(g)||g.pago===true||g.pago===false);
     const pF=total>0?Math.round(tF/total*100):0;
     const pV=total>0?100-pF:0;
     kpis.innerHTML=`
+      ${aPagar.qtd?`
+      <div class="gx-kpi gx-kpi-pagar ${aPagar.vencidas.length?"is-vencido":""}">
+        <div class="gx-kpi-lbl">A pagar em até 7 dias</div>
+        <div class="gx-kpi-val ${aPagar.vencidas.length?"gx-ruim":""}">${fmtMoney(aPagar.total)}</div>
+        <div class="gx-kpi-sub">
+          ${aPagar.vencidas.length?`<span class="gx-ruim">${aPagar.vencidas.length} vencida${aPagar.vencidas.length>1?"s":""}</span> · `:""}
+          ${aPagar.perto.length?`${aPagar.perto.length} a vencer`:"nada mais a vencer"}
+          ${(aPagar.vencidas[0]||aPagar.perto[0])?`<br><b>${escapeHtml(capitalizar((aPagar.vencidas[0]||aPagar.perto[0]).g.descricao||"—"))}</b> ${textoPrazoGasto((aPagar.vencidas[0]||aPagar.perto[0]).d)}`:""}
+        </div>
+      </div>`:`
+      <div class="gx-kpi gx-kpi-pagar is-vazio">
+        <div class="gx-kpi-lbl">A pagar em até 7 dias</div>
+        <div class="gx-kpi-val">${temMarcacao?fmtMoney(0):"—"}</div>
+        <div class="gx-kpi-sub">${temMarcacao
+          ? "nada vencendo nos próximos dias"
+          : "preencha o <b>vencimento</b> nos gastos novos que eu aviso aqui"}</div>
+      </div>`}
       <div class="gx-kpi gx-kpi-hero">
         <div class="gx-kpi-lbl">Total ${gTodos?"de todos os meses":"do mês"}</div>
         <div class="gx-kpi-val">${fmtMoney(total)}</div>
         ${deltaHtml}
       </div>
-      <div class="gx-kpi">
-        <div class="gx-kpi-lbl"><i class="gx-sw gx-sw-fixo"></i> Fixos</div>
-        <div class="gx-kpi-val">${fmtMoney(tF)}</div>
-        <div class="gx-kpi-sub">${pF}% do total · ${doPeriodo.filter(gastoEhFixo).length} lançamentos</div>
+      <div class="gx-kpi gx-kpi-fv">
+        <div class="gx-kpi-lbl"><i class="gx-sw gx-sw-fixo"></i> Fixos <span class="gx-fv-sep">·</span> <i class="gx-sw gx-sw-var"></i> Variáveis</div>
+        <div class="gx-kpi-val gx-fv-val">${fmtMoney(tF)}<span class="gx-fv-sep">·</span>${fmtMoney(tV)}</div>
+        <div class="gx-fv-barra"><i style="width:${pF}%"></i><i style="width:${pV}%"></i></div>
+        <div class="gx-kpi-sub">${pF}% fixo · ${pV}% variável · ${doPeriodo.length} lançamentos</div>
       </div>
-      <div class="gx-kpi">
-        <div class="gx-kpi-lbl"><i class="gx-sw gx-sw-var"></i> Variáveis</div>
-        <div class="gx-kpi-val">${fmtMoney(tV)}</div>
-        <div class="gx-kpi-sub">${pV}% do total · ${doPeriodo.filter(g=>!gastoEhFixo(g)).length} lançamentos</div>
-      </div>
-      <div class="gx-kpi">
-        <div class="gx-kpi-lbl">Já comprometido à frente</div>
-        <div class="gx-kpi-val">${fmtMoney(fut.total)}</div>
-        <div class="gx-kpi-sub">${fut.qtd?`${fut.qtd} lançamento(s) até ${formatMonthLabel(fut.ultimo)}`:"nenhuma parcela futura"}</div>
+      <div class="gx-kpi gx-kpi-fat">
+        <div class="gx-kpi-lbl">Sobre o faturamento</div>
+        ${fatMes>0
+          ? `<div class="gx-kpi-val ${pesoFat<=40?"gx-bom":pesoFat<=70?"":"gx-ruim"}">${pesoFat.toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})}%</div>
+             <div class="gx-kpi-sub">de ${fmtMoney(fatMes)} faturado${deltaFat}</div>`
+          : `<div class="gx-kpi-val">—</div>
+             <div class="gx-kpi-sub">sem faturamento lançado ${gTodos?"":"em "+formatMonthLabel(gMes)}</div>`}
       </div>`;
   }
 
@@ -4200,15 +4372,31 @@ function renderGastos(){
         const larg=Math.max(2,Math.round(c.total/maior*100));
         const ativo=catF===c.chave;
         const clicavel=c.chave!=="__outras";
+        const cor=clicavel?corDaCategoria(c.chave):"var(--t3)";
+        const teto=clicavel?tetoDaCategoria(c.chave):0;
+        /* Com teto, a barra passa a ser medida contra ele: a marca clara é o
+           limite, e a barra fica vermelha se passar. */
+        const base=teto>0?Math.max(maior,teto):maior;
+        const largB=Math.max(2,Math.round(c.total/base*100));
+        const estourou=teto>0&&c.total>teto;
+        const dif=Math.abs(c.total-teto);
         return `<div class="gx-cat ${ativo?"is-ativo":""} ${clicavel?"is-clicavel":""}"
-            ${clicavel?`onclick="gastoFiltrarCategoria('${c.chave}')"`:""}
-            title="${escapeHtml(c.rotulo)} · ${fmtMoney(c.total)} · ${c.n} lançamento(s) · ${pct.toFixed(1)}% do período">
+            title="${escapeHtml(c.rotulo)} · ${fmtMoney(c.total)} · ${c.n} lançamento(s) · ${pct.toFixed(1)}% do período${teto>0?" · teto "+fmtMoney(teto):""}">
           <div class="gx-cat-top">
-            <span class="gx-cat-nome">${escapeHtml(c.rotulo)}</span>
+            <span class="gx-cat-nome" ${clicavel?`onclick="gastoFiltrarCategoria('${c.chave}')"`:""}>
+              <i class="gx-cat-dot" style="background:${cor}"></i>${escapeHtml(c.rotulo)}</span>
             <span class="gx-cat-val">${fmtMoney(c.total)}</span>
           </div>
-          <div class="gx-cat-track"><div class="gx-cat-fill" style="width:${larg}%"></div></div>
-          <div class="gx-cat-meta">${pct.toFixed(1)}% do período · ${c.n} lançamento${c.n>1?"s":""}</div>
+          <div class="gx-cat-track" ${clicavel?`onclick="gastoFiltrarCategoria('${c.chave}')"`:""}>
+            <div class="gx-cat-fill" style="width:${largB}%;background:${estourou?"#E5484D":cor}"></div>
+            ${teto>0?`<i class="gx-cat-teto" style="left:${Math.min(99,Math.round(teto/base*100))}%"></i>`:""}
+          </div>
+          <div class="gx-cat-meta">
+            <span>${pct.toFixed(1)}% do período · ${c.n} lançamento${c.n>1?"s":""}</span>
+            ${clicavel?(teto>0
+              ? `<button type="button" class="gx-teto-btn ${estourou?"is-ruim":"is-bom"}" onclick="event.stopPropagation();gastoDefinirTeto('${c.chave}',${JSON.stringify(c.rotulo).replace(/"/g,"&quot;")})">${estourou?"passou "+fmtMoney(dif)+" do teto":"folga de "+fmtMoney(dif)}</button>`
+              : `<button type="button" class="gx-teto-btn is-vazio" onclick="event.stopPropagation();gastoDefinirTeto('${c.chave}',${JSON.stringify(c.rotulo).replace(/"/g,"&quot;")})">definir teto</button>`):""}
+          </div>
         </div>`;
       }).join("");
     }
@@ -4337,34 +4525,108 @@ function renderGastos(){
   const maisG=faltamG>0
     ? `<div class="gx-mais"><button type="button" class="btn-outline" onclick="gastosMostrarMais()">Mostrar mais ${Math.min(PASSO_G,faltamG)} ${faltamG===1?"mês":"meses"} — ${faltamG} ${faltamG===1?"restante":"restantes"}</button></div>`
     : "";
+  /* Peso do valor: o gasto grande precisa saltar, o pequeno recuar. */
+  const maiorValor=Math.max(...dados.map(g=>toNumber(g.valor,0)),1);
+  const pesoValor=v=>{ const r=toNumber(v,0)/maiorValor;
+    return r>=.45?"gx-v1":r>=.12?"gx-v2":"gx-v3"; };
+
+  const celulaSituacao=x=>{
+    const s=gastoSituacao(x), m=GASTO_SIT[s];
+    const d=diasAteVencer(x);
+    const dica=s==="sem"?"Clique para marcar como pago"
+      :s==="pago"?"Pago — clique para voltar para 'a pagar'"
+      :textoPrazoGasto(d)+" — clique quando pagar";
+    return `<button type="button" class="gsit ${m.c}" title="${escapeHtml(dica)}"
+      onclick="event.stopPropagation();marcarGastoPago('${x.id}')">${m.r}</button>`;
+  };
+  const linhaHtml=x=>`<tr class="${gastoSituacao(x)==="vencido"?"gx-tr-vencido":""}">
+      <td class="gx-td-desc">
+        <span class="gx-strip" style="background:${corDaCategoria(chaveCat(x))}"></span>
+        <span class="gx-desc-txt">${escapeHtml(capitalizar(x.descricao)||"—")}${gastoBadgesHtml(x)}</span>
+        <span class="gx-desc-cat">${escapeHtml(rotuloDe(chaveCat(x)))}</span>
+      </td>
+      <td><span class="chip ${gastoEhFixo(x)?"gchip-fixo":"gchip-var"}"><i class="gx-sw ${gastoEhFixo(x)?"gx-sw-fixo":"gx-sw-var"}"></i>${gastoEhFixo(x)?"Fixo":"Variável"}</span></td>
+      <td class="gx-td-venc"><span class="${gastoSituacao(x)==="vencido"?"gx-ruim":""}">${dataCurta(gastoVencimento(x))}</span></td>
+      <td>${celulaSituacao(x)}</td>
+      <td class="td-mono gx-td-val ${pesoValor(x.valor)}">${fmtMoney(x.valor)}</td>
+      <td><div class="td-actions"><button class="btn-edit" onclick="editarGasto('${x.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarGasto('${x.id}')" title="Remover">✕</button></div></td>
+    </tr>`;
+
   cont.innerHTML=keys.map(k=>{
     const linhas=ordenar(grupos[k]);
     const tf=somaGastos(linhas.filter(gastoEhFixo)), tv=somaGastos(linhas.filter(g=>!gastoEhFixo(g)));
     const label=/^\d{4}-\d{2}$/.test(k)?formatMonthLabel(k):"Sem data";
+
+    /* Categoria com 4+ lançamentos fixos vira uma linha só. É o caso dos
+       encargos: eles enchiam a lista e escondiam o aluguel e o tecido. */
+    const porCat=new Map();
+    linhas.forEach(g=>{ const c=chaveCat(g); (porCat.get(c)||porCat.set(c,[]).get(c)).push(g); });
+    const juntar=new Set();
+    /* Só os Encargos: são as linhas que o próprio sistema cria, uma por
+       funcionária e por encargo, e que enchiam a lista. O que a dona digita
+       continua aparecendo linha a linha. */
+    if(catF==="todas") porCat.forEach((arr,c)=>{ if(c==="encargos"&&arr.length>=4) juntar.add(c); });
+    const abertos=window.__gastoGrupoAberto||{};
+    const soltas=linhas.filter(g=>!juntar.has(chaveCat(g)));
+
+    const blocos=[...juntar].map(c=>{
+      const arr=porCat.get(c), tot=somaGastos(arr), aberto=!!abertos[k+"|"+c];
+      const quem=[...new Set(arr.map(g=>String(g.descricao||"").split(/\s+/).slice(-1)[0]).filter(Boolean))];
+      const venc=arr.map(gastoVencimento).filter(Boolean).sort()[0]||"";
+      const pend=arr.filter(g=>g.pago!==true).length;
+      return {chave:c, tot, ordemV:tot, html:`<tr class="gx-tr-grupo" onclick="gastoAbrirGrupo('${k}|${c}')">
+        <td class="gx-td-desc">
+          <span class="gx-strip" style="background:${corDaCategoria(c)}"></span>
+          <span class="gx-desc-txt">${escapeHtml(rotuloDe(c))}
+            <span class="gx-badge gx-badge-n">${arr.length} lançamentos</span>
+            <span class="gx-abrir">${aberto?"▴ fechar":"▾ abrir"}</span></span>
+          ${quem.length?`<span class="gx-desc-cat">${escapeHtml(quem.slice(0,4).join(", "))}${quem.length>4?"…":""}</span>`:""}
+        </td>
+        <td><span class="chip gchip-fixo"><i class="gx-sw gx-sw-fixo"></i>Fixo</span></td>
+        <td class="gx-td-venc">${dataCurta(venc)}</td>
+        <td>${pend?`<span class="gsit gsit-sem" style="cursor:default">${pend} em aberto</span>`
+                  :`<span class="gsit gsit-pago" style="cursor:default">pago</span>`}</td>
+        <td class="td-mono gx-td-val ${pesoValor(tot)}">${fmtMoney(tot)}</td>
+        <td></td>
+      </tr>`+(aberto?arr.map(x=>`<tr class="gx-tr-filho">${linhaHtml(x).replace(/^<tr[^>]*>/,"").replace(/<\/tr>$/,"")}</tr>`).join(""):"")};
+    });
+
+    const ordenadas=ordenar(soltas).map(x=>({ordemV:toNumber(x.valor,0),html:linhaHtml(x)}))
+      .concat(blocos)
+      .sort((a,b)=>b.ordemV-a.ordemV);
+
+    /* Pastilhas: quando há marcação de pagamento, elas passam a dizer o que
+       importa — quanto já saiu e quanto falta. */
+    const pago=somaGastos(linhas.filter(g=>g.pago===true));
+    const falta=somaGastos(linhas.filter(g=>g.pago===false));
+    const temMarca=linhas.some(g=>g.pago===true||g.pago===false);
+    const pills=temMarca
+      ? `<span class="gpill gpill-pago">Pago ${fmtMoney(pago)}</span>
+         <span class="gpill gpill-falta">A pagar ${fmtMoney(falta)}</span>
+         <span class="gpill gpill-total">Total ${fmtMoney(tf+tv)}</span>`
+      : `<span class="gpill gpill-fixo">Fixos ${fmtMoney(tf)}</span>
+         <span class="gpill gpill-var">Variáveis ${fmtMoney(tv)}</span>
+         <span class="gpill gpill-total">Total ${fmtMoney(tf+tv)}</span>`;
+
     return`<div class="gasto-grupo">
       <div class="gasto-grupo-hd">
         <span class="gasto-mes">${label}</span>
-        <div class="gasto-mes-pills">
-          <span class="gpill gpill-fixo">Fixos ${fmtMoney(tf)}</span>
-          <span class="gpill gpill-var">Variáveis ${fmtMoney(tv)}</span>
-          <span class="gpill gpill-total">Total ${fmtMoney(tf+tv)}</span>
-        </div>
+        <div class="gasto-mes-pills">${pills}</div>
       </div>
-      <div class="gx-tbl-wrap"><table class="gtbl">
-        <thead><tr><th>Descrição</th><th>Categoria</th><th>Tipo</th><th class="gx-th-num">Valor</th><th></th></tr></thead>
-        <tbody>${linhas.map(x=>`<tr>
-          <td class="gx-td-desc">${escapeHtml(capitalizar(x.descricao)||"—")}${gastoBadgesHtml(x)}</td>
-          <td><span class="gx-cat-chip">${escapeHtml(rotuloDe(chaveCat(x)))}</span></td>
-          <td><span class="chip ${gastoEhFixo(x)?"gchip-fixo":"gchip-var"}"><i class="gx-sw ${gastoEhFixo(x)?"gx-sw-fixo":"gx-sw-var"}"></i>${gastoEhFixo(x)?"Fixo":"Variável"}</span></td>
-          <td class="td-mono gx-td-val">${fmtMoney(x.valor)}</td>
-          <td><div class="td-actions"><button class="btn-edit" onclick="editarGasto('${x.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarGasto('${x.id}')" title="Remover">✕</button></div></td>
-        </tr>`).join("")}</tbody>
-        <tfoot><tr><td colspan="3" class="gx-tf-lbl">${linhas.length} lançamento${linhas.length>1?"s":""}</td>
+      <div class="gx-tbl-wrap"><table class="gtbl gtbl-gastos">
+        <thead><tr><th>Descrição</th><th>Tipo</th><th>Vence</th><th>Situação</th><th class="gx-th-num">Valor</th><th></th></tr></thead>
+        <tbody>${ordenadas.map(o=>o.html).join("")}</tbody>
+        <tfoot><tr><td colspan="4" class="gx-tf-lbl">${linhas.length} lançamento${linhas.length>1?"s":""}</td>
           <td class="td-mono gx-td-val">${fmtMoney(tf+tv)}</td><td></td></tr></tfoot>
       </table></div>
     </div>`;
   }).join("")+maisG;
 }
+window.gastoAbrirGrupo=function(chave){
+  const abertos=window.__gastoGrupoAberto=window.__gastoGrupoAberto||{};
+  abertos[chave]=!abertos[chave];
+  renderGastos();
+};
 window.gastosMostrarMais=function(){
   window.__gastosMeses=(window.__gastosMeses||6)+6;
   renderGastos();
@@ -6038,14 +6300,16 @@ window.salvarGastoDrawer=async()=>{
   const tipo=document.getElementById('gd-tipo')?.value;
   const categoria=document.getElementById('gd-cat')?.value.trim()||'Geral';
   const competencia=document.getElementById('gd-comp')?.value;
+  const vencGd=document.getElementById('gd-venc')?.value||"";
   if(!descricao||!valor||!competencia){toast('Preencha todos os campos','err');return;}
   if(!naoNegativo('gd-valor','O valor do gasto')) return;
   const btn=document.getElementById('btn-gd-save');
   if(btn){ if(btn.disabled) return; btn.disabled=true;btn.textContent='Salvando...'; }
   try{
-    await addDoc(collection(db,'gastos'),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+'-01':`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),criadoEm:Timestamp.now()}));
+    await addDoc(collection(db,'gastos'),withOwner({descricao,valor,tipo,categoria,competencia,...(vencGd?{vencimento:vencGd,pago:false}:{}),data:(competencia?competencia+'-01':`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),criadoEm:Timestamp.now()}));
     document.getElementById('gd-desc').value='';
     document.getElementById('gd-valor').value='';
+    if(document.getElementById('gd-venc')) document.getElementById('gd-venc').value='';
     toast('Gasto registrado!');
     await loadData();
     renderGastosDrawer();
@@ -12820,6 +13084,7 @@ input,select,textarea,button{font-size:16px;}
               </div>
               <div class="ff"><label>Categoria</label><input id="gd-cat" type="text" placeholder="Ex: Aluguel"/></div>
               <div class="ff"><label>Competência *</label><input id="gd-comp" type="month"/></div>
+              <div class="ff"><label>Vencimento <span class="ff-opt">opcional</span></label><input id="gd-venc" type="date"/></div>
             </div>
             <button class="btn-gd-save" id="btn-gd-save" onclick="salvarGastoDrawer()">+ Registrar</button>
           </div>
@@ -13108,13 +13373,21 @@ input,select,textarea,button{font-size:16px;}
               <option value="Empréstimo">💳 Empréstimo</option>
               <option value="Mercado">🛒 Mercado</option>
               <option value="Mecânico">🔧 Mecânico</option>
-              <option value="Encargos"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg> Encargos</option>
+              <option value="Encargos">👥 Encargos</option>
               <option value="Outros">✏️ Outros</option>
             </select>
           </div>
           <div class="ff" id="wrap-categoria-outros" style="display:none"><label>Especificar *</label><input id="gasto-categoria-outros" type="text" placeholder="Descreva a categoria..."/></div>
           <div class="ff"><label>Competência *</label><input id="gasto-competencia" type="month"/></div>
           <div class="ff"><label>Parcelas</label><select id="gasto-parcelas" onchange="atualizarPreviewParcela()"><option value="1">À vista (1×)</option></select></div>
+          <div class="ff"><label>Vencimento <span class="ff-opt">opcional</span></label><input id="gasto-vencimento" type="date"/></div>
+          <div class="ff"><label>Situação</label>
+            <select id="gasto-pago">
+              <option value="sim">Já paguei</option>
+              <option value="nao">Ainda vou pagar</option>
+              <option value="">Não informar</option>
+            </select>
+          </div>
         </div>
         <div id="gasto-parcela-preview" style="display:none;margin-bottom:12px;font-size:12px;font-weight:600;color:var(--accent-lt);background:rgba(191,195,202,.07);border:1px solid rgba(191,195,202,.18);border-radius:8px;padding:9px 13px;"></div>
         <button type="button" class="btn-save" onclick="salvarGasto()">+ Registrar Gasto</button>
@@ -13132,7 +13405,7 @@ input,select,textarea,button{font-size:16px;}
         <div class="card gx-panel">
           <div class="gx-panel-hd">
             <div class="gx-panel-tt">Onde o dinheiro foi</div>
-            <div class="gx-panel-sb">Por categoria, do maior para o menor — clique para filtrar a lista</div>
+            <div class="gx-panel-sb">Do maior para o menor — clique para filtrar. A marca clara na barra é o teto do mês.</div>
           </div>
           <div id="gastos-categorias"></div>
         </div>
@@ -13663,7 +13936,15 @@ input,select,textarea,button{font-size:16px;}
             <option value="Aluguel">🏠 Aluguel</option><option value="Linha">🧵 Linha</option>
             <option value="Café">☕ Café</option><option value="Empréstimo">💳 Empréstimo</option>
             <option value="Mercado">🛒 Mercado</option><option value="Mecânico">🔧 Mecânico</option>
-            <option value="Encargos"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg> Encargos</option><option value="Outros">✏️ Outros</option>
+            <option value="Encargos">👥 Encargos</option><option value="Outros">✏️ Outros</option>
+          </select>
+        </div>
+        <div class="ff"><label>Vencimento <span class="ff-opt">opcional</span></label><input id="edit-gasto-vencimento" type="date"/></div>
+        <div class="ff"><label>Situação</label>
+          <select id="edit-gasto-pago">
+            <option value="sim">Já paguei</option>
+            <option value="nao">Ainda vou pagar</option>
+            <option value="">Não informar</option>
           </select>
         </div>
         <div class="ff" id="edit-wrap-categoria-outros" style="display:none">
@@ -19035,6 +19316,123 @@ main,.main{ padding-bottom:96px!important; }
 .global-search-icon{ display:flex; align-items:center; }
 .btn-layout-toggle .lt-icon{ display:inline-flex; align-items:center; }
 .btn-layout-toggle .ico-chip{ margin-right:0; vertical-align:0; }
+/* ═══ GASTOS: vencimento, pagamento, cor por categoria e teto ═══ */
+.ff-opt{ font-weight:500; font-size:10px; color:var(--t3); text-transform:none; letter-spacing:0; margin-left:5px; }
+
+/* cartões */
+.gx-fv-val{ display:flex; align-items:baseline; gap:7px; flex-wrap:nowrap; white-space:nowrap;
+  font-size:17.5px!important; letter-spacing:-.6px!important; }
+.gx-fv-sep{ color:var(--t3); font-weight:500; }
+.gx-fv-barra{ display:flex; height:6px; border-radius:99px; overflow:hidden; margin:10px 0 2px; background:var(--bg4); }
+.gx-fv-barra i:first-child{ background:var(--accent); }
+.gx-fv-barra i:last-child{ background:#E0703B; }
+.gx-kpi-fv .gx-kpi-lbl{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.gx-kpi-pagar{ position:relative; }
+.gx-kpi-pagar::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+  border-radius:3px 0 0 3px; background:var(--t3); opacity:.45; }
+.gx-kpi-pagar.is-vencido::before{ background:#E5484D; opacity:1; }
+.gx-kpi-pagar.is-vazio .gx-kpi-val{ color:var(--t3); }
+.gx-kpi-fat::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+  border-radius:3px 0 0 3px; background:#30A46C; opacity:.9; }
+.gx-kpi-fat{ position:relative; }
+.gx-bom{ color:#3DD68C; font-weight:700; }
+.gx-ruim{ color:#FF6B6E; font-weight:700; }
+html[data-theme="claro"] .gx-bom{ color:#0F7A47; }
+html[data-theme="claro"] .gx-ruim{ color:#C22B30; }
+
+/* categorias: bolinha de cor, marca do teto e botão do teto */
+.gx-cat-dot{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:8px;
+  flex-shrink:0; vertical-align:0; }
+.gx-cat-nome{ display:flex; align-items:center; min-width:0; }
+.gx-cat-track{ position:relative; overflow:visible; }
+.gx-cat-teto{ position:absolute; top:-3px; bottom:-3px; width:2px; border-radius:2px;
+  background:var(--t2); opacity:.7; pointer-events:none; }
+.gx-cat-meta{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+html body .gx-teto-btn{ background:none!important; border:none!important; padding:2px 0!important;
+  cursor:pointer; font-family:inherit!important; font-size:11px!important; font-weight:700!important;
+  line-height:1.4!important; min-height:0!important; height:auto!important; width:auto!important;
+  box-shadow:none!important; border-radius:0!important; letter-spacing:0!important;
+  text-transform:none!important; white-space:nowrap; text-decoration:underline;
+  text-decoration-style:dotted; text-underline-offset:3px; }
+.gx-teto-btn.is-bom{ color:#3DD68C; } .gx-teto-btn.is-ruim{ color:#FF6B6E; }
+.gx-teto-btn.is-vazio{ color:var(--t3); font-weight:600; }
+.gx-teto-btn:hover{ text-decoration-style:solid; }
+html[data-theme="claro"] .gx-teto-btn.is-bom{ color:#0F7A47; }
+html[data-theme="claro"] .gx-teto-btn.is-ruim{ color:#C22B30; }
+
+/* lista: tira de cor, hierarquia de valor, situação */
+.gtbl-gastos .gx-td-desc{ position:relative; padding-left:20px!important; }
+.gx-strip{ position:absolute; left:8px; top:50%; transform:translateY(-50%);
+  width:3px; height:20px; border-radius:99px; }
+.gx-desc-txt{ display:block; }
+.gx-desc-cat{ display:block; font-size:10.5px; color:var(--t3); margin-top:3px; }
+html body .gtbl-gastos td.gx-td-val.gx-v1{ font-size:16.5px!important; font-weight:800!important; letter-spacing:-.4px!important; }
+html body .gtbl-gastos td.gx-td-val.gx-v2{ font-size:14px!important; font-weight:750!important; }
+html body .gtbl-gastos td.gx-td-val.gx-v3{ font-size:12.5px!important; font-weight:650!important; color:var(--t2)!important; }
+.gx-td-venc{ font-family:var(--fm); font-size:12px; color:var(--t2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+html body .gtbl-gastos tr.gx-tr-vencido td{ background:rgba(229,72,77,.10)!important; }
+html[data-theme="claro"] body .gtbl-gastos tr.gx-tr-vencido td{ background:rgba(229,72,77,.08)!important; }
+html body .gtbl-gastos tr.gx-tr-grupo td{ background:var(--bg3)!important; }
+html body .gtbl-gastos tr.gx-tr-grupo:hover td{ background:var(--bg4)!important; }
+html body .gtbl-gastos tr.gx-tr-filho td{ background:rgba(127,167,230,.05)!important; }
+
+html body .gsit{ font-family:inherit!important; font-size:10px!important; font-weight:800!important;
+  letter-spacing:.5px!important; text-transform:uppercase!important; line-height:1.3!important;
+  padding:5px 11px!important; border-radius:99px!important; cursor:pointer; white-space:nowrap;
+  min-height:0!important; height:auto!important; width:auto!important; box-shadow:none!important;
+  transition:filter .15s; }
+.gsit:hover{ filter:brightness(1.18); }
+.gsit-pago{ background:rgba(48,164,108,.14); color:#3DD68C; border:1px solid rgba(48,164,108,.32); }
+.gsit-apagar{ background:rgba(245,158,11,.13); color:#F5C06B; border:1px solid rgba(245,158,11,.3); }
+.gsit-vencido{ background:rgba(229,72,77,.15); color:#FF6B6E; border:1px solid rgba(229,72,77,.36); }
+.gsit-sem{ background:var(--bg4); color:var(--t3); border:1px solid var(--bd); font-weight:700; }
+html[data-theme="claro"] .gsit-pago{ background:rgba(15,122,71,.1); color:#0F7A47; border-color:rgba(15,122,71,.28); }
+html[data-theme="claro"] .gsit-apagar{ background:rgba(176,110,8,.1); color:#8A5A06; border-color:rgba(176,110,8,.28); }
+html[data-theme="claro"] .gsit-vencido{ background:rgba(194,43,48,.1); color:#C22B30; border-color:rgba(194,43,48,.3); }
+
+/* grupo fechado (encargos e afins) */
+.gx-tr-grupo{ cursor:pointer; }
+.gx-tr-grupo td{ background:var(--bg3); }
+.gx-tr-grupo:hover td{ background:var(--bg4); }
+.gx-abrir{ font-size:10px; font-weight:700; color:var(--t3); margin-left:7px; white-space:nowrap; }
+.gx-badge-n{ background:var(--bg4); color:var(--t2); }
+.gx-tr-filho td{ background:rgba(127,167,230,.04); }
+.gx-tr-filho .gx-td-desc{ padding-left:34px!important; }
+.gx-tr-filho .gx-strip{ left:22px; }
+
+/* pastilhas do mês */
+.gpill-pago{ background:rgba(48,164,108,.13); color:#3DD68C; border:1px solid rgba(48,164,108,.28); }
+.gpill-falta{ background:rgba(245,158,11,.12); color:#F5C06B; border:1px solid rgba(245,158,11,.28); }
+html[data-theme="claro"] .gpill-pago{ background:rgba(15,122,71,.1); color:#0F7A47; }
+html[data-theme="claro"] .gpill-falta{ background:rgba(176,110,8,.1); color:#8A5A06; }
+
+/* ── celular: os cartões viram uma faixa de duas colunas ── */
+@media (max-width:760px){
+  body:not(.desktop-forced) #gastos-kpis{
+    display:grid!important; grid-template-columns:1fr 1fr!important; gap:1px!important;
+    background:var(--bd); border:1px solid var(--bd); border-radius:14px; overflow:hidden; padding:0!important; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi{
+    background:var(--bg2)!important; border:none!important; border-radius:0!important;
+    padding:11px 13px!important; margin:0!important; box-shadow:none!important; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-pagar,
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-fv{ grid-column:1 / -1; }
+  /* os dois de uma coluna ficam lado a lado; os largos, um em cima do outro */
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-pagar{ order:1; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-hero { order:2; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-fat  { order:3; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-fv   { order:4; }
+  /* no cartão estreito o valor duplo pode quebrar em duas linhas */
+  body:not(.desktop-forced) .gx-fv-val{ flex-wrap:wrap!important; white-space:normal!important;
+    font-size:16px!important; }
+  body:not(.desktop-forced) .gx-cat-meta{ flex-wrap:wrap; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-lbl{ font-size:9.5px!important; letter-spacing:.7px!important; margin-bottom:4px!important; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-val{ font-size:17px!important; letter-spacing:-.6px!important; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-pagar .gx-kpi-val{ font-size:24px!important; }
+  body:not(.desktop-forced) #gastos-kpis .gx-kpi-sub,
+  body:not(.desktop-forced) #gastos-kpis .gx-delta{ font-size:10px!important; margin-top:4px!important; }
+  body:not(.desktop-forced) .gx-desc-cat{ font-size:10px; }
+  body:not(.desktop-forced) .gsit{ font-size:9px; padding:3px 7px; }
+}
 .ico-chip{ width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.7;
   stroke-linecap:round; stroke-linejoin:round; vertical-align:-2px; margin-right:6px; }
 .btn-theme-quick{ display:inline-flex; align-items:center; }
