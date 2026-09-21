@@ -60,6 +60,66 @@
   .pt-esq{ flex:0 0 auto; }
   .pt-dir{ flex:1; min-width:0; margin-top:0; padding-top:0; border-top:none; }
 }
+/* ── Saldo do mês de cada colaborador: com barra, em vez de só o vermelho ── */
+html body .rank-saldo{ display:block!important; padding-top:11px; }
+.rs-topo{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.rs-bar{ height:6px; border-radius:99px; background:var(--bg3); overflow:hidden; margin:9px 0 7px; }
+.rs-fill{ height:100%; border-radius:99px; background-color:#4C7BF3; transition:width .5s ease; }
+.rank-saldo.pos .rs-fill{ background-color:#2EA043; }
+.rs-pe{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+html body .rs-pe .rs-d{ font-size:11px; color:var(--t3); }
+html body .rs-pe .rs-d b{ color:var(--t2); font-family:var(--fm); font-weight:650; }
+
+/* Nome de cor comprido não pode furar o cartão no celular. */
+html body .mtag{ max-width:100%; min-width:0; }
+html body .mtag.color{ overflow:hidden; }
+html body .mtag.color,html body .mtag.sz{ word-break:break-word; overflow-wrap:anywhere; }
+/* ── Resumo do mês, acima do calendário ── */
+.cal-resumo{ background:var(--bg2); border:1px solid var(--bd); border-radius:16px;
+  padding:15px 18px; margin-bottom:14px; }
+.cr-mes{ font-size:11px; font-weight:700; color:var(--t3); text-transform:uppercase;
+  letter-spacing:.7px; margin-bottom:11px; }
+.cr-nums{ display:flex; flex-wrap:wrap; gap:14px 34px; }
+.cr-i{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.cr-i b{ font-family:var(--fm); font-size:21px; font-weight:700; color:var(--t); line-height:1.1; }
+.cr-i span{ font-size:11.5px; color:var(--t3); white-space:nowrap; }
+.cr-i:first-child b{ color:var(--accent-lt,#7FA7E6); }
+@media (max-width:560px){
+  .cal-resumo{ padding:13px 14px; }
+  .cr-nums{ gap:12px 20px; }
+  .cr-i b{ font-size:18px; }
+  .cr-i span{ font-size:10.5px; white-space:normal; }
+}
+
+/* ── Metas: em duas colunas no computador, em vez de uma fita ── */
+@media (min-width:1000px){
+  html body .metas-wrap{ display:grid!important; grid-template-columns:1fr 1fr; gap:14px 22px;
+    align-items:start; }
+  html body .metas-wrap > .meta-total-card,
+  html body .metas-wrap > .mp-titulo,
+  html body .metas-wrap > .meta-note{ grid-column:1 / -1; }
+  html body .metas-wrap > .mp-vazio{ grid-column:1 / -1; }
+  html body .metas-wrap > .meta-card{ margin:0; }
+}
+/* 1) o "X% da meta do mês" é o item da esquerda da linha */
+html body .rs-pe .rs-d:first-child{ text-align:left!important; }
+html body .rs-pe .rs-d:last-child{ text-align:right!important; }
+
+/* 2) ritmo e jornada ficam numa faixa só deles, fora da fila das pessoas */
+.meta-ajustes{ display:grid; gap:14px; }
+@media (min-width:1000px){
+  html body .metas-wrap > .meta-ajustes{ grid-column:1 / -1; grid-template-columns:1fr 1fr;
+    gap:14px 22px; align-items:start; }
+  html body .meta-ajustes > .meta-card,
+  html body .meta-ajustes > .jornada-card{ margin:0!important; }
+}
+/* O nome tem caixa própria: em caixa flex as reticências não funcionam e o
+   texto era cortado seco. Cabe em duas linhas antes de encurtar. */
+html body .rank-name{ align-items:flex-start!important; }
+html body .rank-name .rank-dot{ margin-top:5px; flex-shrink:0; }
+html body .rk-n{ min-width:0; overflow:hidden; white-space:normal;
+  overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2;
+  -webkit-box-orient:vertical; line-height:1.3; }
 .meta-fill{ background-color:#4C7BF3!important; }
 .meta-fill.ok{ background-color:#2EA043!important; }
 .lc-prog-fill{ background-color:#4C7BF3!important; }
@@ -799,7 +859,7 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
     <div id="view-placar" style="display:none"></div>
     <div id="view-metas" style="display:none"></div>
     <div id="view-dias" style="display:none">
-      <div class="dias-bar"><span class="dias-lbl">Mês</span><input type="month" id="dias-mes"></div>
+      <div class="dias-bar"><span class="dias-lbl">Trocar mês</span><input type="month" id="dias-mes"></div>
       <div class="dias-chips" id="dias-chips">
         <button class="dia-chip active" data-ds="todos" type="button">Todos</button>
         <button class="dia-chip" data-ds="revisao" type="button">Revisão</button>
@@ -1008,6 +1068,12 @@ const esc=s=>String(s==null?"":s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","
 const TAMS=["P","M","G","GG","G1","G2","G3"];
 /* XG e G1 são o mesmo tamanho: o que vier como XG é lido como G1. */
 function tamCanon(t){ return t==="XG"?"G1":t; }
+/* "OF-1043" ja traz o OF; "1043" nao. O rotulo nao pode sair "OF OF-1043". */
+function rotuloOf(n){
+  const v=String(n==null?"":n).trim();
+  if(!v) return "OF —";
+  return /^of\b|^of[-\s.]/i.test(v)?v:("OF "+v);
+}
 const CORES_HEX={amarelo:"#F5C518",amarela:"#F5C518",azul:"#3B82F6","azul marinho":"#1E3A8A",marinho:"#1E3A8A",vermelho:"#EF4444",vermelha:"#EF4444",verde:"#22C55E",preto:"#1F2937",preta:"#1F2937",branco:"#7BA0FF",branca:"#7BA0FF",rosa:"#EC4899",roxo:"#8B5CF6",roxa:"#8B5CF6",lilas:"#A78BFA","lilás":"#A78BFA",laranja:"#F97316",cinza:"#9CA3AF",bege:"#D8C3A5",marrom:"#92400E",vinho:"#7F1D1D",caramelo:"#B45309",nude:"#E2C9B0",turquesa:"#14B8A6",mostarda:"#D69E2E",pink:"#EC4899",off:"#EFEAE0","off white":"#EFEAE0"};
 function corHex(nome){
   const k=String(nome||"").trim().toLowerCase();
@@ -1202,16 +1268,24 @@ function renderPorColaborador(concluidos){
     const cores=Object.keys(r.cores).sort((a,b)=>r.cores[b]-r.cores[a]).map(c=>`<span class="rank-sz"><span class="cd" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${corHex(c)};margin-right:4px;vertical-align:middle;"></span>${esc(c)}<b>${r.cores[c].toLocaleString("pt-BR")}</b></span>`).join("");
     return `<div class="rank-row">
       <div class="rank-top">
-        <div class="rank-name"><span class="rank-dot"></span>${esc(r.nome)}</div>
+        <div class="rank-name" title="${esc(r.nome)}"><span class="rank-dot"></span><span class="rk-n">${esc(r.nome)}</span></div>
         <div class="rank-nums"><strong>${r.pecas.toLocaleString("pt-BR")}<span class="u">pçs</span></strong><span>${r.lotes} ${r.lotes===1?"lote":"lotes"}</span></div>
       </div>
       ${cores?`<div class="rank-sizes">${cores}</div>`:""}
       ${szs?`<div class="rank-sizes">${szs}</div>`:""}
-      ${sm.dias>0?`<div class="rank-saldo${sm.saldo<0?" neg":" pos"}">
-        <span class="rs-l">${sm.saldo<0?"Devendo no mês":"Acima da meta no mês"}</span>
-        <span class="rs-v">${sm.saldo<0?"−":"+"}${Math.abs(sm.saldo).toLocaleString("pt-BR")}<span>pçs</span></span>
-        <span class="rs-d">${sm.dias} ${sm.dias===1?"dia":"dias"} · bateu em ${sm.bateu}</span>
-      </div>`:""}
+      ${sm.dias>0?(()=>{
+        const pctMes=sm.meta>0?Math.min(100,Math.round(sm.feito/sm.meta*100)):0;
+        return `<div class="rank-saldo${sm.saldo<0?" neg":" pos"}">
+        <div class="rs-topo">
+          <span class="rs-l">${sm.saldo<0?"Devendo no mês":"Acima da meta no mês"}</span>
+          <span class="rs-v">${sm.saldo<0?"−":"+"}${Math.abs(sm.saldo).toLocaleString("pt-BR")}<span>pçs</span></span>
+        </div>
+        ${sm.meta>0?`<div class="rs-bar"><div class="rs-fill" style="width:${pctMes}%"></div></div>`:""}
+        <div class="rs-pe">
+          <span class="rs-d">${sm.meta>0?`<b>${pctMes}%</b> da meta do mês · ${sm.feito.toLocaleString("pt-BR")} de ${Math.round(sm.meta).toLocaleString("pt-BR")} pçs`:"sem ritmo definido"}</span>
+          <span class="rs-d">${sm.dias} ${sm.dias===1?"dia":"dias"} · bateu em ${sm.bateu}</span>
+        </div>
+      </div>`;})():""}
     </div>`;
   }).join("");
 }
@@ -1398,7 +1472,7 @@ function render(){
     return `<div class="lote-card ${done?"is-done":""}">
       <div class="lc-main">
         <div class="lc-head">
-          <span class="of-tag">OF ${esc(l.numeroOf||"—")}</span>
+          <span class="of-tag">${esc(rotuloOf(l.numeroOf))}</span>
           ${done?`<span class="lc-done-flag">${S().verbo}${l[S().fNome]?" · "+esc(l[S().fNome]):""}</span>`:""}
           <button class="lc-edit" data-edit="${l.id}" aria-label="Editar lote">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -1448,7 +1522,7 @@ function abrirConcluir(id){
     return;
   }
   loteConcluindo=l;
-  $("done-of").textContent="OF "+(l.numeroOf||"—");
+  $("done-of").textContent=rotuloOf(l.numeroOf);
   $("done-prod").textContent=l.produto||"—";
   const grade=getGrade(l), fm=feitoMap(l);
   const opts=`<option value="">— quem revisou —</option>`+colaboradores.map(c=>`<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join("");
@@ -1849,7 +1923,7 @@ function abrirExcluir(id){
   const l=lotes.find(x=>x.id===id); if(!l) return;
   loteExcluindo=id;
   const total=(gradeTotal(l)||Number(l.qtdTotal||0)).toLocaleString("pt-BR");
-  $("del-alvo").innerHTML=`<span class="del-of">OF ${esc(l.numeroOf||"—")}</span>
+  $("del-alvo").innerHTML=`<span class="del-of">${esc(rotuloOf(l.numeroOf))}</span>
     <div class="del-prod">${esc(l.produto||"—")}</div>
     <div class="del-sub">${l.cliente?esc(l.cliente)+" · ":""}<b>${total}</b> pçs</div>`;
   /* avisa quando já tem trabalho lançado, para ninguém apagar sem perceber */
@@ -1875,7 +1949,7 @@ async function confirmarExcluir(){
     lotes.splice(i,1);
     fecharExcluir();
     render();
-    toastDesfazer(`Lote OF ${backup.numeroOf||"—"} excluído`,()=>restaurarLote(backup));
+    toastDesfazer(`Lote ${rotuloOf(backup.numeroOf)} excluído`,()=>restaurarLote(backup));
   }catch(err){
     console.error("DEL_LOTE",err);
     toast("Erro ao excluir o lote","err");
@@ -2009,13 +2083,16 @@ const _diaVazio=()=>({padrao:0,especial:0,seg:0,lotes:new Set()});
 /* saldo de peças no mês: só os dias em que ela lançou, cada um contra a meta
    daquele dia. Negativo quer dizer que ficou devendo peças. */
 function saldoDoMes(pessoa){
-  const r={saldo:0,dias:0,bateu:0,pior:null,seg:0};
+  /* feito e meta somados tambem: e o que permite mostrar "quanto ja fez da
+     meta do mes" como barra, em vez de so o quanto esta devendo. */
+  const r={saldo:0,dias:0,bateu:0,pior:null,seg:0,feito:0,meta:0};
   if(!pessoa) return r;
   [...pessoa.dias.keys()].sort().forEach(ds=>{
     const d=pessoa.dias.get(ds), feito=Number(d.padrao||0)+Number(d.especial||0);
     if(feito<=0) return;
     const meta=metaIndividual(d.padrao,d.especial,fatorJornadaEm(ds));
     const dif=feito-meta;
+    r.feito+=feito; r.meta+=meta;
     r.saldo+=dif; r.dias++; r.seg+=Number(d.seg||0);
     if(dif>=0) r.bateu++;
     if(!r.pior||dif<r.pior.dif) r.pior={ds,dif};
@@ -2146,14 +2223,23 @@ function renderPlacar(){
         /* De quem são as peças do dia — uma barra só, nas cores do pódio. */
         const comPecas=linhas.filter(x=>x.pecas>0);
         if(!comPecas.length||total<=0) return "";
+        /* A barra tinha um pedaco por pessoa mas a legenda so listava quatro:
+           da quinta em diante o pedaco ficava sem nome e as porcentagens nao
+           fechavam 100. Agora a barra tem exatamente os mesmos pedacos da
+           legenda — do quinto em diante tudo vira um "outras" so. */
+        const fatias=comPecas.slice(0,3).map((x,i)=>({cls:"pd"+(i+1),nome:primeiroNomeRev(x.nome),titulo:x.nome,pecas:x.pecas}));
+        const resto=comPecas.slice(3);
+        if(resto.length===1) fatias.push({cls:"pd4",nome:primeiroNomeRev(resto[0].nome),titulo:resto[0].nome,pecas:resto[0].pecas});
+        else if(resto.length>1) fatias.push({cls:"pd4",nome:"outras "+resto.length,
+          titulo:resto.map(x=>primeiroNomeRev(x.nome)).join(", "),pecas:resto.reduce((s,x)=>s+x.pecas,0)});
         return `<div class="pt-dir">
           <div class="pt-dl">De quem são as peças</div>
-          <div class="pt-barra">${comPecas.map((x,i)=>{
-            const pct=x.pecas/total*100;
-            return `<i class="pd${Math.min(i+1,4)}" style="width:${pct.toFixed(2)}%"
-              title="${esc(x.nome)}: ${fmt(x.pecas)} pçs (${Math.round(pct)}%)"></i>`;}).join("")}</div>
-          <div class="pt-leg">${comPecas.slice(0,4).map((x,i)=>
-            `<span class="pt-lg"><i class="pd${Math.min(i+1,4)}"></i>${esc(primeiroNomeRev(x.nome))} <b>${Math.round(x.pecas/total*100)}%</b></span>`).join("")}</div>
+          <div class="pt-barra">${fatias.map(f=>{
+            const pct=f.pecas/total*100;
+            return `<i class="${f.cls}" style="width:${pct.toFixed(2)}%"
+              title="${esc(f.titulo)}: ${fmt(f.pecas)} pçs (${Math.round(pct)}%)"></i>`;}).join("")}</div>
+          <div class="pt-leg">${fatias.map(f=>
+            `<span class="pt-lg" title="${esc(f.titulo)}"><i class="${f.cls}"></i>${esc(f.nome)} <b>${Math.round(f.pecas/total*100)}%</b></span>`).join("")}</div>
         </div>`;
       })()}
     </div>
@@ -2237,7 +2323,7 @@ function renderMetas(){
     </div>`;
   }).join(""):`<div class="mp-vazio">Nenhuma revisora cadastrada. Adicione as colaboradoras para acompanhar a meta de cada uma.</div>`;
 
-  const ritmo=`<div class="meta-card">
+  const ritmo=`<div class="meta-card meta-cfg">
     <div class="meta-head"><span class="meta-nome">Ritmo por tamanho</span><span class="meta-sub-inline">peças por funcionária/dia</span></div>
     <div class="meta-inputs">
       <label>P · M · G · GG<input type="number" min="0" inputmode="numeric" data-mt="padrao" value="${rA||''}" placeholder="930"></label>
@@ -2256,7 +2342,7 @@ function renderMetas(){
 
   const pctSexta=(Number(jornada.normal)>0)?Math.round(Number(jornada.sexta||0)/Number(jornada.normal)*100):0;
   host.innerHTML=`<div class="metas-wrap">${topo}
-    <div class="mp-titulo">Cada revisora hoje</div>${lista}${ritmo}${jorn}
+    <div class="mp-titulo">Cada revisora hoje</div>${lista}<div class="meta-ajustes">${ritmo}${jorn}</div>
     <div class="meta-note">A meta é de cada funcionária: ${fmt(rA)} peças no dia em P/M/G/GG. Em G1/G2/G3 a peça é maior e a produção cai, então valem ${fmt(rB)} — é a mesma meta, só com ritmo menor.
     Na sexta a jornada menor reduz a meta na mesma proporção (${fmtH(jornada.sexta)}h de ${fmtH(jornada.normal)}h ⇒ ${pctSexta}%).
     O saldo do mês soma só os dias em que a revisora lançou peças: cada dia entra comparado com a meta daquele dia.</div></div>`;
@@ -2336,6 +2422,11 @@ function renderDias(){
   const startWd=new Date(yy,mm-1,1).getDay();
   const ndays=new Date(yy,mm,0).getDate();
   const wd=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  /* Escolher o dia ANTES de desenhar: senao o quadro de baixo mostra um dia e
+     o calendario nao marca nenhum, que era o que acontecia ao abrir a aba e ao
+     trocar de mes. */
+  if(diasSel && !dias[diasSel]) diasSel=null;
+  if(!diasSel){ const ks=Object.keys(dias).sort((a,b)=>b.localeCompare(a)); diasSel=ks[0]||null; }
   let cells=wd.map(w=>'<div class="cal-wd">'+w+'</div>').join("");
   for(let i=0;i<startWd;i++) cells+='<div class="cal-cell empty"></div>';
   for(let d=1;d<=ndays;d++){
@@ -2344,8 +2435,23 @@ function renderDias(){
     cells+='<div class="cal-cell lvl'+lvl+(ds===diasSel?' sel':'')+'" data-dia="'+ds+'"><span class="cal-d">'+d+'</span>'+(t>0?'<span class="cal-q">'+t.toLocaleString("pt-BR")+'</span>':'')+'</div>';
   }
   const legend='<div class="cal-legend">menos <span class="lg lvl1"></span><span class="lg lvl2"></span><span class="lg lvl3"></span><span class="lg lvl4"></span> mais</div>';
-  if(diasSel && !dias[diasSel]) diasSel=null;
-  if(!diasSel){ const ks=Object.keys(dias).sort((a,b)=>b.localeCompare(a)); diasSel=ks[0]||null; }
+  /* ── resumo do mes, no espaco que estava vazio ── */
+  const diasComPeca=Object.keys(totDia).filter(d=>totDia[d]>0);
+  const totalMes=diasComPeca.reduce((s,d)=>s+totDia[d],0);
+  const media=diasComPeca.length?Math.round(totalMes/diasComPeca.length):0;
+  let melhor=null; diasComPeca.forEach(d=>{ if(!melhor||totDia[d]>totDia[melhor]) melhor=d; });
+  const nf=n=>Number(n||0).toLocaleString("pt-BR");
+  const mesTxt=(()=>{ const t=new Date(mes+"-01T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+    return t.charAt(0).toUpperCase()+t.slice(1); })();
+  const melhorTxt=melhor?(melhor.slice(8,10)+"/"+melhor.slice(5,7)):"—";
+  const resumo='<div class="cal-resumo">'
+    +'<div class="cr-mes">'+esc(mesTxt)+'</div>'
+    +'<div class="cr-nums">'
+      +'<span class="cr-i"><b>'+nf(totalMes)+'</b><span>peças no mês</span></span>'
+      +'<span class="cr-i"><b>'+nf(media)+'</b><span>por dia trabalhado</span></span>'
+      +'<span class="cr-i"><b>'+(melhor?nf(totDia[melhor]):"—")+'</b><span>melhor dia · '+melhorTxt+'</span></span>'
+      +'<span class="cr-i"><b>'+nf(diasComPeca.length)+'</b><span>'+(diasComPeca.length===1?"dia com peça":"dias com peça")+'</span></span>'
+    +'</div></div>';
   let detail;
   if(!anyData){ detail='<div class="empty"><div class="empty-ico">🗓️</div><div class="empty-t">Sem registros</div><div class="empty-d">Nenhuma peça concluída neste mês'+(diasSetor!=="todos"?" em "+SETORES[diasSetor].nome:"")+'.</div></div>'; }
   else if(diasSel && dias[diasSel]){
@@ -2359,7 +2465,7 @@ function renderDias(){
         (p.seg>0?'<span class="dia-seg sm">2ª '+p.seg.toLocaleString("pt-BR")+'</span>':'')+
         '<span class="dia-q">'+p.pecas.toLocaleString("pt-BR")+'</span></div>').join("")+'</div></div>';
   } else { detail='<div class="cal-hint">Toque em um dia para ver quem fez as peças.</div>'; }
-  host.innerHTML='<div class="cal">'+cells+'</div>'+legend+'<div class="cal-detail">'+detail+'</div>';
+  host.innerHTML=resumo+'<div class="cal">'+cells+'</div>'+legend+'<div class="cal-detail">'+detail+'</div>';
   host.querySelectorAll('.cal-cell[data-dia]').forEach(c=>c.addEventListener('click',()=>{ const ds=c.dataset.dia; if((totDia[ds]||0)>0){ diasSel=ds; renderDias(); } }));
 }
 if($("dias-mes")) $("dias-mes").addEventListener("change",renderDias);
