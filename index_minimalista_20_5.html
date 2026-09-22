@@ -984,10 +984,18 @@ function getLoginButton(){
   if(quick && !quick.closest(".hidden")) return quick;
   return document.getElementById("login-btn")||document.querySelector("#page-login .btn-auth");
 }
-/* ── ACESSO RÁPIDO — depois do primeiro login, entra com um botão só,
-   sempre na SUA conta do Firebase (e-mail/senha salvos neste aparelho).
-   LOGIN_SENHA_FIXA: se preenchida, o app NUNCA pede senha — entra com um
-   clique em qualquer aparelho (quem tiver o arquivo consegue entrar). ── */
+/* ── CONTA DO FIREBASE — é com ela que o app fala com o banco. O usuário
+   não digita isto: ele digita a SENHA_APP abaixo, e só depois de a senha
+   conferir é que estas credenciais entram em jogo. ── */
+/* ── SENHA DE ENTRADA ──────────────────────────────────────────────
+   Para trocar a senha, mude so a linha abaixo.
+   Aviso honesto: esta senha mora no proprio arquivo. Ela impede que alguem
+   sentado no computador abra o sistema, mas quem abrir o arquivo num editor
+   de texto consegue ler. Para uma tranca de verdade, a senha teria de ser
+   conferida no servidor. */
+const SENHA_APP="0803";
+let __senhaOk=false;
+let __tentouEntrar=false;   /* so avisa em vermelho depois de uma tentativa */
 const LOGIN_EMAIL_FIXO="acesso@mellostyle.app";
 const LOGIN_SENHA_FIXA="Aio8LCaAsJ0AuntJt14Dz3dOC2Lk";
 function saveQuickLogin(email,senha){
@@ -1002,6 +1010,7 @@ function getQuickLogin(){
   }catch(_e){ return null; }
 }
 window.doQuickLogin=function(ev){
+  __tentouEntrar=true;
   const d=getQuickLogin()||(LOGIN_SENHA_FIXA?{e:LOGIN_EMAIL_FIXO,s:LOGIN_SENHA_FIXA}:null);
   if(!d){ window.mostrarCamposLogin(ev); return false; }
   const em=document.getElementById("login-email"), pw=document.getElementById("login-pass");
@@ -1009,6 +1018,48 @@ window.doQuickLogin=function(ev){
   if(pw) pw.value=d.s;
   return window.doLogin(ev);
 };
+/* Volta para a tela de senha e deixa o cursor nela. */
+function mostrarTelaSenha(aviso){
+  const login=document.getElementById("page-login");
+  const shell=document.getElementById("app-shell");
+  if(login){ login.style.display=""; login.classList.add("active"); }
+  if(shell){ shell.style.display="none"; shell.classList.add("hidden-shell"); }
+  document.getElementById("quick-login")?.classList.remove("hidden");
+  document.getElementById("login-fields")?.classList.add("hidden");
+  try{ setLoginStatus(aviso===undefined?"Digite a senha para entrar.":aviso, aviso?"err":""); }catch(_e){}
+  try{ __loginBusy=false; resetLoginButton(); }catch(_e){}
+  try{ document.title="Mello Style v91 — Login"; }catch(_e){}
+  setTimeout(()=>document.getElementById("senha-app")?.focus(),60);
+}
+window.mostrarTelaSenha=mostrarTelaSenha;
+
+/* A entrada normal: so a senha. */
+window.entrarComSenha=function(ev){
+  try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
+  const campo=document.getElementById("senha-app");
+  const digitada=String(campo?.value||"").trim();
+  if(!digitada){
+    setLoginStatus("Digite a senha para entrar.","err");
+    campo?.focus();
+    return false;
+  }
+  if(digitada!==SENHA_APP){
+    setLoginStatus("Senha incorreta.","err");
+    if(campo){ campo.value=""; campo.classList.remove("erra"); void campo.offsetWidth; campo.classList.add("erra"); campo.focus(); }
+    return false;
+  }
+  __senhaOk=true;
+  __tentouEntrar=false;
+  if(campo){ campo.value=""; campo.classList.remove("erra"); }
+  setLoginStatus("Abrindo sistema...","ok");
+  /* Se o navegador ainda tem a sessao do Firebase, entra direto. */
+  if(auth.currentUser&&auth.currentUser.uid&&!auth.currentUser.isAnonymous){
+    abrirAppAposAuth(auth.currentUser,{showToast:true});
+    return true;
+  }
+  return window.doQuickLogin(ev);
+};
+
 window.mostrarCamposLogin=function(ev){
   try{ ev&&ev.preventDefault&&ev.preventDefault(); }catch(_e){}
   document.getElementById("quick-login")?.classList.add("hidden");
@@ -1033,8 +1084,8 @@ function setupQuickLogin(){
   const quick=document.getElementById("quick-login");
   const fields=document.getElementById("login-fields");
   if(!quick||!fields) return;
-  if(getQuickLogin()||LOGIN_SENHA_FIXA){ quick.classList.remove("hidden"); fields.classList.add("hidden"); }
-  else{ quick.classList.add("hidden"); fields.classList.remove("hidden"); }
+  /* A porta de entrada e sempre a senha. */
+  quick.classList.remove("hidden"); fields.classList.add("hidden");
 }
 function resetLoginButton(){
   const btn=getLoginButton();
@@ -1054,6 +1105,9 @@ function setLoginLoading(){
 function abrirAppAposAuth(user,{showToast=false}={}){
   const resolvedUser=user||auth.currentUser;
   if(!resolvedUser||!resolvedUser.uid) return;
+  /* Sem a senha, nada abre o sistema — nem uma sessao que o navegador tenha
+     guardado da ultima vez. */
+  if(!__senhaOk){ mostrarTelaSenha(__tentouEntrar?"Precisa da senha para entrar.":""); return; }
   // Sessão anônima antiga (de versão anterior do app): descarta e volta ao login.
   if(resolvedUser.isAnonymous){ try{ signOut(auth); }catch(_e){} return; }
 
@@ -1093,6 +1147,7 @@ function loginWithTimeout(email,senha,timeoutMs=20000){
   );
 }
 window.doLogin=async function(event){
+  __tentouEntrar=true;
   try{
     if(event&&typeof event.preventDefault==="function") event.preventDefault();
     if(event&&typeof event.stopPropagation==="function") event.stopPropagation();
@@ -1109,7 +1164,7 @@ window.doLogin=async function(event){
   }
 
   const email=((document.getElementById("login-email")?.value||"").trim())||LOGIN_EMAIL_FIXO;
-  const senha=(document.getElementById("login-pass")?.value||"")||(email===LOGIN_EMAIL_FIXO?LOGIN_SENHA_FIXA:"");
+  const senha=(document.getElementById("login-pass")?.value||"")||((email===LOGIN_EMAIL_FIXO&&__senhaOk)?LOGIN_SENHA_FIXA:"");
 
   if(!email||!senha){
     window.mostrarCamposLogin(event);
@@ -1166,7 +1221,15 @@ window.doLogin=async function(event){
     },300);
   }
 };
-window.doLogout=()=>signOut(auth);
+window.doLogout=()=>{
+  /* Tranca a tela JA — nao espera o Firebase avisar que a sessao acabou, que
+     pode demorar ou nem chegar com a internet ruim. */
+  __senhaOk=false;
+  __tentouEntrar=false;
+  __authOpened=false;
+  try{ mostrarTelaSenha(""); }catch(_e){}
+  return signOut(auth);
+};
 function setupLoginBindings(){
   // Vincula só o botão do formulário; o de acesso rápido tem o próprio handler.
   const btn=document.getElementById("login-btn");
@@ -1182,7 +1245,12 @@ function setupLoginBindings(){
   const qbtn=document.getElementById("quick-login-btn");
   if(qbtn){
     qbtn.type="button";
-    qbtn.onclick=function(e){ return window.doQuickLogin(e); };
+    qbtn.onclick=function(e){ return window.entrarComSenha(e); };
+  }
+  const cs=document.getElementById("senha-app");
+  if(cs&&!cs.dataset.enterSenhaBound){
+    cs.dataset.enterSenhaBound="1";
+    cs.addEventListener("keydown",e=>{ if(e.key==="Enter") window.entrarComSenha(e); },{passive:false});
   }
   ["login-email","login-pass"].forEach(id=>{
     const el=document.getElementById(id);
@@ -12994,7 +13062,8 @@ input,select,textarea,button{font-size:16px;}
       <div id="form-login">
         <h2>Entrar na plataforma</h2>
         <div id="quick-login">
-          <button id="quick-login-btn" type="button" class="btn-auth" onclick="doQuickLogin(event)">Entrar</button>
+          <div class="af"><label>Senha</label><input id="senha-app" type="password" inputmode="numeric" autocomplete="off" placeholder="••••" maxlength="24" onkeydown="if(event.key==='Enter')entrarComSenha(event)"/></div>
+          <button id="quick-login-btn" type="button" class="btn-auth" onclick="entrarComSenha(event)">Entrar</button>
           <div class="auth-tog" style="margin-top:14px;"><a href="javascript:void(0)" onclick="mostrarCamposLogin(event)">Entrar com minha conta</a></div>
         </div>
         <div id="login-fields" class="hidden">
@@ -18689,6 +18758,14 @@ html[data-theme="escuro"] .summary-bar{
 }
 </style>
 <style id="mello-clean">
+/* senha errada: o campo treme uma vez */
+#senha-app{ letter-spacing:.35em; font-size:17px; text-align:center; }
+#senha-app::placeholder{ letter-spacing:.35em; }
+@keyframes senhaErrou{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)}
+  40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} }
+#senha-app.erra{ animation:senhaErrou .34s ease; border-color:rgba(239,68,68,.75)!important; }
+@media (prefers-reduced-motion:reduce){ #senha-app.erra{ animation:none; } }
+
 /* ══════════════════════════════════════════════════════════════════════
    MELLO STYLE — VISUAL LIMPO
    Tira o que era enfeite (malha de grade, brilhos, cantos de HUD, títulos
