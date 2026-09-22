@@ -52,16 +52,32 @@ function toast(msg,type="ok"){
 function toNumber(v, fallback=0){
   if(typeof v==="number") return Number.isFinite(v)?v:fallback;
   if(v===null||v===undefined||v==="") return fallback;
-  let s=String(v).trim();
+  let s=String(v).trim().replace(/^R\$\s*/i,"").replace(/\u00A0/g," ").trim();
   if(!s) return fallback;
   // Aceita tanto 2500.50 quanto 2.500,50 / 2,50
   if(s.includes(",")){ s=s.replace(/\./g,"").replace(",","."); }
+  /* Sem virgula, o ponto so e milhar quando vem em grupo de tres: "1.500" e
+     mil e quinhentos, mas "4.50" continua sendo quatro e cinquenta. */
+  else if(/^-?\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,""); }
   const n=Number(s);
   return Number.isFinite(n)?n:fallback;
 }
 function toInt(v, fallback=0){
   const n=toNumber(v,fallback);
   return Number.isFinite(n)?Math.trunc(n):fallback;
+}
+/* Contagem de peças, dias, minutos: aqui o ponto so pode ser separador de
+   milhar ("1.500 peças"), nunca decimal — meia peça nao existe. Devolve NaN
+   quando o que foi digitado nao e um inteiro, para o formulario poder avisar
+   em vez de adivinhar. */
+function inteiroBR(v){
+  let s=String(v==null?"":v).replace(/[\s\u00A0]/g,"").trim();
+  if(!s) return NaN;
+  const neg=s.startsWith("-"); if(neg) s=s.slice(1);
+  if(/^\d+$/.test(s)) return (neg?-1:1)*Number(s);
+  /* ponto so vale como milhar em grupo de tres: 1.500 sim, 2.5 nao */
+  if(/^\d{1,3}(\.\d{3})+$/.test(s)) return (neg?-1:1)*Number(s.replace(/\./g,""));
+  return NaN;
 }
 function safeDate(ts){
   if(!ts) return null;
@@ -71,13 +87,21 @@ function safeDate(ts){
 function dateFmt(ts,short=false){
   const d=safeDate(ts);
   if(!d)return"—";
-  if(short)return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
-  return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  if(short)return __fmtDiaMes.format(d)+" "+__fmtHora.format(d);
+  return __fmtDiaMesAno.format(d)+" "+__fmtHora.format(d);
 }
 /* Formatadores criados UMA vez. toLocaleString monta um formatador
    novo a cada chamada, e essas funções rodam milhares de vezes por
    tela — medido em 29ms só de fmtMoney na lista de lotes. */
 const __fmtBRL=new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"});
+/* Mesma historia com data e hora: COM OPCOES, toLocaleDateString monta um
+   formatador novo a cada chamada. Sao 25 mil chamadas num backup CSV. */
+const __fmtHora=new Intl.DateTimeFormat("pt-BR",{hour:"2-digit",minute:"2-digit"});
+const __fmtDiaMes=new Intl.DateTimeFormat("pt-BR",{day:"2-digit",month:"2-digit"});
+const __fmtDiaMesAno=new Intl.DateTimeFormat("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
+const __fmtDataBR=new Intl.DateTimeFormat("pt-BR");
+const __fmtMesAno=new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"});
+const __fmtMesCurto=new Intl.DateTimeFormat("pt-BR",{month:"short"});
 const __fmtNum=new Intl.NumberFormat("pt-BR");
 function fmtMoney(v){return __fmtBRL.format(toNumber(v,0));}
 function fmtNum(v){return __fmtNum.format(toNumber(v,0));}
@@ -106,7 +130,7 @@ function getPontoLabel(p,jornadaMin=480){
    do dia 31 lá fora já é dia 1 — o mês sairia trocado. */
 function hojeISO(){const d=new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
-function horaAgora(){return new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});}
+function horaAgora(){return __fmtHora.format(new Date());}
 function minutosDeHora(hhmm){
   if(!hhmm) return null;
   const [h,m]=String(hhmm).split(":").map(Number);
@@ -1408,12 +1432,12 @@ function populateSelects(){
 window.salvarFuncionario=async()=>{
   const nome=$("func-nome").value.trim(),cargo=$("func-cargo").value.trim();
   const setor=$("func-setor").value.trim();
-  const salario=parseFloat($("func-salario").value)||0;
-  const bonus=parseFloat($("func-bonus").value)||0;
-  const jornadaMin=parseInt($("func-jornada").value)||480;
+  const salario=toNumber($("func-salario").value,0);
+  const bonus=toNumber($("func-bonus").value,0);
+  const jornadaMin=Number.isFinite(inteiroBR($("func-jornada").value))?inteiroBR($("func-jornada").value):480;
   const telefone=$("func-telefone")?.value.trim()||"";
   const admissao=$("func-admissao")?.value||"";
-  const metaDia=parseInt($("func-meta-dia")?.value)||0;
+  const metaDia=Number.isFinite(inteiroBR($("func-meta-dia")?.value))?inteiroBR($("func-meta-dia")?.value):0;
   const status=$("func-status")?.value||"Ativo";
   if(!nome) return void erroNoCampo("func-nome","Falta o nome do funcionário");
   if(!naoNegativo("func-salario","O salário")) return;
@@ -1452,12 +1476,12 @@ window.salvarEdicaoFunc=async()=>{
   const id=$("edit-func-id").value;
   const nome=$("edit-func-nome").value.trim(),cargo=$("edit-func-cargo").value.trim();
   const setor=$("edit-func-setor").value.trim();
-  const salario=parseFloat($("edit-func-salario").value)||0;
-  const bonus=parseFloat($("edit-func-bonus").value)||0;
-  const jornadaMin=parseInt($("edit-func-jornada").value)||480;
+  const salario=toNumber($("edit-func-salario").value,0);
+  const bonus=toNumber($("edit-func-bonus").value,0);
+  const jornadaMin=Number.isFinite(inteiroBR($("edit-func-jornada").value))?inteiroBR($("edit-func-jornada").value):480;
   const telefone=$("edit-func-telefone")?.value.trim()||"";
   const admissao=$("edit-func-admissao")?.value||"";
-  const metaDia=parseInt($("edit-func-meta-dia")?.value)||0;
+  const metaDia=Number.isFinite(inteiroBR($("edit-func-meta-dia")?.value))?inteiroBR($("edit-func-meta-dia")?.value):0;
   const status=$("edit-func-status")?.value||"Ativo";
   if(!nome) return void erroNoCampo("edit-func-nome","Falta o nome do funcionário");
   if(!naoNegativo("edit-func-salario","O salário")) return;
@@ -1842,7 +1866,7 @@ async function finalizarCronometroProducao(){
     const etapa=getControleHoraEtapa();
     const etapaSelect=$("cph-etapa")?.value||"";
     const data=$("cph-data")?.value||`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`;
-    const qtd=toNumber($("cph-qtd")?.value,0);
+    const qtd=inteiroBR($("cph-qtd")?.value);
     const tempoSegundos=cphTempoAtualSegundos();
     if(!f){toast("Selecione uma funcionária.","err");return;}
     if(!etapa){toast("Selecione ou informe a função/etapa.","err");return;}
@@ -2434,8 +2458,10 @@ function naoNegativo(id,rotulo){
   const el=$(id); if(!el) return true;
   const bruto=String(el.value||"").trim();
   if(!bruto) return true;
-  const v=Number(bruto);
-  if(!Number.isFinite(v)||v<0){ erroNoCampo(id,rotulo+" não pode ser negativo"); return false; }
+  /* Number("1.234,56") da NaN. O toNumber entende o jeito brasileiro. */
+  const v=toNumber(bruto,NaN);
+  if(!Number.isFinite(v)){ erroNoCampo(id,rotulo+" precisa ser um número"); return false; }
+  if(v<0){ erroNoCampo(id,rotulo+" não pode ser negativo"); return false; }
   return true;
 }
 function limparErrosOF(prefixo){
@@ -2449,11 +2475,16 @@ function lerFormularioOF(prefixo,idIgnorar,numeroOriginal){
   const v=n=>$(prefixo+"-"+n);
   const numeroOf=(v("numero")?.value||"").trim(),produto=(v("produto")?.value||"").trim();
   const qtdBruta=(v("qtd")?.value||"").trim(),valorBruto=(v("valor")?.value||"").trim();
-  const qtdTotal=Math.trunc(Number(qtdBruta)),valorPeca=Number(valorBruto||0);
+  const qtdTotal=inteiroBR(qtdBruta),valorPeca=valorBruto?toNumber(valorBruto,NaN):0;
   if(!numeroOf) return erroNoCampo(prefixo+"-numero","Falta o número da OF");
   if(!produto)  return erroNoCampo(prefixo+"-produto","Falta o nome do produto");
-  if(!qtdBruta||!Number.isFinite(qtdTotal))
-    return erroNoCampo(prefixo+"-qtd","Falta a quantidade de peças");
+  if(valorBruto&&!Number.isFinite(valorPeca))
+    return erroNoCampo(prefixo+"-valor","O valor por peça precisa ser um número (ex: 4,50)");
+  if(valorPeca<0)
+    return erroNoCampo(prefixo+"-valor","O valor por peça não pode ser negativo");
+  if(!qtdBruta) return erroNoCampo(prefixo+"-qtd","Falta a quantidade de peças");
+  if(!Number.isFinite(qtdTotal))
+    return erroNoCampo(prefixo+"-qtd","A quantidade tem que ser um número inteiro de peças");
   if(qtdTotal<=0)
     return erroNoCampo(prefixo+"-qtd","A quantidade tem que ser maior que zero");
   if(qtdTotal>1000000)
@@ -2978,15 +3009,15 @@ window.salvarRegistro=async()=>{
   }
   try{
     const funcId=$("prod-funcionario")?.value||"",etapa=$("prod-etapa")?.value||"";
-    const qtd=parseInt($("prod-qtd")?.value,10)||0,obs=$("prod-obs")?.value.trim()||"",loteId=$("prod-lote")?.value||"";
+    const qtd=inteiroBR($("prod-qtd")?.value),obs=$("prod-obs")?.value.trim()||"",loteId=$("prod-lote")?.value||"";
     if(!funcId||!etapa){toast("Preencha funcionário, etapa e quantidade","err");return;}
     /* min="1" no campo nao segura nada: o navegador deixa digitar -30, e uma
        quantidade negativa SUBTRAI da producao, do ranking e do bonus. */
     const brutoQtd=String($("prod-qtd")?.value||"").trim();
-    if(brutoQtd&&!/^\d+$/.test(brutoQtd))
-      return void erroNoCampo("prod-qtd", Number(brutoQtd)<0
-        ? "A quantidade não pode ser negativa"
-        : "A quantidade tem que ser um número inteiro de peças");
+    if(brutoQtd&&!Number.isFinite(qtd))
+      return void erroNoCampo("prod-qtd","A quantidade tem que ser um número inteiro de peças");
+    if(brutoQtd&&qtd<0)
+      return void erroNoCampo("prod-qtd","A quantidade não pode ser negativa");
     if(!Number.isFinite(qtd)||qtd<1)
       return void erroNoCampo("prod-qtd","Informe quantas peças foram feitas");
 
@@ -3045,17 +3076,17 @@ window.salvarEdicaoRegistro=async()=>{
     const id=$("edit-reg-id")?.value||"";
     const funcionarioId=$("edit-reg-funcionario")?.value||"";
     const etapa=$("edit-reg-etapa")?.value||"";
-    const qtd=parseInt($("edit-reg-qtd")?.value,10)||0;
+    const qtd=inteiroBR($("edit-reg-qtd")?.value);
     const obs=$("edit-reg-obs")?.value.trim()||"";
     const loteId=$("edit-reg-lote")?.value||null;
     if(!funcionarioId||!etapa){toast("Preencha funcionário, etapa e quantidade","err");return;}
     /* min="1" no campo nao segura nada: o navegador deixa digitar -30, e uma
        quantidade negativa SUBTRAI da producao, do ranking e do bonus. */
     const brutoQtdEd=String($("edit-reg-qtd")?.value||"").trim();
-    if(brutoQtdEd&&!/^\d+$/.test(brutoQtdEd))
-      return void erroNoCampo("edit-reg-qtd", Number(brutoQtdEd)<0
-        ? "A quantidade não pode ser negativa"
-        : "A quantidade tem que ser um número inteiro de peças");
+    if(brutoQtdEd&&!Number.isFinite(qtd))
+      return void erroNoCampo("edit-reg-qtd","A quantidade tem que ser um número inteiro de peças");
+    if(brutoQtdEd&&qtd<0)
+      return void erroNoCampo("edit-reg-qtd","A quantidade não pode ser negativa");
     if(!Number.isFinite(qtd)||qtd<1)
       return void erroNoCampo("edit-reg-qtd","Informe quantas peças foram feitas");
 
@@ -3116,12 +3147,15 @@ window.toggleCategoriaOutrosEdit=function(){
 window.salvarEdicaoGasto=async()=>{
   const id=$("edit-gasto-id").value;
   const descricao=$("edit-gasto-desc").value.trim();
-  const valor=parseFloat($("edit-gasto-valor").value)||0;
+  const valor=toNumber($("edit-gasto-valor").value,0);
   const tipo=$("edit-gasto-tipo").value;
   const competencia=$("edit-gasto-competencia").value;
   const catSel=$("edit-gasto-categoria").value;
   const catOutros=$("edit-gasto-categoria-outros")?.value.trim()||"";
   const categoria=catSel==="Outros"?(catOutros||"Outros"):catSel;
+  {const bruto=String($("edit-gasto-valor")?.value||"").trim();
+   if(bruto&&!Number.isFinite(toNumber(bruto,NaN)))
+     return void erroNoCampo("edit-gasto-valor","O valor precisa ser um número (ex: 1.500,00)");}
   if(!descricao||!valor||!competencia){toast("Preencha descrição, valor e competência","err");return;}
   if(!naoNegativo("edit-gasto-valor","O valor do gasto")) return;
   if(!catSel){toast("Selecione uma categoria","err");return;}
@@ -3253,7 +3287,7 @@ window.aplicarFiltros=function(manterLimite){
     return`<div class="hg"><div class="hg-hd"><span class="hg-dia">${dk}</span><div class="hg-pills"><span class="hpill">${dQ.toLocaleString("pt-BR")} pçs</span><span class="hpill g">${fmtMoney(dF)}</span></div></div>
     <table class="htbl"><thead><tr><th>Hora</th><th>Funcionário</th><th>Etapa</th><th>Qtd</th><th>Lote</th><th>Obs</th></tr></thead>
     <tbody>${regs.map(r=>`<tr>
-      <td class="td-mono sm">${(r.criadoEm?.toDate?r.criadoEm.toDate():new Date(r.criadoEm)).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</td>
+      <td class="td-mono sm">${(t=>t?__fmtHora.format(new Date(t)):"—")(tsDe(r))}</td>
       <td><span class="chip cn sm">${escapeHtml(r.funcionarioNome)}</span></td>
       <td><span class="chip ce sm">${escapeHtml(r.etapa)}</span></td>
       <td class="td-mono">${(r.qtd||0).toLocaleString("pt-BR")}</td>
@@ -3276,12 +3310,15 @@ function renderHistorico(){
    GASTOS
 ══════════════════════════════════════════════════════════════ */
 window.salvarGasto=async()=>{
-  const descricao=$("gasto-desc")?.value.trim()||"",valor=parseFloat($("gasto-valor")?.value)||0;
+  const descricao=$("gasto-desc")?.value.trim()||"",valor=toNumber($("gasto-valor")?.value,0);
   const tipo=$("gasto-tipo")?.value||"fixo",competencia=$("gasto-competencia")?.value||"";
   const catSel=$("gasto-categoria")?.value||"";
   const catOutros=$("gasto-categoria-outros")?.value.trim()||"";
   const categoria=catSel==="Outros"?(catOutros||"Outros"):catSel;
   const parcelas=Math.max(1,Math.min(48,parseInt($("gasto-parcelas")?.value||"1",10)));
+  {const bruto=String($("gasto-valor")?.value||"").trim();
+   if(bruto&&!Number.isFinite(toNumber(bruto,NaN)))
+     return void erroNoCampo("gasto-valor","O valor precisa ser um número (ex: 1.500,00)");}
   if(!descricao||!valor||!competencia){toast("Preencha descrição, valor e competência","err");return;}
   if(!naoNegativo("gasto-valor","O valor do gasto")) return;
   if(!catSel){toast("Selecione uma categoria","err");return;}
@@ -3340,7 +3377,7 @@ window.salvarGasto=async()=>{
 };
 window.atualizarPreviewParcela=function(){
   const n=Math.max(1,Math.min(48,parseInt($("gasto-parcelas")?.value||"1",10)));
-  const total=parseFloat($("gasto-valor")?.value)||0;
+  const total=toNumber($("gasto-valor")?.value,0);
   const el=$("gasto-parcela-preview");
   if(!el) return;
   if(n>1 && total>0){
@@ -4142,7 +4179,7 @@ function serieMensalGastos(todos,mesRef,n=6){
     const doMes=todos.filter(g=>(g.competencia||"")===k);
     saida.push({
       mes:k,
-      curto:d.toLocaleDateString("pt-BR",{month:"short"}).replace(".",""),
+      curto:__fmtMesCurto.format(d).replace(".",""),
       fixo:somaGastos(doMes.filter(gastoEhFixo)),
       variavel:somaGastos(doMes.filter(g=>!gastoEhFixo(g)))
     });
@@ -4470,7 +4507,7 @@ function renderGastos(){
       // rótulo curto (Ago/2026) — o nome inteiro fica no title, sem cortar texto
       const curto=k=>{
         const [y,m]=k.split("-").map(Number);
-        const s=new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
+        const s=__fmtMesCurto.format(new Date(y,m-1,1)).replace(".","");
         return `${s.charAt(0).toUpperCase()+s.slice(1)}/${y}`;
       };
       futBox.innerHTML=`<div class="gx-fut-lista">${linhas.slice(0,8).map(l=>`
@@ -5158,7 +5195,7 @@ function renderDashboard(){
   const mesAtual=uiState.dashMes;
   const isMesAtual=(mesAtual===mesHojeStr);
   const [mesY,mesM]=mesAtual.split("-").map(Number);
-  const mesLabel=new Date(mesY,mesM-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  const mesLabel=__fmtMesAno.format(new Date(mesY,mesM-1,1));
   const mesLabelCap=mesLabel.charAt(0).toUpperCase()+mesLabel.slice(1);
   if($("dash-mes-label")) $("dash-mes-label").textContent=mesLabelCap;
   if($("dash-mes-input")) $("dash-mes-input").value=mesAtual;
@@ -5211,9 +5248,10 @@ function calcCaixaEmpresa(){
   return {caixa,itens,totalDecimo,totalFerias,totalEncargos,saldo:caixa-totalEncargos};
 }
 function parseValorMoeda(str){
+  /* Antes isto apagava a virgula: "1.234,56" virava "1.234" = um real e vinte.
+     Agora e o mesmo leitor do resto do sistema, que entende os dois jeitos. */
   if(typeof str==="number") return Number.isFinite(str)?str:0;
-  const s=String(str||"").replace(/[^\d.-]/g,"");
-  const n=Number(s); return Number.isFinite(n)?n:0;
+  return toNumber(String(str||"").replace(/[R$\s]/gi,""),0);
 }
 async function persistConfigParcial(patch){
   try{
@@ -5263,7 +5301,7 @@ function renderCaixaEmpresa(){
     <div class="cx-grid">
       <div class="cx-tile cx-tile-input">
         <div class="cx-l"><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Caixa atual</div>
-        <div class="cx-input-wrap"><span class="cx-prefix">R$</span><input id="caixa-input" type="number" step="0.01" min="0" inputmode="decimal" value="${r.caixa||''}" placeholder="0,00" onchange="setCaixaEmpresa(this.value)"/></div>
+        <div class="cx-input-wrap"><span class="cx-prefix">R$</span><input id="caixa-input" type="text" inputmode="decimal" value="${r.caixa||''}" placeholder="0,00" onchange="setCaixaEmpresa(this.value)"/></div>
         <div class="cx-s">o valor que você tem guardado</div>
       </div>
       <div class="cx-tile cx-tile-bad">
@@ -5593,7 +5631,7 @@ function renderMetas(){
 
   el.innerHTML=`<div class="metas-section">
     <div class="dsh-mes">
-      <span class="dsh-mes-l">${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</span>
+      <span class="dsh-mes-l">${__fmtMesAno.format(new Date(mesAtual+'-02'))}</span>
       <span class="dsh-mes-barra"><i style="width:${Math.round(diaAtual/totalDiasMes*100)}%"></i></span>
       <span class="dsh-mes-d">dia ${diaAtual} de ${totalDiasMes}</span>
       <button class="metas-edit-btn dsh-edit" onclick="navigate('configuracoes')">Editar metas</button>
@@ -5652,7 +5690,7 @@ function renderMetas(){
 
     elAg.innerHTML=`<div class="metas-section">
       <div class="metas-section-hd">
-        <div class="metas-section-title">Produção & faturamento — ${new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
+        <div class="metas-section-title">Produção &amp; faturamento — ${__fmtMesAno.format(new Date(mesAtual+'-02'))}</div>
         <span class="ag-hint">${lotesMes.length} ${plural(lotesMes.length,'OF','OFs')} no mês</span>
       </div>
       <div class="krb-wrap krb-wrap-3">
@@ -5713,14 +5751,14 @@ function renderRelatorio(){
   const sorted=[...meses].sort((a,b)=>b.localeCompare(a));
   const hoje=monthKeyLocal();
   if(!sorted.includes(hoje))sorted.unshift(hoje);
-  sel.innerHTML=sorted.map(m=>{const[y,mo]=m.split("-");const label=new Date(+y,+mo-1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});return`<option value="${m}"${m===hoje?" selected":""}>${label}</option>`;}).join("");
+  sel.innerHTML=sorted.map(m=>{const[y,mo]=m.split("-");const label=__fmtMesAno.format(new Date(+y,+mo-1));return`<option value="${m}"${m===hoje?" selected":""}>${label}</option>`;}).join("");
   gerarPreviewRelatorio();
 }
 window.gerarPreviewRelatorio=function(){
   const mes=$("rel-mes")?.value;if(!mes)return;
   const[ano,mo]=mes.split("-");
   const cfg=getConfig();
-  const label=new Date(+ano,+mo-1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  const label=__fmtMesAno.format(new Date(+ano,+mo-1));
   const resumo=calcResumoMensal(mes);
   const anterior=calcResumoMensal(calcMesAnterior(mes));
   const regsM=resumo.regsM||[];
@@ -6018,12 +6056,12 @@ function renderConfiguracoes(){
     <div class="ff"><label>ID da empresa</label><input id="cfg-empresa-id" type="text" value="${escapeHtml(cfg.empresaId)}" placeholder="ex: mello-style"/></div>
     <div class="ff"><label>Perfil de acesso</label><select id="cfg-perfil"><option ${cfg.perfil==="admin"?"selected":""}>admin</option><option ${cfg.perfil==="gerente"?"selected":""}>gerente</option><option ${cfg.perfil==="operador"?"selected":""}>operador</option><option ${cfg.perfil==="financeiro"?"selected":""}>financeiro</option></select></div>
     <div class="ff"><label>Tema visual</label><select id="cfg-tema">${THEME_OPTIONS.map(t=>`<option value="${t.id}" ${cfg.tema===t.id?"selected":""}>${t.icon} ${t.label}</option>`).join("")}</select></div>
-    <div class="ff"><label>Meta do dia (pçs)</label><input id="cfg-meta-dia" type="number" min="0" value="${cfg.metaDia}"/></div>
-    <div class="ff"><label>Meta do mês (pçs)</label><input id="cfg-meta-mes" type="number" min="0" value="${cfg.metaMes}"/></div>
-    <div class="ff"><label>Meta faturamento/mês (R$)</label><input id="cfg-meta-fat" type="number" min="0" step="0.01" value="${cfg.metaFaturamento}"/></div>
-    <div class="ff"><label>Meta de lucro/mês (R$)</label><input id="cfg-meta-lucro" type="number" min="0" step="0.01" value="${cfg.metaLucro}"/></div>
-    <div class="ff"><label>Meta de margem (%)</label><input id="cfg-meta-margem" type="number" min="0" max="100" step="0.1" value="${cfg.metaMargem}"/></div>
-    <div class="ff"><label>Teto de custo/mês (R$)</label><input id="cfg-meta-custo" type="number" min="0" step="0.01" value="${cfg.metaCusto}"/></div>
+    <div class="ff"><label>Meta do dia (pçs)</label><input id="cfg-meta-dia" type="text" inputmode="numeric" value="${cfg.metaDia}"/></div>
+    <div class="ff"><label>Meta do mês (pçs)</label><input id="cfg-meta-mes" type="text" inputmode="numeric" value="${cfg.metaMes}"/></div>
+    <div class="ff"><label>Meta faturamento/mês (R$)</label><input id="cfg-meta-fat" type="text" inputmode="decimal" value="${cfg.metaFaturamento}"/></div>
+    <div class="ff"><label>Meta de lucro/mês (R$)</label><input id="cfg-meta-lucro" type="text" inputmode="decimal" value="${cfg.metaLucro}"/></div>
+    <div class="ff"><label>Meta de margem (%)</label><input id="cfg-meta-margem" type="text" inputmode="decimal" placeholder="Ex: 12,5" value="${cfg.metaMargem}"/></div>
+    <div class="ff"><label>Teto de custo/mês (R$)</label><input id="cfg-meta-custo" type="text" inputmode="decimal" value="${cfg.metaCusto}"/></div>
   </div>
   <div class="ia-box">
     <div class="ia-hd"><svg class="ico-btn" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>Leitura de foto por IA <span class="ia-status ${getChaveIA()?"is-on":""}">${getChaveIA()?"ativa neste aparelho":"desligada"}</span></div>
@@ -6199,7 +6237,8 @@ window.baixarBackupJSON=()=>{
 };
 window.baixarBackupExcel=()=>{
   const esc=v=>`"${String(v||"").replace(/"/g,'""')}"`;
-  const dtF=ts=>{if(!ts)return"";const d=ts?.toDate?ts.toDate():new Date(ts);return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});};
+  const dtF=ts=>{if(!ts)return"";const d=ts?.toDate?ts.toDate():new Date(ts);
+    return Number.isNaN(d.getTime())?"":(__fmtDataBR.format(d)+" "+__fmtHora.format(d));};
   let csv="REGISTROS DE PRODUÇÃO\r\nData/Hora,Funcionário,Etapa,Quantidade,Lote OF,Produto,Obs\r\n";
   csv+=registros.map(r=>[dtF(r.criadoEm),r.funcionarioNome,r.etapa,r.qtd,r.loteNumeroOf||"",r.loteProduto||"",r.obs||""].map(esc).join(",")).join("\r\n");
   csv+="\r\n\r\nLOTES\r\nOF,Produto,Qtd Total,Vlr Peça,Status,Prazo\r\n";
@@ -6300,7 +6339,7 @@ window.deletarGastoDrawer=async function(id){
 };
 window.salvarGastoDrawer=async()=>{
   const descricao=document.getElementById('gd-desc')?.value.trim();
-  const valor=parseFloat(document.getElementById('gd-valor')?.value)||0;
+  const valor=toNumber(document.getElementById('gd-valor')?.value,0);
   const tipo=document.getElementById('gd-tipo')?.value;
   const categoria=document.getElementById('gd-cat')?.value.trim()||'Geral';
   const competencia=document.getElementById('gd-comp')?.value;
@@ -13079,7 +13118,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="gd-form">
             <div class="fg">
               <div class="ff full"><label>Descrição *</label><input id="gd-desc" type="text" placeholder="Ex: Energia elétrica"/></div>
-              <div class="ff"><label>Valor (R$) *</label><input id="gd-valor" type="number" step="0.01" min="0" placeholder="0,00"/></div>
+              <div class="ff"><label>Valor (R$) *</label><input id="gd-valor" type="text" inputmode="decimal" placeholder="0,00"/></div>
               <div class="ff"><label>Tipo</label>
                 <select id="gd-tipo">
                   <option value="fixo">Fixo</option>
@@ -13206,8 +13245,8 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff" style="grid-column:span 3"><label>Nº da OF *</label><input id="lote-numero" type="text" placeholder="Ex: 2024-001"/></div>
           <div class="ff" style="grid-column:span 5"><label>Produto *</label><input id="lote-produto" type="text" placeholder="Ex: Camiseta Básica P"/></div>
           <div class="ff" style="grid-column:span 4"><label>Cliente</label><select id="lote-cliente"><option value="">— Nenhum —</option></select><button type="button" class="ff-mini-btn" onclick="abrirModalNovoCliente()">+ Novo cliente</button></div>
-          <div class="ff" style="grid-column:span 3"><label>Qtd Total *</label><input id="lote-qtd" type="number" min="1" placeholder="Ex: 500"/></div>
-          <div class="ff" style="grid-column:span 3"><label>Valor por Peça (R$)</label><input id="lote-valor" type="number" step="0.01" min="0" placeholder="Ex: 4.50"/></div>
+          <div class="ff" style="grid-column:span 3"><label>Qtd Total *</label><input id="lote-qtd" type="text" inputmode="numeric" placeholder="Ex: 500"/></div>
+          <div class="ff" style="grid-column:span 3"><label>Valor por Peça (R$)</label><input id="lote-valor" type="text" inputmode="decimal" placeholder="Ex: 4,50"/></div>
           <div class="ff" style="grid-column:span 3"><label>Prazo de entrega</label><input id="lote-prazo" type="date"/></div>
           <div class="ff" style="grid-column:span 3"><label>Status inicial</label>
             <select id="lote-status">
@@ -13262,10 +13301,10 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Telefone</label><input id="func-telefone" type="text" placeholder="WhatsApp"/></div>
           <div class="ff"><label>Admissão</label><input id="func-admissao" type="date"/></div>
           <div class="ff"><label>Status</label><select id="func-status"><option selected>Ativo</option><option>Inativo</option></select></div>
-          <div class="ff"><label>Salário (R$)</label><input id="func-salario" type="number" step="0.01" min="0" placeholder="Ex: 1800.00"/></div>
-          <div class="ff"><label>Bônus mensal (R$)</label><input id="func-bonus" type="number" step="0.01" min="0" placeholder="Ex: 200.00 — pago se sem horas negativas"/></div>
-          <div class="ff"><label>Jornada (min/dia)</label><input id="func-jornada" type="number" min="60" max="720" placeholder="480 = 8h" value="480"/></div>
-          <div class="ff"><label>Meta diária (pçs)</label><input id="func-meta-dia" type="number" min="0" placeholder="Opcional"/></div>
+          <div class="ff"><label>Salário (R$)</label><input id="func-salario" type="text" inputmode="decimal" placeholder="Ex: 1800.00"/></div>
+          <div class="ff"><label>Bônus mensal (R$)</label><input id="func-bonus" type="text" inputmode="decimal" placeholder="Ex: 200.00 — pago se sem horas negativas"/></div>
+          <div class="ff"><label>Jornada (min/dia)</label><input id="func-jornada" type="text" inputmode="numeric" placeholder="480 = 8h" value="480"/></div>
+          <div class="ff"><label>Meta diária (pçs)</label><input id="func-meta-dia" type="text" inputmode="numeric" placeholder="Opcional"/></div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
           <button type="button" class="btn-save" onclick="salvarFuncionario()" style="flex:1;max-width:200px;">+ Cadastrar Funcionário</button>
@@ -13297,7 +13336,7 @@ input,select,textarea,button{font-size:16px;}
           <div class="ff"><label>Funcionário *</label><select id="prod-funcionario"><option value="">— Selecione —</option></select></div>
           <div class="ff"><label>Etapa *</label><select id="prod-etapa"><option value="">— Selecione —</option><option>Ombrinho</option><option>Gola</option><option>Pesponto</option><option>Manga</option><option>Lateral</option><option>Bainha</option><option>Revisão</option></select></div>
           <div class="ff"><label>Lote (OF)</label><select id="prod-lote"><option value="">— Nenhum —</option></select></div>
-          <div class="ff"><label>Quantidade *</label><input id="prod-qtd" type="number" min="1" placeholder="Ex: 50" onkeydown="if(event.key==='Enter')salvarRegistro()"/></div>
+          <div class="ff"><label>Quantidade *</label><input id="prod-qtd" type="text" inputmode="numeric" placeholder="Ex: 50" onkeydown="if(event.key==='Enter')salvarRegistro()"/></div>
           <div class="ff"><label>Observações</label><input id="prod-obs" type="text" placeholder="Opcional" onkeydown="if(event.key==='Enter')salvarRegistro()"/></div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
@@ -13366,7 +13405,7 @@ input,select,textarea,button{font-size:16px;}
         </div>
         <div class="fg">
           <div class="ff" style="grid-column:span 2"><label>Descrição *</label><input id="gasto-desc" type="text" placeholder="Ex: Aluguel do galpão, Linha de costura..."/></div>
-          <div class="ff"><label>Valor (R$) *</label><input id="gasto-valor" type="number" step="0.01" min="0" placeholder="Ex: 1500.00" oninput="atualizarPreviewParcela()"/></div>
+          <div class="ff"><label>Valor (R$) *</label><input id="gasto-valor" type="text" inputmode="decimal" placeholder="Ex: 1.500,00" oninput="atualizarPreviewParcela()"/></div>
           <div class="ff"><label>Tipo *</label><select id="gasto-tipo"><option value="fixo">Fixo (aluguel, empréstimo...)</option><option value="variavel">Variável (insumo, frete...)</option></select></div>
           <div class="ff"><label>Categoria *</label>
             <select id="gasto-categoria" onchange="toggleCategoriaOutros()">
@@ -13597,7 +13636,7 @@ input,select,textarea,button{font-size:16px;}
           </div>
 
           <div class="fg cph-form-grid" style="margin-top:14px">
-            <div class="ff"><label>Quantidade de peças *</label><input id="cph-qtd" type="number" min="1" placeholder="Ex: 120"/></div>
+            <div class="ff"><label>Quantidade de peças *</label><input id="cph-qtd" type="text" inputmode="numeric" placeholder="Ex: 120"/></div>
             <div class="ff" style="grid-column:span 2"><label>Observação</label><input id="cph-obs" type="text" placeholder="Opcional"/></div>
           </div>
           <button type="button" class="btn-save cph-finalizar" id="cph-btn-finalizar" onclick="finalizarCronometroProducao()">✓ Finalizar medição e salvar</button>
@@ -13821,8 +13860,8 @@ input,select,textarea,button{font-size:16px;}
       <div class="fg" style="margin-bottom:0">
         <div class="ff"><label>Nº da OF *</label><input id="edit-lote-numero" type="text"/></div>
         <div class="ff"><label>Produto *</label><input id="edit-lote-produto" type="text"/></div>
-        <div class="ff"><label>Qtd Total *</label><input id="edit-lote-qtd" type="number" min="1"/></div>
-        <div class="ff"><label>Valor por Peça (R$)</label><input id="edit-lote-valor" type="number" step="0.01" min="0"/></div>
+        <div class="ff"><label>Qtd Total *</label><input id="edit-lote-qtd" type="text" inputmode="numeric"/></div>
+        <div class="ff"><label>Valor por Peça (R$)</label><input id="edit-lote-valor" type="text" inputmode="decimal"/></div>
         <div class="ff"><label>Mês que vai cair</label><div class="month-inline"><input id="edit-lote-competencia" type="month"/><div class="month-actions"><button type="button" onclick="setLoteCompetenciaRapida('edit-lote-competencia',0)">Este mês</button><button type="button" onclick="setLoteCompetenciaRapida('edit-lote-competencia',1)">Mês que vem</button></div></div><small>Controla em qual mês o valor entra no Dashboard e Relatório.</small></div>
         <div class="ff"><label>Cliente</label><select id="edit-lote-cliente"><option value="">— Nenhum —</option></select><button type="button" onclick="abrirModalNovoCliente()" style="margin-top:5px;font-size:11px;padding:4px 10px;background:rgba(191,195,202,.08);border:1px solid rgba(191,195,202,.2);border-radius:7px;color:var(--accent-lt);cursor:pointer;font-weight:600;">+ Novo cliente</button></div>
         <div class="ff"><label>Prazo de entrega</label><input id="edit-lote-prazo" type="date"/></div>
@@ -13852,10 +13891,10 @@ input,select,textarea,button{font-size:16px;}
         <div class="ff"><label>Telefone</label><input id="edit-func-telefone" type="text"/></div>
         <div class="ff"><label>Admissão</label><input id="edit-func-admissao" type="date"/></div>
         <div class="ff"><label>Status</label><select id="edit-func-status"><option>Ativo</option><option>Inativo</option></select></div>
-        <div class="ff"><label>Salário (R$)</label><input id="edit-func-salario" type="number" step="0.01" min="0"/></div>
-        <div class="ff"><label>Bônus mensal (R$)</label><input id="edit-func-bonus" type="number" step="0.01" min="0" placeholder="0 = sem bônus"/></div>
-        <div class="ff"><label>Jornada (min/dia)</label><input id="edit-func-jornada" type="number" min="60" max="720"/></div>
-        <div class="ff"><label>Meta diária (pçs)</label><input id="edit-func-meta-dia" type="number" min="0"/></div>
+        <div class="ff"><label>Salário (R$)</label><input id="edit-func-salario" type="text" inputmode="decimal"/></div>
+        <div class="ff"><label>Bônus mensal (R$)</label><input id="edit-func-bonus" type="text" inputmode="decimal" placeholder="0 = sem bônus"/></div>
+        <div class="ff"><label>Jornada (min/dia)</label><input id="edit-func-jornada" type="text" inputmode="numeric"/></div>
+        <div class="ff"><label>Meta diária (pçs)</label><input id="edit-func-meta-dia" type="text" inputmode="numeric"/></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -13885,7 +13924,7 @@ input,select,textarea,button{font-size:16px;}
           </select>
         </div>
         <div class="ff"><label>Lote (OF)</label><select id="edit-reg-lote"></select></div>
-        <div class="ff"><label>Quantidade *</label><input id="edit-reg-qtd" type="number" min="1"/></div>
+        <div class="ff"><label>Quantidade *</label><input id="edit-reg-qtd" type="text" inputmode="numeric"/></div>
         <div class="ff" style="grid-column:1/-1"><label>Observações</label><input id="edit-reg-obs" type="text" placeholder="Opcional"/></div>
       </div>
     </div>
@@ -13930,7 +13969,7 @@ input,select,textarea,button{font-size:16px;}
     <div class="modal-body">
       <div class="fg" style="margin-bottom:0">
         <div class="ff" style="grid-column:span 2"><label>Descrição *</label><input id="edit-gasto-desc" type="text"/></div>
-        <div class="ff"><label>Valor (R$) *</label><input id="edit-gasto-valor" type="number" step="0.01" min="0"/></div>
+        <div class="ff"><label>Valor (R$) *</label><input id="edit-gasto-valor" type="text" inputmode="decimal"/></div>
         <div class="ff"><label>Tipo *</label>
           <select id="edit-gasto-tipo"><option value="fixo">Fixo</option><option value="variavel">Variável</option></select>
         </div>
