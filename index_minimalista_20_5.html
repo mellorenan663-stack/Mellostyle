@@ -269,8 +269,14 @@ async function aplicarEscalaPadraoFuncionarios(){
   }
   return updates.length>0;
 }
+/* Em aba anonima, ou quando a politica do navegador bloqueia, so TOCAR em
+   localStorage ja lanca erro — e estas duas funcoes rodam no caminho de
+   salvar e de trocar o tema. */
+function lerGuardado(chave){
+  try{ return localStorage.getItem(chave); }catch(_e){ return null; }
+}
 function getCurrentUserId(){
-  return auth.currentUser?.uid || activeUserId || localStorage.getItem("mello_active_uid") || null;
+  return auth.currentUser?.uid || activeUserId || lerGuardado("mello_active_uid") || null;
 }
 function requireAuthUser(){
   const user=auth.currentUser;
@@ -352,10 +358,19 @@ const ICO_PALETA='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><
 window.ICO_PALETA=ICO_PALETA;
 window.ICO_CELULAR='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>';
 window.ICO_MONITOR='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
+/* Copia na memoria da pagina. Serve de rede de seguranca quando o navegador
+   recusa o armazenamento: sem ela, o que a pessoa escolhe some no redesenho
+   seguinte — o tema nao mudava e as metas voltavam ao padrao. */
+let __cfgMem=null;
 function getStoredConfig(){
-  try{return JSON.parse(localStorage.getItem("mello_config_v1")||"{}");}catch(e){return {};}
+  try{
+    const bruto=localStorage.getItem("mello_config_v1");
+    if(bruto){ const o=JSON.parse(bruto); if(o&&typeof o==="object"){ __cfgMem={...o}; return o; } }
+  }catch(e){}
+  return __cfgMem?{...__cfgMem}:{};
 }
 function saveStoredConfig(cfg){
+  __cfgMem={...(cfg||{})};
   try{localStorage.setItem("mello_config_v1",JSON.stringify(cfg||{}));}catch(e){}
 }
 function getConfig(){
@@ -468,7 +483,7 @@ const THEME_IDS=THEME_OPTIONS.map(t=>t.id);
 function normalizeThemeId(themeId){return THEME_IDS.includes(themeId)?themeId:"escuro";}
 function getThemeAtual(){
   let cfg={};try{cfg=(typeof getStoredConfig==="function"?getStoredConfig():{})||{};}catch(_e){cfg={};}
-  return normalizeThemeId(cfg.tema||localStorage.getItem("mello_theme")||"escuro");
+  return normalizeThemeId(cfg.tema||lerGuardado("mello_theme")||"escuro");
 }
 function getThemeMeta(themeId){
   const id=normalizeThemeId(themeId||getThemeAtual());
@@ -480,7 +495,12 @@ function applyTheme(themeId){
   try{localStorage.setItem("mello_theme",tema);const cfg=(typeof getStoredConfig==="function"?getStoredConfig():{})||{};cfg.tema=tema;if(typeof saveStoredConfig==="function")saveStoredConfig(cfg);}catch(_e){}
   const chip=document.getElementById("theme-chip-label");
   if(chip) chip.innerHTML=(tema==="claro"?ICO_SOL:ICO_LUA)+escapeHtml(meta.label);
-  const select=document.getElementById("cfg-tema");if(select&&select.value!==tema)select.value=tema;
+  const sincronizar=()=>{const sel=document.getElementById("cfg-tema"); if(sel&&sel.value!==tema) sel.value=tema;};
+  sincronizar();
+  /* A pagina de Configuracoes pode ser redesenhada logo depois; este segundo
+     acerto garante que o seletor nao fique mostrando um tema diferente do que
+     esta na tela. */
+  setTimeout(sincronizar,0);
 }
 function cycleTheme(){
   const atual=getThemeAtual();const idx=THEME_OPTIONS.findIndex(t=>t.id===atual);const next=THEME_OPTIONS[(idx+1)%THEME_OPTIONS.length]||THEME_OPTIONS[0];
@@ -6124,7 +6144,7 @@ function renderConfiguracoes(){
     <div class="ff"><label>Nome da empresa</label><input id="cfg-empresa" type="text" value="${escapeHtml(cfg.empresa)}" aria-label="Nome da empresa"/></div>
     <div class="ff"><label>ID da empresa</label><input id="cfg-empresa-id" type="text" value="${escapeHtml(cfg.empresaId)}" placeholder="ex: mello-style"/></div>
     <div class="ff"><label>Perfil de acesso</label><select id="cfg-perfil" aria-label="Perfil de acesso"><option ${cfg.perfil==="admin"?"selected":""}>admin</option><option ${cfg.perfil==="gerente"?"selected":""}>gerente</option><option ${cfg.perfil==="operador"?"selected":""}>operador</option><option ${cfg.perfil==="financeiro"?"selected":""}>financeiro</option></select></div>
-    <div class="ff"><label>Tema visual</label><select id="cfg-tema" aria-label="Tema visual">${THEME_OPTIONS.map(t=>`<option value="${t.id}" ${cfg.tema===t.id?"selected":""}>${t.icon} ${t.label}</option>`).join("")}</select></div>
+    <div class="ff"><label>Tema visual</label><select id="cfg-tema" aria-label="Tema visual">${(()=>{const vivo=normalizeThemeId(document.documentElement.getAttribute("data-theme")||cfg.tema);return THEME_OPTIONS.map(t=>`<option value="${t.id}" ${vivo===t.id?"selected":""}>${t.icon} ${t.label}</option>`).join("");})()}</select></div>
     <div class="ff"><label>Meta do dia (pçs)</label><input id="cfg-meta-dia" type="text" inputmode="numeric" value="${cfg.metaDia}" aria-label="Meta do dia em peças"/></div>
     <div class="ff"><label>Meta do mês (pçs)</label><input id="cfg-meta-mes" type="text" inputmode="numeric" value="${cfg.metaMes}" aria-label="Meta do mês em peças"/></div>
     <div class="ff"><label>Meta faturamento/mês (R$)</label><input id="cfg-meta-fat" type="text" inputmode="decimal" value="${cfg.metaFaturamento}" aria-label="Meta de faturamento do mês em reais"/></div>
@@ -16666,7 +16686,12 @@ tr:last-child td{ border-bottom:none!important; }
       var tema=valid.indexOf(cfg.tema)>-1?cfg.tema:(valid.indexOf(stored)>-1?stored:'escuro');
       if(typeof window.applyTheme==='function') window.applyTheme(tema);
       else document.documentElement.setAttribute('data-theme',tema);
-    }catch(e){ document.documentElement.setAttribute('data-theme','escuro'); }
+    }catch(e){
+      /* Trocar so o atributo pinta a tela mas deixa o seletor e o botao de
+         tema mostrando outra coisa. A funcao de sempre acerta os tres. */
+      if(typeof window.applyTheme==='function') window.applyTheme('escuro');
+      else document.documentElement.setAttribute('data-theme','escuro');
+    }
     try{
       const btn=document.getElementById('login-btn');
       if(btn){

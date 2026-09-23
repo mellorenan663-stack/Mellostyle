@@ -1069,6 +1069,16 @@ const esc=s=>String(s==null?"":s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","
 const TAMS=["P","M","G","GG","G1","G2","G3"];
 /* XG e G1 são o mesmo tamanho: o que vier como XG é lido como G1. */
 function tamCanon(t){ return t==="XG"?"G1":t; }
+/* Em aba anonima, ou quando a politica do navegador bloqueia, so TOCAR em
+   localStorage ja lanca erro. Estes dois ajudantes engolem a recusa: o app
+   continua funcionando, apenas sem lembrar a escolha da proxima vez. */
+function lerGuardado(chave){
+  try{ return localStorage.getItem(chave); }catch(_e){ return null; }
+}
+function guardar(chave,valor){
+  try{ if(valor===null||valor===undefined||valor==="") localStorage.removeItem(chave);
+       else localStorage.setItem(chave,valor); }catch(_e){}
+}
 /* Dinheiro e horas do jeito que se digita aqui: 2,50 · 2.50 · 1.234,56 · R$ 9,90.
    O ponto so vale como separador de milhar quando vem em grupo de tres. */
 function numBR(v,padrao=0){
@@ -1201,7 +1211,7 @@ async function loadColaboradores(){
     const snap=await getDocs(query(collection(db,S().colCol),where("ownerId","==",uid)));
     colaboradores=snap.docs.map(d=>({id:d.id,nome:d.data().nome||""})).filter(c=>c.nome).sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
   }catch(e){ console.error("COLAB_LOAD",e); colaboradores=[]; }
-  revisorAtual=localStorage.getItem("revisor_"+setorAtual+"_"+uid)||"";
+  revisorAtual=lerGuardado("revisor_"+setorAtual+"_"+uid)||"";
   if(revisorAtual&&!colaboradores.some(c=>c.nome===revisorAtual)) revisorAtual="";
   renderReviewerSelect();
 }
@@ -1211,7 +1221,7 @@ function renderReviewerSelect(){
 function setRevisor(nome){
   revisorAtual=nome||"";
   const uid=auth.currentUser?.uid;
-  if(uid){ const k="revisor_"+setorAtual+"_"+uid; if(revisorAtual) localStorage.setItem(k,revisorAtual); else localStorage.removeItem(k); }
+  if(uid) guardar("revisor_"+setorAtual+"_"+uid, revisorAtual);
 }
 function renderColabList(){
   const host=$("colab-list");
@@ -2033,7 +2043,7 @@ function aplicarSetorUI(){
 }
 function trocarSetor(key){
   if(!SETORES[key]||key===setorAtual) return;
-  setorAtual=key; localStorage.setItem("jv_setor_atual",key);
+  setorAtual=key; guardar("jv_setor_atual",key);
   aplicarSetorUI();
   loadColaboradores().then(()=>render());
 }
