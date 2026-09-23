@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR"><head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B1220'/%3E%3Cpath d='M7 23V9l5 7 4-5 4 5 5-7v14' fill='none' stroke='%237FA7E6' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Mello Style — Revisão · Lotes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -830,7 +831,7 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
         <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
       </button>
       <button class="mn-arrow" id="mn-next" aria-label="Próximo mês">›</button>
-      <input type="month" class="mn-input" id="mn-input">
+      <input type="month" class="mn-input" id="mn-input" aria-label="Mês dos lotes">
     </div>
     <button class="mn-today" id="mn-today">↩ Voltar ao mês atual</button>
 
@@ -859,7 +860,7 @@ textarea.input{height:auto;padding:13px 15px;resize:vertical;min-height:74px;lin
     <div id="view-placar" style="display:none"></div>
     <div id="view-metas" style="display:none"></div>
     <div id="view-dias" style="display:none">
-      <div class="dias-bar"><span class="dias-lbl">Trocar mês</span><input type="month" id="dias-mes"></div>
+      <div class="dias-bar"><span class="dias-lbl">Trocar mês</span><input type="month" id="dias-mes" aria-label="Trocar o mês"></div>
       <div class="dias-chips" id="dias-chips">
         <button class="dia-chip active" data-ds="todos" type="button">Todos</button>
         <button class="dia-chip" data-ds="revisao" type="button">Revisão</button>
@@ -2491,6 +2492,59 @@ function renderDias(){
 if($("dias-mes")) $("dias-mes").addEventListener("change",renderDias);
 document.querySelectorAll("#dias-chips .dia-chip").forEach(b=>b.addEventListener("click",()=>{ diasSetor=b.dataset.ds; renderDias(); }));
 
+/* ── JANELAS: Esc fecha e o Tab da a volta dentro ────────────────
+   Antes o Esc nao fazia nada aqui, e o Tab escapava para a pagina atras,
+   que esta escurecida — quem anda de teclado perdia o foco de vista. */
+const FOCAVEIS_REV='a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),'
+  +'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+function janelaRev(){
+  const abertas=[...document.querySelectorAll(".overlay.show")]
+    .filter(o=>getComputedStyle(o).display!=="none");
+  return abertas.length?abertas[abertas.length-1]:null;
+}
+function focaveisRev(o){
+  /* offsetParent e sempre nulo dentro de uma janela fixa na tela; o que vale
+     aqui e o retangulo que o elemento realmente ocupa. */
+  return [...o.querySelectorAll(FOCAVEIS_REV)].filter(e=>{
+    const cs=getComputedStyle(e);
+    if(cs.visibility==="hidden"||cs.display==="none") return false;
+    return e.getClientRects().length>0;
+  });
+}
+let __focoAntesRev=null;
+document.addEventListener("keydown",function(e){
+  const o=janelaRev(); if(!o) return;
+  if(e.key==="Escape"){
+    e.preventDefault();
+    const x=o.querySelector(".sheet-x,[data-fechar],.btn-ghost");
+    if(x) x.click(); else o.classList.remove("show");
+    return;
+  }
+  if(e.key!=="Tab"||e.altKey||e.ctrlKey||e.metaKey) return;
+  const lista=focaveisRev(o); if(!lista.length) return;
+  e.preventDefault();
+  const i=lista.indexOf(document.activeElement);
+  const passo=e.shiftKey?-1:1;
+  const prox=i<0?(e.shiftKey?lista.length-1:0):((i+passo+lista.length)%lista.length);
+  const alvo=lista[prox];
+  try{ alvo.focus(); if(alvo.select&&/^(text|search|tel|url|password)$/.test(alvo.type||"")) alvo.select(); }catch(_e){}
+},true);
+new MutationObserver(ms=>{
+  for(const mu of ms){
+    const o=mu.target;
+    if(!o.classList||!o.classList.contains("overlay")) continue;
+    const abriu=o.classList.contains("show");
+    const estava=mu.oldValue&&mu.oldValue.includes("show");
+    if(abriu&&!estava){
+      __focoAntesRev=document.activeElement;
+      setTimeout(()=>{ const l=focaveisRev(o); if(l.length&&!o.contains(document.activeElement)) l[0].focus(); },60);
+    }else if(!abriu&&estava){
+      const volta=__focoAntesRev; __focoAntesRev=null;
+      if(volta&&document.contains(volta)) setTimeout(()=>{ try{ volta.focus(); }catch(_e){} },0);
+    }
+  }
+}).observe(document.documentElement,{subtree:true,attributes:true,attributeFilter:["class"],attributeOldValue:true});
+
 /* ───── auth flow ───── */
 const ACESSO_EMAIL="acesso@jvconfeccao.app", ACESSO_SENHA="jvconfeccao-acesso-2026";
 $("login-form").addEventListener("submit",async e=>{
@@ -2928,5 +2982,22 @@ html,body{ background-image:none!important; background:var(--bg)!important; }
 /* O botão "Novo lote" flutua no rodapé e cobria a última linha da lista.
    Sobra embaixo para dar para rolar além dele. */
 body{ padding-bottom:96px; }
+
+/* ── Foco por teclado ────────────────────────────────────────────────
+   Os botões tinham outline:none e nada no lugar: quem anda de Tab não
+   enxergava onde estava. O anel só aparece na navegação por teclado
+   (:focus-visible), então quem usa o mouse não vê diferença nenhuma. */
+html body :is(button,a,input,select,textarea,[tabindex]):focus-visible{
+  outline:2px solid #7FA7E6!important;
+  outline-offset:2px!important;
+  border-radius:inherit;
+}
+html[data-tema="claro"] body :is(button,a,input,select,textarea,[tabindex]):focus-visible,
+html[data-theme="claro"] body :is(button,a,input,select,textarea,[tabindex]):focus-visible{
+  outline-color:#2E52C9!important;
+}
+@media (prefers-contrast:more){
+  html body :is(button,a,input,select,textarea,[tabindex]):focus-visible{ outline-width:3px!important; }
+}
 </style>
 </body></html>
