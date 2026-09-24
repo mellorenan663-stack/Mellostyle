@@ -683,10 +683,18 @@ function __calcResumoMensal(mes){
   const variavel=gastosM.filter(g=>g.tipo==="variavel").reduce((s,g)=>s+toNumber(g.valor,0),0);
   // Folha real: soma salário final do banco de horas, incluindo extras e descontos por falta.
   const funcAtivas=funcionarios.filter(f=>f.status!=="Inativo");
-  const folhaBase=funcAtivas.reduce((s,f)=>s+toNumber(f.salario,0)+toNumber(f.bonus,0),0);
-  const extrasTotal=funcAtivas.reduce((s,f)=>s+toNumber(calcBancoHoras(f.id,mes).valorExtras,0),0);
-  const descontosTotal=funcAtivas.reduce((s,f)=>s+toNumber(calcBancoHoras(f.id,mes).desconto,0),0);
-  const folha=folhaBase+extrasTotal-descontosTotal;
+  /* A folha do custo tem de ser o que a Folha de Pagamento paga, nao o
+     salario cheio de todo mundo: o bonus de quem faltou demais nao e pago, e
+     quem entrou no meio do mes recebe proporcional. Somar o cheio inflava o
+     custo e comia o lucro na tela. */
+  const bancos=funcAtivas.map(f=>calcBancoHoras(f.id,mes));
+  const folhaBase=bancos.reduce((s,b)=>s+toNumber(b.salarioBase,0),0);
+  const extrasTotal=bancos.reduce((s,b)=>s+toNumber(b.valorExtras,0),0);
+  const descontosTotal=bancos.reduce((s,b)=>s+toNumber(b.desconto,0),0);
+  const folha=bancos.reduce((s,b)=>s+toNumber(b.salarioFinal,0),0);
+  /* O que sobra depois de tirar salario, extras e descontos e o bonus que foi
+     mesmo pago — a linha que faltava para a conta fechar a vista. */
+  const bonusTotal=folha-folhaBase-extrasTotal+descontosTotal;
   const custo=folha+fixo+variavel;
   const lucro=faturamento-custo;
   const margem=faturamento>0?Math.round((lucro/faturamento)*100):0;
@@ -695,7 +703,7 @@ function __calcResumoMensal(mes){
   const clientes=getClientesResumo(mes);
   const topCliente=clientes[0]||null;
   const categorias=getFinanceiroCategorias(mes);
-  return {mes,regsM,lotesDoMes,totalPecas,faturamento,gastosM,fixo,variavel,folha,folhaBase,extrasTotal,descontosTotal,custo,lucro,margem,custoPorPeca,ticketMedioPeca,clientes,topCliente,categorias};
+  return {mes,regsM,lotesDoMes,totalPecas,faturamento,gastosM,fixo,variavel,folha,folhaBase,bonusTotal,extrasTotal,descontosTotal,custo,lucro,margem,custoPorPeca,ticketMedioPeca,clientes,topCliente,categorias};
 }
 /* ── Excel de verdade (.xlsx), sem biblioteca externa ──────────
    Um .xlsx é um ZIP com XMLs dentro. Aqui o ZIP é gravado sem
@@ -5968,6 +5976,7 @@ window.gerarPreviewRelatorio=function(){
         <table class="rel-table rel-table-pro"><tbody>
           <tr><td>Folha real</td><td class="rtd-r">${fmtMoney(folha)}</td></tr>
           <tr><td>Salários base</td><td class="rtd-r">${fmtMoney(resumo.folhaBase||folha)}</td></tr>
+          ${resumo.bonusTotal>0?`<tr><td>Bônus pago</td><td class="rtd-r">+${fmtMoney(resumo.bonusTotal)}</td></tr>`:""}
           ${resumo.extrasTotal>0?`<tr><td class="green">Horas extras</td><td class="rtd-r green">+${fmtMoney(resumo.extrasTotal)}</td></tr>`:""}
           ${resumo.descontosTotal>0?`<tr><td class="red">Descontos por falta</td><td class="rtd-r red">−${fmtMoney(resumo.descontosTotal)}</td></tr>`:""}
           <tr><td>Gastos fixos</td><td class="rtd-r">${fmtMoney(gF)}</td></tr>
@@ -6126,6 +6135,7 @@ window.baixarRelatorioCSV=function(){
   csv+=["Margem",resumo.margem,cfg.metaMargem||"","Percentual"].join(",")+"\r\n";
   csv+=["Teto de custo",resumo.custo,cfg.metaCusto||"","Custo total"].join(",")+"\r\n";
   csv+=["Folha base",resumo.folhaBase||resumo.folha,"",""].join(",")+"\r\n";
+  if(resumo.bonusTotal>0)csv+=["Bonus pago",resumo.bonusTotal,"",""].join(",")+"\r\n";
   if(resumo.extrasTotal>0)csv+=["Horas extras",resumo.extrasTotal,"",""].join(",")+"\r\n";
   if(resumo.descontosTotal>0)csv+=["Desc. faltas",resumo.descontosTotal,"",""].join(",")+"\r\n";
   csv+=["Folha real",resumo.folha,"",""].join(",")+"\r\n";
