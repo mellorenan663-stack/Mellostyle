@@ -50,6 +50,8 @@ function toast(msg,type="ok"){
 }
 
 /* ── UTILS ─────────────────────────────────────────────────── */
+/* Tela de celular: usado para desenhar menos de uma vez só. */
+const TELA_PEQUENA=()=>{ try{ return window.matchMedia("(max-width:900px)").matches; }catch(_e){ return false; } };
 function toNumber(v, fallback=0){
   if(typeof v==="number") return Number.isFinite(v)?v:fallback;
   if(v===null||v===undefined||v==="") return fallback;
@@ -1487,6 +1489,78 @@ async function _loadDataReal(){
    tela custava 127ms de travada — agora só refaz quando os dados mudam
    (loadData avisa incrementando a versão). */
 let __dadosVersao=0, __selectsVersao=-1;
+
+/* ── LISTAS DE OF ENXUTAS ────────────────────────────────────────────────
+   Com cinco anos de histórico, quatro listas de OF somavam 4.020 opções
+   paradas na tela. O celular gastava de 300 a 500ms desenhando todas elas
+   a cada troca de aba, e era isso que travava o dedo. Agora a lista entra
+   com as OFs mais recentes e se completa no instante em que a pessoa toca
+   no seletor — nada se perde: o valor já escolhido continua na lista, e
+   quem define o valor por código também recebe a lista inteira antes. */
+/* Quem cadastra costuma digitar "OF-1042" no número da OF; sem isto a tela
+   mostrava "OF OF-1042" em toda lista, tabela e aviso. */
+function rotuloOf(n){
+  const v=String(n==null?"":n).trim();
+  if(!v) return "OF —";
+  return /^of\b|^of[-\s.]/i.test(v)?v:("OF "+v);
+}
+const OF_NA_LISTA=80;
+const __descValorSelect=(function(){
+  try{ return Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value"); }catch(_e){ return null; }
+})();
+function __porDentro(el,v){
+  try{ if(__descValorSelect&&__descValorSelect.set) __descValorSelect.set.call(el,v); else el.value=v; }catch(_e){}
+}
+function completarSelectOf(el){
+  if(!el||!el.dataset.ofParcial||!el.__ofCheio) return;
+  const antes=el.value;
+  el.innerHTML=el.__ofCheio;
+  el.__ofCheio=null;
+  delete el.dataset.ofParcial;
+  if(antes&&antes!=="__of_mais__") __porDentro(el,antes);
+}
+function __ligarCompletarOf(el){
+  if(el.__ofLigado) return;
+  el.__ofLigado=true;
+  const abrir=()=>completarSelectOf(el);
+  el.addEventListener("pointerdown",abrir);
+  el.addEventListener("mousedown",abrir);
+  el.addEventListener("touchstart",abrir,{passive:true});
+  el.addEventListener("focus",abrir);
+  el.addEventListener("keydown",abrir);
+  if(__descValorSelect&&__descValorSelect.set){
+    try{
+      Object.defineProperty(el,"value",{configurable:true,
+        get(){ return __descValorSelect.get.call(this); },
+        set(v){ if(v&&this.dataset.ofParcial) completarSelectOf(this); __descValorSelect.set.call(this,v); }});
+    }catch(_e){}
+  }
+}
+/* itens: [{id, html}] já na ordem em que devem aparecer (mais novas primeiro). */
+function preencherSelectOf(el,primeira,itens,marcado){
+  if(!el) return;
+  const cheio=primeira+itens.map(o=>o.html).join("");
+  if(itens.length<=OF_NA_LISTA+1){
+    el.innerHTML=cheio;
+    el.__ofCheio=null; delete el.dataset.ofParcial;
+    if(marcado) __porDentro(el,marcado);
+    return;
+  }
+  const curtas=itens.slice(0,OF_NA_LISTA);
+  if(marcado&&!curtas.some(o=>o.id===marcado)){
+    const achou=itens.find(o=>o.id===marcado);
+    if(achou) curtas.unshift(achou);
+  }
+  el.__ofCheio=cheio;
+  el.innerHTML=primeira+curtas.map(o=>o.html).join("")
+    +'<option value="__of_mais__" disabled>⋯ abra para ver todas as '+itens.length+' OFs</option>';
+  el.dataset.ofParcial="1";
+  __porDentro(el,marcado||"");
+  __ligarCompletarOf(el);
+}
+function __itensDeLotes(lista,texto){
+  return lista.map(l=>({id:l.id,html:'<option value="'+l.id+'">'+texto(l)+'</option>'}));
+}
 function populateSelects(){
   const jaMontado=$("prod-lote")?.options.length||$("cph-lote")?.options.length;
   if(__selectsVersao===__dadosVersao && jaMontado) return;
@@ -1494,10 +1568,13 @@ function populateSelects(){
   const sf=$("prod-funcionario");
   if(sf)sf.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const sl=$("prod-lote");
-  if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes
-    .filter(l=>l.status!=="Cancelado")
-    .map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf)} — ${getLoteDisplay(l)}${l.status?` • ${escapeHtml(l.status)}`:''}</option>`)
-    .join("");
+  if(sl){
+    const anterior=sl.value;
+    preencherSelectOf(sl,'<option value="">— Nenhum —</option>',
+      __itensDeLotes(lotes.filter(l=>l.status!=="Cancelado"),
+        l=>`${escapeHtml(rotuloOf(l.numeroOf))} — ${getLoteDisplay(l)}${l.status?` • ${escapeHtml(l.status)}`:''}`),
+      anterior);
+  }
   const sf2=$("bh-funcionario");
   if(sf2)sf2.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const sfPonto=$("ponto-funcionario");
@@ -1511,10 +1588,14 @@ function populateSelects(){
   const optsFunc='<option value="">— Selecione —</option>'+funcionariosAtivos.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   if(cphF)cphF.innerHTML=optsFunc;
   if(cphFiltroF)cphFiltroF.innerHTML='<option value="">Todas</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
-  const loteOpts='<option value="">— Sem lote / avulso —</option>'+lotes.filter(l=>getStatusOperacionalLote(l)!=="Cancelado").map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf||"—")} — ${escapeHtml(l.produto||"—")}${l.cliente?" • "+escapeHtml(l.cliente):""}</option>`).join("");
   const cphL=$("cph-lote"), cphFiltroL=$("cph-filtro-lote");
-  if(cphL)cphL.innerHTML=loteOpts;
-  if(cphFiltroL)cphFiltroL.innerHTML='<option value="">Todos</option>'+lotes.map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf||"—")} — ${escapeHtml(l.produto||"—")}</option>`).join("");
+  if(cphL) preencherSelectOf(cphL,'<option value="">— Sem lote / avulso —</option>',
+    __itensDeLotes(lotes.filter(l=>getStatusOperacionalLote(l)!=="Cancelado"),
+      l=>`${escapeHtml(rotuloOf(l.numeroOf))} — ${escapeHtml(l.produto||"—")}${l.cliente?" • "+escapeHtml(l.cliente):""}`),
+    cphL.value);
+  if(cphFiltroL) preencherSelectOf(cphFiltroL,'<option value="">Todos</option>',
+    __itensDeLotes(lotes,l=>`${escapeHtml(rotuloOf(l.numeroOf))} — ${escapeHtml(l.produto||"—")}`),
+    cphFiltroL.value);
   // Preencher selects de cliente nos formulários de lote
   const clienteOpts='<option value="">— Nenhum —</option>'+clientes.map(c=>`<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`).join("");
   const lcSel=$("lote-cliente");
@@ -2050,7 +2131,7 @@ function renderTabelaProdutividadeHora(lista){
   if(!lista.length){tb.innerHTML='<tr><td colspan="9" class="td-empty">Nenhuma medição registrada.</td></tr>';return;}
   tb.innerHTML=lista.map(r=>{
     const d=r.data?new Date(r.data+"T12:00:00").toLocaleDateString("pt-BR"):"—";
-    const lote=r.loteNumeroOf?`OF ${escapeHtml(r.loteNumeroOf)} <div class="td-mini">${escapeHtml(r.loteProduto||"")}</div>`:"Avulso";
+    const lote=r.loteNumeroOf?`${escapeHtml(rotuloOf(r.loteNumeroOf))} <div class="td-mini">${escapeHtml(r.loteProduto||"")}</div>`:"Avulso";
     return `<tr>
       <td class="td-mono sm">${d}</td><td><div class="fn-nome" style="font-size:12px">${escapeHtml(r.funcionarioNome||"—")}</div></td>
       <td><span class="chip ce sm">${escapeHtml(r.etapa||"—")}</span></td><td>${lote}</td>
@@ -2592,7 +2673,7 @@ function lerFormularioOF(prefixo,idIgnorar,numeroOriginal){
      Numa edição em que o número não mudou não há o que avisar. */
   const mudouONumero=numeroOriginal==null||normalize(numeroOriginal)!==normalize(numeroOf);
   const igual=mudouONumero&&lotes.find(l=>l.id!==idIgnorar&&normalize(l.numeroOf||"")===normalize(numeroOf));
-  if(igual&&!confirm(`Já existe a OF ${igual.numeroOf} (${igual.produto||"sem produto"}).\n\nCadastrar assim mesmo com o mesmo número?`))
+  if(igual&&!confirm(`Já existe a ${rotuloOf(igual.numeroOf)} (${igual.produto||"sem produto"}).\n\nCadastrar assim mesmo com o mesmo número?`))
     return erroNoCampo(prefixo+"-numero","Escolha outro número de OF");
   return {numeroOf,produto,qtdTotal,valorPeca,
     status:v("status")?.value||"Aberto",
@@ -2737,7 +2818,7 @@ window.abrirModalConcluir=function(loteId){
   const lote=lotes.find(l=>l.id===loteId);if(!lote)return;
   const{produzido}=calcProg(lote);
   const meta=lote.qtdTotal||0;
-  $("modal-lote-titulo").textContent=`OF ${lote.numeroOf} — ${lote.produto}`;
+  $("modal-lote-titulo").textContent=`${rotuloOf(lote.numeroOf)} — ${lote.produto}`;
   $("modal-lote-restante").textContent=`Meta: ${meta.toLocaleString("pt-BR")} pçs • Concluído no lote: ${produzido.toLocaleString("pt-BR")} • Faltando: ${Math.max(0,meta-produzido).toLocaleString("pt-BR")}`;
   $("modal-lote-id").value=loteId;
   const pipeline=calcPipeline(lote);
@@ -2970,11 +3051,11 @@ function renderLotes(){
     return;
   }
   const alertas=lotesEscopo.filter(l=>l.prazo&&statusDe(l)!=="Concluído"&&statusDe(l)!=="Cancelado").filter(l=>Math.round((new Date(l.prazo+"T00:00:00")-hoje)/(864e5))<=3);
-  const alertaHtml=alertas.length&&filtroAtivo==="todos"&&!busca?`<div class="alertas-box">${alertas.map(l=>{const p=prazoInfo(l.prazo);return`<div class="alerta-row ${p.urgente?"venc":"alerta-warn"}">${p.urgente?"🚨":"⏰"} <strong>OF ${escapeHtml(l.numeroOf)}</strong> — ${escapeHtml(l.produto)}: ${p.urgente?"PRAZO VENCIDO!":"vence em "+p.diff+" dia(s)"} (${p.label})</div>`;}).join("")}</div>`:"";
+  const alertaHtml=alertas.length&&filtroAtivo==="todos"&&!busca?`<div class="alertas-box">${alertas.map(l=>{const p=prazoInfo(l.prazo);return`<div class="alerta-row ${p.urgente?"venc":"alerta-warn"}">${p.urgente?"🚨":"⏰"} <strong>${escapeHtml(rotuloOf(l.numeroOf))}</strong> — ${escapeHtml(l.produto)}: ${p.urgente?"PRAZO VENCIDO!":"vence em "+p.diff+" dia(s)"} (${p.label})</div>`;}).join("")}</div>`:"";
   /* Desenhar 900 cards de uma vez congelava a tela por dois segundos. Mostra
      os primeiros e o resto sob demanda — o filtro e a busca continuam valendo
      sobre a lista inteira, só o desenho é que é por partes. */
-  const PASSO=60;
+  const PASSO=TELA_PEQUENA()?10:60;
   if(window.__lotesMostrar===undefined||window.__lotesChave!==(filtroAtivo+"|"+busca+"|"+verTodos+"|"+window._loteMesFiltro))
     { window.__lotesMostrar=PASSO; window.__lotesChave=filtroAtivo+"|"+busca+"|"+verTodos+"|"+window._loteMesFiltro; }
   const totalVisiveis=lotesVisiveis.length;
@@ -3160,7 +3241,10 @@ window.editarRegistro=function(id){
   const se=$("edit-reg-etapa");
   if(se)Array.from(se.options).forEach(o=>{o.selected=o.value===r.etapa;});
   const sl=$("edit-reg-lote");
-  if(sl)sl.innerHTML='<option value="">— Nenhum —</option>'+lotes.filter(l=>l.status!=="Cancelado").map(l=>`<option value="${l.id}"${l.id===r.loteId?" selected":""}>OF ${escapeHtml(l.numeroOf)} — ${escapeHtml(l.produto)}</option>`).join("");
+  if(sl) preencherSelectOf(sl,'<option value="">— Nenhum —</option>',
+    __itensDeLotes(lotes.filter(l=>l.status!=="Cancelado"),
+      l=>`${escapeHtml(rotuloOf(l.numeroOf))} — ${escapeHtml(l.produto)}`),
+    r.loteId||"");
   if($("edit-reg-qtd"))$("edit-reg-qtd").value=r.qtd||"";
   if($("edit-reg-obs"))$("edit-reg-obs").value=r.obs||"";
   $("modal-editar-registro").classList.add("open");document.body.style.overflow="hidden";
@@ -3312,8 +3396,14 @@ window.salvarEdicaoPonto=async()=>{
   finally{btn.disabled=false;btn.textContent="Salvar Alterações";}
 };
 
-function renderProducao(){
+/* Quantas linhas a tabela de Produção monta de uma vez. No celular 100 linhas
+   eram 1.500 nós e travavam a troca de tela; o resto vem no "ver mais". */
+const PROD_POR_VEZ=TELA_PEQUENA()?40:100;
+window.prodLimite=PROD_POR_VEZ;
+window.prodVerMais=function(){ window.prodLimite+=PROD_POR_VEZ*2; renderProducao(true); };
+function renderProducao(manterLimite){
   const tb=$("prod-tbody");if(!tb)return;
+  if(!manterLimite) window.prodLimite=PROD_POR_VEZ;
   const busca=normalize(uiState.prodBusca||$("prod-busca")?.value||"");
   let dados=[...registros];
   if(busca){
@@ -3321,19 +3411,25 @@ function renderProducao(){
   }
   dados.sort((a,b)=>tsDe(b)-tsDe(a));
   if(!dados.length){tb.innerHTML='<tr><td colspan="8" class="td-empty">Nenhum registro.</td></tr>';return;}
-  tb.innerHTML=dados.slice(0,100).map(r=>{
+  const totalProd=dados.length;
+  const limiteProd=Math.min(window.prodLimite||PROD_POR_VEZ,totalProd);
+  tb.innerHTML=dados.slice(0,limiteProd).map(r=>{
     const loteR=loteDoId(r.loteId);
     return`<tr>
       <td class="td-mono sm">${dateFmt(r.criadoEm,true)}</td>
       <td><span class="chip cn">${escapeHtml(r.funcionarioNome)}</span></td>
       <td><span class="chip ce">${escapeHtml(r.etapa)}</span></td>
       <td class="td-mono" style="font-weight:700;">${(r.qtd||0).toLocaleString("pt-BR")}</td>
-      <td>${r.loteNumeroOf?`<span class="chip co">OF ${escapeHtml(r.loteNumeroOf)}</span>`:"—"}</td>
+      <td>${r.loteNumeroOf?`<span class="chip co">${escapeHtml(rotuloOf(r.loteNumeroOf))}</span>`:"—"}</td>
       <td class="td-mono td-muted" style="font-size:11px;">${loteR&&loteR.qtdTotal?`${Math.min(100,Math.round((registrosDoLote(r.loteId).reduce((s,x)=>s+(x.etapa===r.etapa?toNumber(x.qtd,0):0),0)/loteR.qtdTotal)*100))}% desta etapa`:"—"}</td>
       <td class="td-obs">${escapeHtml(r.obs||"—")}</td>
       <td><div class="td-actions"><button class="btn-edit" onclick="editarRegistro('${r.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarRegistro('${r.id}')">✕</button></div></td>
     </tr>`;
-  }).join("");
+  }).join("")
+  +(limiteProd<totalProd?`<tr><td colspan="8" class="td-empty" style="padding:14px 10px;">
+      Mostrando ${fmtNum(limiteProd)} de ${fmtNum(totalProd)} registros
+      <button type="button" class="btn-outline" style="margin-left:10px;" onclick="prodVerMais()">Ver mais ${fmtNum(Math.min(PROD_POR_VEZ*2,totalProd-limiteProd))}</button>
+    </td></tr>`:"");
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -3342,7 +3438,10 @@ function renderProducao(){
 /* Quantos registros o Histórico desenha de uma vez. Montar tudo trava
    a tela: com ~1.900 registros o navegador levava 2,3s só para
    processar o HTML. O resto vem no botão "ver mais". */
-const HIST_POR_VEZ=250;
+/* No celular a tela congela enquanto o navegador processa o HTML: 250 linhas
+   custavam 938ms de dedo parado num aparelho modesto. Menos por vez resolve;
+   o resto continua no botao "ver mais". */
+const HIST_POR_VEZ=TELA_PEQUENA()?60:250;
 window.histLimite=HIST_POR_VEZ;
 window.histVerMais=function(){ window.histLimite+=HIST_POR_VEZ*2; aplicarFiltros(true); };
 window.aplicarFiltros=function(manterLimite){
@@ -3388,7 +3487,7 @@ window.aplicarFiltros=function(manterLimite){
       <td><span class="chip cn sm">${escapeHtml(r.funcionarioNome)}</span></td>
       <td><span class="chip ce sm">${escapeHtml(r.etapa)}</span></td>
       <td class="td-mono">${(r.qtd||0).toLocaleString("pt-BR")}</td>
-      <td>${r.loteNumeroOf?`<span class="chip co sm">OF ${escapeHtml(r.loteNumeroOf)}</span>`:"—"}</td>
+      <td>${r.loteNumeroOf?`<span class="chip co sm">${escapeHtml(rotuloOf(r.loteNumeroOf))}</span>`:"—"}</td>
       <td class="td-obs">${escapeHtml(r.obs||"—")}</td>
     </tr>`).join("")}</tbody></table></div>`;
   }).join("")
@@ -3399,7 +3498,10 @@ window.aplicarFiltros=function(manterLimite){
 };
 window.limparFiltros=()=>{[$("filtro-dia"),$("filtro-mes"),$("filtro-lote"),$("hist-busca")].forEach(el=>{if(el)el.value="";});uiState.histBusca="";aplicarFiltros();};
 function renderHistorico(){
-  const s=$("filtro-lote");if(s)s.innerHTML='<option value="">Todos</option>'+lotes.map(l=>`<option value="${l.id}">OF ${escapeHtml(l.numeroOf)} — ${getLoteDisplay(l)}</option>`).join("");
+  const s=$("filtro-lote");
+  if(s) preencherSelectOf(s,'<option value="">Todos</option>',
+    __itensDeLotes(lotes,l=>`${escapeHtml(rotuloOf(l.numeroOf))} — ${getLoteDisplay(l)}`),
+    s.value);
   aplicarFiltros();
 }
 
@@ -4654,7 +4756,12 @@ function renderGastos(){
   /* Com "ver todos os meses" a tabela chegava a 1.800 linhas e a tela
      congelava por mais de um segundo. Desenha os meses mais recentes e o
      resto sob demanda — os totais do topo continuam somando tudo. */
-  const PASSO_G=6;
+  /* No celular seis meses de tabela eram 900 nós e 325ms de dedo parado. */
+  const PASSO_G=TELA_PEQUENA()?2:6;
+  /* E dentro de cada mês, no celular, só as maiores de início: as linhas já vêm
+     ordenadas do maior valor para o menor, e o rodapé continua dizendo o total
+     de lançamentos. O botão abre o resto. */
+  const LINHAS_POR_MES=TELA_PEQUENA()?18:0;
   const chaveG=keysTodas.join(",")+"|"+dados.length;
   if(window.__gastosChave!==chaveG){ window.__gastosChave=chaveG; window.__gastosMeses=PASSO_G; }
   const mostrandoG=Math.min(window.__gastosMeses||PASSO_G,keysTodas.length);
@@ -4732,6 +4839,13 @@ function renderGastos(){
     const ordenadas=ordenar(soltas).map(x=>({ordemV:toNumber(x.valor,0),html:linhaHtml(x)}))
       .concat(blocos)
       .sort((a,b)=>b.ordemV-a.ordemV);
+    const mesAberto=!!(window.__gastoMesInteiro||{})[k];
+    const limiteL=(!LINHAS_POR_MES||mesAberto)?ordenadas.length:Math.min(LINHAS_POR_MES,ordenadas.length);
+    const visiveis=ordenadas.slice(0,limiteL);
+    const faltamL=ordenadas.length-limiteL;
+    const maisL=faltamL>0?`<tr class="gx-tr-mais"><td colspan="6" style="text-align:center;padding:12px 8px;">
+        <button type="button" class="btn-outline" onclick="gastoVerTodasAsLinhas('${k}')">Ver as outras ${faltamL} linha${faltamL>1?"s":""} deste mês</button>
+      </td></tr>`:"";
 
     /* Pastilhas: quando há marcação de pagamento, elas passam a dizer o que
        importa — quanto já saiu e quanto falta. */
@@ -4753,13 +4867,17 @@ function renderGastos(){
       </div>
       <div class="gx-tbl-wrap"><table class="gtbl gtbl-gastos">
         <thead><tr><th>Descrição</th><th>Tipo</th><th>Vence</th><th>Situação</th><th class="gx-th-num">Valor</th><th></th></tr></thead>
-        <tbody>${ordenadas.map(o=>o.html).join("")}</tbody>
+        <tbody>${visiveis.map(o=>o.html).join("")}${maisL}</tbody>
         <tfoot><tr><td colspan="4" class="gx-tf-lbl">${linhas.length} lançamento${linhas.length>1?"s":""}</td>
           <td class="td-mono gx-td-val">${fmtMoney(tf+tv)}</td><td></td></tr></tfoot>
       </table></div>
     </div>`;
   }).join("")+maisG;
 }
+window.gastoVerTodasAsLinhas=function(mes){
+  (window.__gastoMesInteiro=window.__gastoMesInteiro||{})[mes]=true;
+  renderGastos();
+};
 window.gastoAbrirGrupo=function(chave){
   const abertos=window.__gastoGrupoAberto=window.__gastoGrupoAberto||{};
   abertos[chave]=!abertos[chave];
@@ -6772,7 +6890,7 @@ function renderAuditoria(){
   wrapDelete('deletarRegistro','registros',x=>`${x.funcionarioNome||'registro'} • ${x.etapa||''}`);
   wrapDelete('deletarGasto','gastos',x=>x.descricao||'gasto');
   wrapDelete('deletarPonto','pontos',x=>x.funcionarioNome||'ponto');
-  wrapDelete('deletarLote','lotes',x=>`OF ${x.numeroOf||''} ${x.produto||''}`);
+  wrapDelete('deletarLote','lotes',x=>`${rotuloOf(x.numeroOf)} ${x.produto||''}`);
   wrapDelete('deletarClienteFirebase','clientes',x=>x.nome||'cliente');
   /* A página Clientes chama deletarCliente (não a versão "Firebase"). Sem esta
      linha o cliente saía do banco sem passar pela Lixeira, e não dava para
@@ -6792,8 +6910,8 @@ function renderAuditoria(){
   };
   wrapLog('salvarFuncionario','criou','funcionario',()=>safeText($('func-nome')?.value)||'funcionário');
   wrapLog('salvarEdicaoFunc','editou','funcionario',()=>$('edit-func-nome')?.value||'funcionário');
-  wrapLog('salvarLote','criou','lote',()=>`OF ${safeText($('lote-numero')?.value)}`);
-  wrapLog('salvarEdicaoLote','editou','lote',()=>`OF ${safeText($('edit-lote-numero')?.value)}`);
+  wrapLog('salvarLote','criou','lote',()=>safeText(rotuloOf($('lote-numero')?.value)));
+  wrapLog('salvarEdicaoLote','editou','lote',()=>safeText(rotuloOf($('edit-lote-numero')?.value)));
   wrapLog('salvarRegistro','criou','registro',()=>$('prod-etapa')?.value||'registro');
   wrapLog('salvarEdicaoRegistro','editou','registro',()=>$('edit-reg-etapa')?.value||'registro');
   wrapLog('salvarGasto','criou','gasto',()=>$('gasto-desc')?.value||'gasto');
@@ -6862,8 +6980,19 @@ function renderAuditoria(){
       toast('Erro ao trocar de aba: '+(e?.message||e),'err');
     }finally{
       closeMobileUi();
-      if(window.innerWidth<=900){ try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(e){} }
+      if(window.innerWidth<=900) voltarAoTopoDaTela();
     }
+  }
+
+  /* Quem rola é a área .main (o app-shell tem overflow:hidden), então o antigo
+     window.scrollTo não movia nada e a tela nova abria na mesma altura em que a
+     anterior estava. Sem animação: a tela já está trocando. */
+  function voltarAoTopoDaTela(){
+    try{
+      const area=document.querySelector('.main')||document.querySelector('.app-body');
+      if(area&&area.scrollTop) area.scrollTop=0;
+      if(window.scrollY) window.scrollTo(0,0);
+    }catch(e){}
   }
 
   window.navigate=navegar;
@@ -7182,7 +7311,7 @@ function globalSearch(query){
   (typeof lotes!=='undefined'?lotes:[]).forEach(l=>{
     const haystack=((l.numeroOf||'')+' '+(l.produto||'')+' '+(l.cliente||'')).toLowerCase();
     if(haystack.includes(q)){
-      results.push({icon:GS_CAIXA,label:`OF ${l.numeroOf||'—'} — ${l.produto||'—'}`,sub:l.cliente||l.status||'Lote',page:'lotes'});
+      results.push({icon:GS_CAIXA,label:`${rotuloOf(l.numeroOf)} — ${l.produto||'—'}`,sub:l.cliente||l.status||'Lote',page:'lotes'});
     }
   });
   if(!results.length){
@@ -7633,7 +7762,7 @@ input,select,button,textarea{font-family:var(--fh);}
 
 /* ── LOGIN ── */
 #page-login{
-  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
   background:
     radial-gradient(ellipse 65% 55% at 15% 20%,rgba(191,195,202,.18) 0%,transparent 60%),
     radial-gradient(ellipse 50% 45% at 85% 80%,rgba(143,148,156,.14) 0%,transparent 60%),
@@ -7681,7 +7810,7 @@ input,select,button,textarea{font-family:var(--fh);}
 /* ══════════════════════════════════════════
    APP SHELL — LAYOUT DESKTOP COM SIDEBAR FIXO
 ══════════════════════════════════════════ */
-#app-shell{height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+#app-shell{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;}
 #app-shell.hidden-shell{display:none!important;}
 
 /* ── TOP BAR ── */
@@ -16001,6 +16130,26 @@ html[data-theme="claro"]{--bg:#e8eef9;--bg2:#eef3fc;--bg3:#ffffff;--bg4:#dfe8f7;
 }
 
 /* ── LAZY LOADING SPINNER DE ABA ──────────────────────────────── */
+/* Os blocos abaixo da primeira dobra em Gastos e no Histórico somam milhares de
+   pixels que o celular media e desenhava a cada abertura da aba. Medido: Gastos
+   451→118ms e Histórico 390→158ms de estilo+layout. A altura declarada (620px) é
+   próxima da real, para a rolagem não crescer sob o dedo. Só na tela pequena,
+   onde o gargalo existe. */
+@media (max-width:900px), (hover:none) and (pointer:coarse){
+  #gx-grid, #hist-cont > *{
+    content-visibility:auto; contain-intrinsic-size:auto 620px;
+  }
+}
+
+/* A prévia do relatório é um documento de várias telas. Sem isto o navegador
+   media e desenhava as onze seções inteiras a cada abertura da aba — 233ms de
+   layout num celular. Agora só trabalha no pedaço que está à vista. */
+@media (max-width:900px), (hover:none) and (pointer:coarse){
+  /* 340px: medi as 16 seções da prévia no celular — mediana 301px, média 370px.
+     Estimativa perto da real mantém a barra de rolagem estável enquanto se rola. */
+  #rel-doc-content > *{ content-visibility:auto; contain-intrinsic-size:auto 340px; }
+}
+
 #page-loading-overlay {
   display: none;
   position: fixed;
@@ -18846,6 +18995,22 @@ html[data-theme="escuro"] .summary-bar{
 }
 </style>
 <style id="mello-clean">
+/* ── Celular: sem desfoque de fundo ────────────────────────────────
+   Sao 91 lugares com backdrop-filter, ate 16 visiveis juntos. Em tela de
+   computador o efeito e bonito e barato; no celular ele depende de memoria de
+   video que costuma faltar, e quando falta o navegador entrega o quadro ora
+   borrado ora preto — os dois defeitos que apareciam. Na tela pequena o
+   desfoque mal se via, entao no lugar dele fica um fundo solido. */
+@media (max-width:900px), (hover:none) and (pointer:coarse){
+  /* Os dois :not() estao aqui so para dar peso ao seletor: 44 regras deste
+     arquivo pedem blur com !important, e a mais forte delas e "#dash-metas
+     .krb-wrap". Sem esse peso o desfoque continuava ligado no celular. */
+  html body *:not(#nao-existe-1):not(#nao-existe-2){
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+  }
+}
+
 /* ── Foco por teclado ────────────────────────────────────────────────
    Os botões tinham outline:none e nada no lugar: quem anda de Tab não
    enxergava onde estava. O anel só aparece na navegação por teclado

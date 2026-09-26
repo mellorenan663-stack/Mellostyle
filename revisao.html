@@ -2919,6 +2919,20 @@ html,body{ background-image:none!important; background:var(--bg)!important; }
   border-bottom:1px solid var(--bd)!important; backdrop-filter:none!important;
 }
 
+/* ── Celular: sem desfoque de fundo ────────────────────────────────
+   Cinco sobreposições de tela cheia (add/edit/del/colab/done) e o topo pedem
+   backdrop-filter. Na tela do computador o efeito é bonito e barato; no celular
+   depende de memória de vídeo que costuma faltar, e quando falta o quadro sai
+   ora borrado ora preto. O fundo escuro das janelas continua, então elas seguem
+   se lendo como janela. Os dois :not() só dão peso ao seletor, para vencer as
+   regras com !important. */
+@media (max-width:900px), (hover:none) and (pointer:coarse){
+  html body *:not(#nao-existe-1):not(#nao-existe-2){
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+  }
+}
+
 /* ── números: cor cheia, sem degradê nem halo ── */
 .sum-v,.pc-val,.dia-tot,.rank-nums strong,.mt-v,.mp-num,.pl-num,.pt-v,.ms-v,.df-q{
   background:none!important; background-image:none!important;
