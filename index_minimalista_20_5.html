@@ -596,11 +596,14 @@ function lotePertenceAoMes(lote={},mes="",idsComRegistro=null){
   // Se o lote tem mês de caixa/faturamento definido, ele entra somente naquele mês.
   // Isso permite cadastrar lote hoje e escolher se o valor cai neste mês ou no mês que vem.
   if(competencia) return competencia===mes;
-  // Compatibilidade com lotes antigos, criados antes do campo de competência.
-  const criadoNoMes=sameMonthFromTs(lote.criadoEm||lote.createdAt,mes);
-  const teveRegistroNoMes=idsComRegistro instanceof Set ? idsComRegistro.has(lote.id) : registros.some(r=>r.loteId===lote.id&&sameMonthFromTs(r.criadoEm,mes));
-  const concluidoNoMes=statusReal==="Concluído"&&sameMonthFromTs(lote.concluidoEm||lote.updatedAt||lote.updatedEm||lote.criadoEm||lote.createdAt,mes);
-  return criadoNoMes||teveRegistroNoMes||concluidoNoMes;
+  /* Lote antigo, sem o campo de competência: entra num mês SÓ — o mesmo que a
+     tela de edição já mostra como competência (conclusão, senão última
+     alteração, senão cadastro). A regra antiga aceitava o lote em todo mês em
+     que ele tivesse sido criado, OU tivesse lançamento, OU tivesse sido
+     concluído, e o faturamento inteiro era somado de novo em cada um deles:
+     uma OF de R$ 1.000 criada num mês e produzida no seguinte virava R$ 2.000
+     no ano. */
+  return getLoteCompetenciaFinal(lote)===mes;
 }
 window.setLoteCompetenciaRapida=function(inputId,offsetMes=0){
   const el=$(inputId); if(!el) return;
@@ -1697,7 +1700,14 @@ window.deletarFuncionario=async id=>{
 function renderFuncionarios(){
   try{ renderReajusteSalarios(); }catch(e){ console.error("REAJ_PAINEL",e); }
   const tb=$("func-tbody");if(!tb)return;
-  const fMap={};registros.forEach(r=>{fMap[r.funcionarioId]=(fMap[r.funcionarioId]||0)+(r.qtd||0);});
+  /* Além do total, guarda em quantos dias distintos cada pessoa lançou, para
+     poder comparar a média por dia com a meta por dia. */
+  const fMap={},dMap={};
+  registros.forEach(r=>{
+    fMap[r.funcionarioId]=(fMap[r.funcionarioId]||0)+(r.qtd||0);
+    const d=diaMesDe(r).dia;
+    if(d){ (dMap[r.funcionarioId]||(dMap[r.funcionarioId]=new Set())).add(d); }
+  });
   const sorted=[...funcionarios].sort((a,b)=>(fMap[b.id]||0)-(fMap[a.id]||0));
   const maxP=Math.max(1,...sorted.map(f=>fMap[f.id]||0));
   const medals=["md-ouro","md-prata","md-bronze"];
@@ -1709,7 +1719,11 @@ function renderFuncionarios(){
       ?'<span style="font-size:9px;background:rgba(143,148,156,.12);color:var(--t2);border:1px solid rgba(143,148,156,.2);border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700;">7h</span>'
       :'<span style="font-size:9px;background:rgba(191,195,202,.1);color:var(--accent-lt);border:1px solid rgba(191,195,202,.18);border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700;">9h30</span>';
     const meta=f.metaDia||0;
-    const metaPct=meta>0?Math.round((prod/meta)*100):0;
+    /* A meta é POR DIA, então quem se compara com ela é a média por dia
+       trabalhado — não o total de todos os tempos. */
+    const diasLancados=dMap[f.id]?dMap[f.id].size:0;
+    const mediaDia=diasLancados>0?prod/diasLancados:0;
+    const metaPct=(meta>0&&diasLancados>0)?Math.min(999,Math.round((mediaDia/meta)*100)):0;
     return`<tr>
       <td><span class="medal">${i<3?`<span class="md ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`}</span></td>
       <td><div class="fn-cell"><div class="fn-nome">${escapeHtml(f.nome)} ${f.status==="Inativo"?"<span class='chip chip-cn sm'>Inativo</span>":""}</div><div class="fn-bar"><div style="width:${pct}%"></div></div></div></td>
@@ -1718,7 +1732,7 @@ function renderFuncionarios(){
       <td class="td-mono">${fmtMoney(f.salario||0)}</td>
       <td class="td-mono ${(f.bonus||0)>0?"hi":""}">${(f.bonus||0)>0?fmtMoney(f.bonus):"—"}${meta?`<div class="td-mini">Meta: ${meta} pçs/dia</div>`:""}</td>
       <td class="td-mono">${jornadaLabel}${escalaBadge}</td>
-      <td class="td-mono hi">${prod.toLocaleString("pt-BR")} pçs${meta?`<div class="td-mini">${metaPct}% meta</div>`:""}</td>
+      <td class="td-mono hi">${prod.toLocaleString("pt-BR")} pçs${meta&&diasLancados>0?`<div class="td-mini">${Math.round(mediaDia).toLocaleString("pt-BR")} pçs/dia · ${metaPct}% da meta</div>`:""}</td>
       <td class="td-actions">
         <button class="btn-edit" onclick="editarFuncionario('${f.id}')" title="Editar">✎</button>
         <button class="btn-x" onclick="deletarFuncionario('${f.id}')">✕</button>
@@ -1822,11 +1836,11 @@ function calcBancoHoras(funcId,mesAno){
   // Meses anteriores à admissão: não estava na empresa (base e bônus zerados).
   let salarioBase=salario;
   let bonusFinal=bonusEfetivo;
-  let admProporcional=false, admDiasTrab=0, admDiasMes=0;
+  let admProporcional=false, admDiasTrab=0, admDiasMes=0, semVinculo=false;
   if(f.admissao && /^\d{4}-\d{2}-\d{2}$/.test(f.admissao)){
     const admMes=f.admissao.slice(0,7);
     if(mesAno<admMes){
-      salarioBase=0; bonusFinal=0;                       // mês anterior à entrada
+      salarioBase=0; bonusFinal=0; semVinculo=true;      // mês anterior à entrada
     }else if(mesAno===admMes){
       const [ay,am,ad]=f.admissao.split("-").map(Number);
       const diasNoMes=new Date(ay,am,0).getDate();       // último dia do mês
@@ -1835,9 +1849,25 @@ function calcBancoHoras(funcId,mesAno){
       admProporcional=true; admDiasTrab=diasTrabalhados; admDiasMes=diasNoMes;
     }
   }
-  const salarioFinal=salarioBase+valorExtras-desconto+bonusFinal;
+  /* Mês anterior à entrada na empresa: a pessoa não estava na folha, então não
+     há salário, nem hora extra, nem desconto. Sem isto, uma falta lançada num
+     mês antigo (data digitada errada, ou a admissão preenchida depois) virava
+     salário NEGATIVO — e o negativo entrava na folha do mês, derrubava o custo
+     e inflava o lucro. */
+  let extrasPagas=semVinculo?0:valorExtras;
+  let descontoAplicado=semVinculo?0:desconto;
 
-  return{faltasDia,faltasMeio,extrasSimples,extrasDuplas,faltasCustom,extrasCustom,minFaltas,minExtras,saldoMin,desconto,valorExtras,bonus:bonusFinal,bonusBloqueado:(bonusBloqueadoPorFalta||bonusBloqueadoPorSaldo)&&bonus>0,salarioBase,salarioBaseCheio:salario,admProporcional,admDiasTrab,admDiasMes,salarioFinal,registrosMes};
+  /* Ninguém devolve dinheiro para a fábrica: o desconto por falta não passa do
+     que a pessoa tem a receber no mês. Quando encosta no teto, a tela avisa,
+     para a dona conferir o lançamento em vez de o número sumir calado. */
+  const aReceber=salarioBase+extrasPagas+bonusFinal;
+  const descontoLimitado=descontoAplicado>aReceber+0.005;
+  const descontoCheio=descontoAplicado;
+  if(descontoLimitado) descontoAplicado=aReceber;
+
+  const salarioFinal=aReceber-descontoAplicado;
+
+  return{faltasDia,faltasMeio,extrasSimples,extrasDuplas,faltasCustom,extrasCustom,minFaltas,minExtras,saldoMin,desconto:descontoAplicado,descontoCheio,descontoLimitado,semVinculo,valorExtras:extrasPagas,bonus:bonusFinal,bonusBloqueado:(bonusBloqueadoPorFalta||bonusBloqueadoPorSaldo)&&bonus>0,salarioBase,salarioBaseCheio:salario,admProporcional,admDiasTrab,admDiasMes,salarioFinal,registrosMes};
 }
 window.salvarPonto=async()=>{
   const funcId=$("bh-funcionario").value;
@@ -1957,6 +1987,8 @@ function renderBancoHoras(){
               <span class="bh-eq-base">${fmtMoney(s.salarioBase)}</span>${s.admProporcional?`<span class="bh-eq-tag" style="color:var(--act-text);background:var(--act-dim);border-color:var(--act-dim);" title="Mês de admissão: ${s.admDiasTrab} de ${s.admDiasMes} dias trabalhados">proporcional ${s.admDiasTrab}/${s.admDiasMes} dias</span>`:""}
               ${s.valorExtras>0?`<span class="bh-eq-plus">+ ${fmtMoney(s.valorExtras)} <span class="bh-eq-tag green">extra</span></span>`:""}
               ${s.desconto>0?`<span class="bh-eq-minus">− ${fmtMoney(s.desconto)} <span class="bh-eq-tag red">falta</span></span>`:""}
+              ${s.descontoLimitado?`<span class="bh-eq-tag red" title="A falta lançada daria ${fmtMoney(s.descontoCheio)}, mais do que o salário do mês. O desconto parou no valor a receber — confira o lançamento.">desconto limitado ao salário</span>`:""}
+              ${s.semVinculo?`<span class="bh-eq-tag" title="Este mês é anterior à data de admissão: a pessoa ainda não estava na folha.">antes da admissão</span>`:""}
               ${s.bonus>0?`<span class="bh-eq-plus">+ ${fmtMoney(s.bonus)} <span class="bh-eq-tag silver">bônus</span></span>`:""}
             </div>
             <div class="bh-final-val">${fmtMoney(s.salarioFinal)}</div>
