@@ -1512,12 +1512,30 @@ function __porDentro(el,v){
   try{ if(__descValorSelect&&__descValorSelect.set) __descValorSelect.set.call(el,v); else el.value=v; }catch(_e){}
 }
 function completarSelectOf(el){
-  if(!el||!el.dataset.ofParcial||!el.__ofCheio) return;
-  const antes=el.value;
-  el.innerHTML=el.__ofCheio;
-  el.__ofCheio=null;
+  if(!el||!el.dataset.ofParcial||!el.__ofDados) return;
+  const d=el.__ofDados, antes=el.value;
+  el.innerHTML=d.primeira+d.itens.map(o=>o.html).join("");
   delete el.dataset.ofParcial;
   if(antes&&antes!=="__of_mais__") __porDentro(el,antes);
+}
+/* Depois de escolher, a lista volta a ficar enxuta. Sem isto ela ficava com as
+   1.500 opções na tela até o fim da sessão, e a travada voltava. */
+function enxugarSelectOf(el){
+  if(!el||el.dataset.ofParcial||!el.__ofDados) return;
+  if(el.__ofDados.itens.length<=OF_NA_LISTA+1) return;
+  __montarOfParcial(el,el.value);
+}
+function __montarOfParcial(el,marcado){
+  const d=el.__ofDados;
+  const curtas=d.itens.slice(0,OF_NA_LISTA);
+  if(marcado&&!curtas.some(o=>o.id===marcado)){
+    const achou=d.itens.find(o=>o.id===marcado);
+    if(achou) curtas.unshift(achou);
+  }
+  el.innerHTML=d.primeira+curtas.map(o=>o.html).join("")
+    +'<option value="__of_mais__" disabled>⋯ abra para ver todas as '+d.itens.length+' OFs</option>';
+  el.dataset.ofParcial="1";
+  __porDentro(el,marcado||"");
 }
 function __ligarCompletarOf(el){
   if(el.__ofLigado) return;
@@ -1528,6 +1546,10 @@ function __ligarCompletarOf(el){
   el.addEventListener("touchstart",abrir,{passive:true});
   el.addEventListener("focus",abrir);
   el.addEventListener("keydown",abrir);
+  /* Espera o app tratar a escolha na lista inteira e só então encurta. */
+  const encurtar=()=>setTimeout(()=>enxugarSelectOf(el),0);
+  el.addEventListener("change",encurtar);
+  el.addEventListener("blur",encurtar);
   if(__descValorSelect&&__descValorSelect.set){
     try{
       Object.defineProperty(el,"value",{configurable:true,
@@ -1539,23 +1561,14 @@ function __ligarCompletarOf(el){
 /* itens: [{id, html}] já na ordem em que devem aparecer (mais novas primeiro). */
 function preencherSelectOf(el,primeira,itens,marcado){
   if(!el) return;
-  const cheio=primeira+itens.map(o=>o.html).join("");
+  el.__ofDados={primeira,itens};
   if(itens.length<=OF_NA_LISTA+1){
-    el.innerHTML=cheio;
-    el.__ofCheio=null; delete el.dataset.ofParcial;
+    el.innerHTML=primeira+itens.map(o=>o.html).join("");
+    delete el.dataset.ofParcial;
     if(marcado) __porDentro(el,marcado);
     return;
   }
-  const curtas=itens.slice(0,OF_NA_LISTA);
-  if(marcado&&!curtas.some(o=>o.id===marcado)){
-    const achou=itens.find(o=>o.id===marcado);
-    if(achou) curtas.unshift(achou);
-  }
-  el.__ofCheio=cheio;
-  el.innerHTML=primeira+curtas.map(o=>o.html).join("")
-    +'<option value="__of_mais__" disabled>⋯ abra para ver todas as '+itens.length+' OFs</option>';
-  el.dataset.ofParcial="1";
-  __porDentro(el,marcado||"");
+  __montarOfParcial(el,marcado);
   __ligarCompletarOf(el);
 }
 function __itensDeLotes(lista,texto){
@@ -6561,7 +6574,10 @@ window.salvarGastoDrawer=async()=>{
   const categoria=document.getElementById('gd-cat')?.value.trim()||'Geral';
   const competencia=document.getElementById('gd-comp')?.value;
   const vencGd=document.getElementById('gd-venc')?.value||"";
-  if(!descricao||!valor||!competencia){toast('Preencha todos os campos','err');return;}
+  /* "Preencha todos os campos" obrigava a caçar o campo vazio no celular. */
+  if(!descricao) return void erroNoCampo('gd-desc','Falta a descrição do gasto');
+  if(!valor) return void erroNoCampo('gd-valor','Informe o valor do gasto');
+  if(!competencia) return void erroNoCampo('gd-comp','Escolha o mês do gasto');
   if(!naoNegativo('gd-valor','O valor do gasto')) return;
   const btn=document.getElementById('btn-gd-save');
   if(btn){ if(btn.disabled) return; btn.disabled=true;btn.textContent='Salvando...'; }
@@ -18995,6 +19011,62 @@ html[data-theme="escuro"] .summary-bar{
 }
 </style>
 <style id="mello-clean">
+/* ── Dedo: alvo de toque maior sem mudar o desenho ─────────────────
+   Estas pastilhas e atalhos sao compactos de proposito, porque vivem dentro de
+   tabelas densas. Em vez de aumenta-los (o que desmancharia a tabela), cresce
+   so a area invisivel que recebe o toque. Vale apenas em aparelho de toque. */
+@media (hover:none) and (pointer:coarse){
+  html body .gsit,
+  html body .gx-teto-btn,
+  html body #dash-mes-atual-btn{ position:relative; }
+  html body .gsit::after,
+  html body .gx-teto-btn::after,
+  html body #dash-mes-atual-btn::after{
+    content:""; position:absolute; left:-6px; right:-6px;
+    top:50%; transform:translateY(-50%); height:34px;
+  }
+  /* O seletor de status do lote e um campo de formulario: pode crescer. */
+  html body .of2-status{ min-height:36px!important; }
+}
+
+/* ── Tela baixa (teclado aberto): senha compacta ───────────────────
+   Medido num celular: com o teclado aberto sobram 400px de altura e a tela de
+   senha pede 617px, deixando o botao Entrar 13px abaixo da dobra. Aqui a
+   apresentacao encolhe e o botao volta para dentro da tela. */
+@media (max-height:560px){
+  html body #page-login{ padding:10px 14px 12px!important; align-items:flex-start!important; }
+  html body #page-login .auth-wrap{ padding:14px!important; gap:10px!important; }
+  html body #page-login .auth-brand{ margin-bottom:10px!important; gap:12px!important; }
+  html body #page-login .a-icon{ width:40px!important; height:40px!important; padding:4px!important; }
+  html body #page-login .a-sub,
+  html body #page-login .a-kicker,
+  html body #page-login .auth-badge{ display:none!important; }
+  html body #page-login .auth-card{ padding:14px!important; }
+}
+
+/* ── Celular: número de cor cheia, sem degradê nem halo ───────────
+   Mesma correção que ja está no app de revisão ("números: cor cheia, sem
+   degradê nem halo"). No computador o efeito fica, que é onde ele funciona. */
+@media (max-width:900px), (hover:none) and (pointer:coarse){
+  html[data-theme] body .kpi-v,
+  html[data-theme] body .cph-kpi-v,
+  html[data-theme] body .gd-kpi-v,
+  html[data-theme] body .sb-v,
+  html[data-theme] body .fin-kpi-v,
+  html[data-theme] body .gx-kpi-v{
+    background:none!important;
+    background-image:none!important;
+    -webkit-background-clip:border-box!important;
+    background-clip:border-box!important;
+    -webkit-text-fill-color:currentColor!important;
+    color:var(--t)!important;
+    filter:none!important;
+    text-shadow:none!important;
+  }
+  /* O cronômetro: sombra de 34px de raio embaixo de dígitos de 42px. */
+  html[data-theme] body .cph-time{ text-shadow:none!important; filter:none!important; }
+}
+
 /* ── Celular: sem desfoque de fundo ────────────────────────────────
    Sao 91 lugares com backdrop-filter, ate 16 visiveis juntos. Em tela de
    computador o efeito e bonito e barato; no celular ele depende de memoria de
