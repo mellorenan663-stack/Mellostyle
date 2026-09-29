@@ -1427,19 +1427,49 @@ function prazoTag(prazo,concluido){
 }
 
 /* ───── data ───── */
+/* Sem prazo, a leitura fica pendurada quando o sinal cai e a tela não diz
+   nada — nem o aviso de erro chega a aparecer. */
+const LEITURA_PRAZO_MS=15000;
+function comPrazo(promessa,ms,oque){
+  return new Promise((ok,erro)=>{
+    let vivo=true;
+    const t=setTimeout(()=>{ if(!vivo) return; vivo=false;
+      const e=new Error("O Firebase não respondeu em "+Math.round(ms/1000)+"s ("+oque+").");
+      e.code="mello/prazo"; erro(e); },ms);
+    Promise.resolve(promessa).then(v=>{ if(!vivo) return; vivo=false; clearTimeout(t); ok(v); },
+                                   e=>{ if(!vivo) return; vivo=false; clearTimeout(t); erro(e); });
+  });
+}
+let __carregando=false;
 async function carregar(){
   const uid=auth.currentUser?.uid;
   if(!uid) return;
+  if(__carregando) return;
+  __carregando=true;
   try{
-    const snap=await getDocs(query(collection(db,"lotes"),where("ownerId","==",uid)));
+    const snap=await comPrazo(getDocs(query(collection(db,"lotes"),where("ownerId","==",uid))),LEITURA_PRAZO_MS,"lotes");
     lotes=snap.docs.map(d=>({id:d.id,...d.data()})).filter(l=>!isCancelado(l));
     render();
   }catch(e){
     console.error("LOAD_ERROR",e);
-    $("list-host").innerHTML=`<div class="empty"><div class="empty-ico">⚠</div><div class="empty-t">Não foi possível carregar</div><div class="empty-d">${e?.code?.includes("permission")?"Sem permissão para este login.":"Verifique a conexão e tente novamente."}</div></div>`;
+    const motivo=e?.code?.includes("permission")?"Sem permissão para este login."
+      :e?.code==="mello/prazo"?"O servidor não respondeu. O sinal pode estar fraco."
+      :"Verifique a conexão e tente novamente.";
+    $("list-host").innerHTML=`<div class="empty"><div class="empty-ico">⚠</div><div class="empty-t">Não foi possível carregar</div><div class="empty-d">${motivo}</div><button type="button" class="btn" style="margin-top:12px" onclick="recarregarLotes()">Tentar de novo</button></div>`;
     toast("Erro ao carregar lotes","err");
-  }
+  }finally{ __carregando=false; }
 }
+window.recarregarLotes=function(){
+  try{ $("list-host").innerHTML='<div class="empty"><div class="empty-t">Carregando…</div></div>'; }catch(_e){}
+  carregar();
+};
+/* Quando a internet volta ou o app volta do fundo, tenta de novo sozinho. */
+try{
+  window.addEventListener("online",()=>{ if(!lotes.length) carregar(); });
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible"&&!lotes.length) carregar();
+  });
+}catch(_e){}
 
 function ordenar(arr){
   return arr.slice().sort((a,b)=>{

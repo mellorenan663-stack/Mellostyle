@@ -444,7 +444,9 @@ async function carregarConfiguracoesFirebase(){
     // Config agora é da empresa (documento fixo), não do uid — assim as
     // metas ficam iguais em qualquer aparelho com o login de um botão.
     const ref=doc(db,"configuracoes",CONFIG_DOC_ID);
-    const snap=await getDoc(ref);
+    /* Com prazo: sem isto, a internet travada prendia o carregamento inteiro
+       aqui, antes de qualquer dado ser lido. */
+    const snap=await comPrazo(getDoc(ref),LEITURA_PRAZO_MS,"configurações");
     if(snap.exists()){
       const cfg=manterTema(sanitizeConfigPayload(snap.data()||{}));
       saveStoredConfig(cfg);
@@ -455,7 +457,7 @@ async function carregarConfiguracoesFirebase(){
     // Migração: procura a config salva pela versão antiga (doc por uid)
     // e copia para o documento da empresa.
     try{
-      const todos=await getDocs(collection(db,"configuracoes"));
+      const todos=await comPrazo(getDocs(collection(db,"configuracoes")),LEITURA_PRAZO_MS,"configurações antigas");
       let antigo=null,antigoTs=0;
       todos.docs.forEach(d=>{
         const dados=d.data()||{};
@@ -1165,7 +1167,9 @@ function abrirAppAposAuth(user,{showToast=false}={}){
       if(typeof loadData==="function") await loadData();
       if(typeof autoPropagarFixos==="function") await autoPropagarFixos();
       if(seq===__melloDataLoadSeq && currentPage==="login") navigate("dashboard");
-      if(showToast && !__melloLoginToastShown){ __melloLoginToastShown=true; toast("Login realizado!"); }
+      /* Nada de "Login realizado!" verde enquanto a tela está em R$ 0,00
+         porque os dados não vieram. */
+      if(showToast && !__melloLoginToastShown && !__dadosFalharam){ __melloLoginToastShown=true; toast("Login realizado!"); }
     }catch(err){
       console.error("AUTH_LOAD_ERROR",err);
       if(typeof toast==="function") toast("Login feito, mas houve erro ao carregar dados.","warn");
@@ -1354,11 +1358,24 @@ function sortByField(list, field, dir="desc"){
     return na>nb?mult:na<nb?-mult:0;
   });
 }
+/* ── ESTADO DA CARGA DE DADOS ──────────────────────────────────────────
+   Sem prazo, uma leitura presa deixa a tela em R$ 0,00 para sempre. */
+const LEITURA_PRAZO_MS=15000;
+function comPrazo(promessa,ms,oque){
+  return new Promise((ok,erro)=>{
+    let vivo=true;
+    const t=setTimeout(()=>{ if(!vivo) return; vivo=false;
+      const e=new Error("O Firebase não respondeu em "+Math.round(ms/1000)+"s ("+oque+").");
+      e.code="mello/prazo"; erro(e); },ms);
+    Promise.resolve(promessa).then(v=>{ if(!vivo) return; vivo=false; clearTimeout(t); ok(v); },
+                                   e=>{ if(!vivo) return; vivo=false; clearTimeout(t); erro(e); });
+  });
+}
 async function getOwnedDocs(collectionName,{sortField=null,dir="desc"}={}){
   // Com o login de um botão (anônimo), o uid muda por aparelho — então a
   // leitura é sempre da coleção inteira, filtrada por canAccessDoc
   // (empresaId). Uma única leitura por coleção.
-  const snap=await getDocs(collection(db,collectionName));
+  const snap=await comPrazo(getDocs(collection(db,collectionName)),LEITURA_PRAZO_MS,collectionName);
   return sortByField(snap.docs.map(d=>({id:d.id,...d.data()})).filter(canAccessDoc),sortField,dir);
 }
 async function adotarDadosAntigos(collectionName,items){
@@ -1372,15 +1389,105 @@ async function adotarDadosAntigos(collectionName,items){
   await Promise.allSettled(antigos.map(item=>updateDoc(doc(db,collectionName,item.id),payload)));
 }
 
+/* ── FAIXA DE ESTADO DOS DADOS ─────────────────────────────────────────
+   Seis avisos de 3,6s que se cobrem não informam ninguém. Esta faixa fica no
+   alto do app até os dados chegarem de verdade. */
+let __dadosJaVieram=false, __dadosFalharam=false, __retryTimer=null, __retryN=0;
+/* Cada carregamento leva um número; resposta atrasada de um carregamento
+   antigo não pode escrever por cima do novo. */
+let __cargaSeq=0;
+function avisoDadosEl(){
+  let el=document.getElementById("aviso-dados");
+  if(!el){
+    const shell=document.getElementById("app-shell");
+    if(!shell) return null;
+    el=document.createElement("div");
+    el.id="aviso-dados"; el.setAttribute("role","status"); el.setAttribute("aria-live","polite");
+    const topo=shell.querySelector(".topbar");
+    if(topo&&topo.nextSibling) shell.insertBefore(el,topo.nextSibling); else shell.appendChild(el);
+  }
+  return el;
+}
+let __ultimaFalha=[];
+function mostrarEstadoDados(estado,detalhe){
+  const el=avisoDadosEl(); if(!el) return;
+  if(estado==="ok"){ el.className=""; el.innerHTML=""; __ultimaFalha=[]; return; }
+  /* "Carregando" limpo só antes de qualquer falha. Depois que falhou, o aviso
+     fica à vista mesmo durante a nova tentativa — senão some justo quando ela
+     mais precisa dele. */
+  if(estado==="carregando"&&!__dadosFalharam){
+    el.className="av-dados av-carregando";
+    el.innerHTML='<span class="av-giro" aria-hidden="true"></span><span>Carregando os dados da fábrica…</span>';
+    return;
+  }
+  const tentando=(estado==="carregando"||estado==="tentando");
+  if(Array.isArray(detalhe)) __ultimaFalha=detalhe;
+  const quantos=__ultimaFalha.length;
+  const titulo=__dadosJaVieram
+    ? "Não consegui atualizar os dados agora — o que está na tela é do último carregamento."
+    : "Não consegui carregar os dados. Os valores abaixo NÃO são os da sua fábrica.";
+  el.className="av-dados av-falhou";
+  el.innerHTML='<span class="av-sinal" aria-hidden="true">⚠</span>'
+    +'<span class="av-txt">'+titulo
+      +(quantos&&quantos<7?' <span class="av-det">('+quantos+' de 7 partes não vieram)</span>':'')
+      +(tentando?' <span class="av-det">Tentando de novo…</span>':'')+'</span>'
+    +(tentando
+      ? '<span class="av-giro" aria-hidden="true"></span>'
+      : '<button type="button" class="av-btn" onclick="recarregarDados()">Tentar de novo</button>');
+}
+window.recarregarDados=function(){
+  if(__retryTimer){ clearTimeout(__retryTimer); __retryTimer=null; }
+  __retryN=0;
+  mostrarEstadoDados(__dadosFalharam?"tentando":"carregando");
+  /* Se o carregamento anterior ficou preso, ele nunca solta a vez — solta
+     aqui, senão "Tentar de novo" só devolveria a mesma espera parada. */
+  try{ __loadDataInflight=null; }catch(_e){}
+  try{ if(typeof loadData==="function") loadData(); }catch(e){}
+};
+function agendarNovaTentativa(){
+  if(__retryTimer) return;
+  const esperas=[5000,15000,40000];
+  if(__retryN>=esperas.length) return;
+  const ms=esperas[__retryN++];
+  __retryTimer=setTimeout(()=>{ __retryTimer=null;
+    if(__dadosFalharam){ try{ loadData(); }catch(e){} }
+  },ms);
+}
+/* Quando a internet volta ou o app volta do fundo, tenta de novo na hora. */
+try{
+  const tentarDeNovoSePreciso=()=>{ if(__dadosFalharam||!__dadosJaVieram) window.recarregarDados(); };
+  window.addEventListener("online",tentarDeNovoSePreciso);
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible") tentarDeNovoSePreciso();
+  });
+}catch(_e){}
+
 let __loadDataInflight=null, __loadDataAgain=false;
+/* Vigia: se a primeira carga não terminar nesse tempo, a tela para de dizer
+   "carregando" e passa a dizer o que houve, com o botão de tentar de novo. */
+const CARGA_VIGIA_MS=25000;
+let __vigiaCarga=null;
+function armarVigiaCarga(){
+  if(__vigiaCarga) clearTimeout(__vigiaCarga);
+  __vigiaCarga=setTimeout(()=>{
+    __vigiaCarga=null;
+    if(__loadDataInflight){
+      __dadosFalharam=true;
+      mostrarEstadoDados("falhou",["tudo"]);
+      agendarNovaTentativa();
+    }
+  },CARGA_VIGIA_MS);
+}
 async function loadData(){
   // Dedupe: se já há um carregamento em andamento, não dispara outro em cima
   // (evita o "travamento" de vários reloads simultâneos após salvar em sequência).
   if(__loadDataInflight){ __loadDataAgain=true; return __loadDataInflight; }
+  armarVigiaCarga();
   __loadDataInflight=(async()=>{
     try{ return await _loadDataReal(); }
     finally{
       try{ atualizarContadoresMenu(); }catch(e){}
+      if(__vigiaCarga){ clearTimeout(__vigiaCarga); __vigiaCarga=null; }
       __loadDataInflight=null;
       if(__loadDataAgain){ __loadDataAgain=false; loadData(); }
     }
@@ -1393,20 +1500,22 @@ async function _loadDataReal(){
     gastos:[...gastos],pontos:[...pontos],controleProducaoHora:[...(Array.isArray(controleProducaoHora)?controleProducaoHora:[])],
     clientes:[...clientes]
   };
+  /* As falhas são juntadas numa faixa só: seis avisos de 3,6s se cobriam e
+     sumiam antes de a dona ler qualquer coisa. */
+  const falhou=[];
+  const minhaCarga=++__cargaSeq;
+  const souAAtual=()=>minhaCarga===__cargaSeq;
   const safeGet=async(collectionName,options,fallback)=>{
     try{
       const docs=await getOwnedDocs(collectionName,options);
       return Array.isArray(docs)?docs:[];
     }catch(e){
       console.error('LOAD_COLLECTION_ERROR',collectionName,e);
-      if(collectionName==='controleProducaoHora'){
-        console.warn('Coleção controleProducaoHora indisponível; seguindo sem quebrar o sistema.',e);
-      }else{
-        toast('Aviso: não foi possível carregar '+collectionName+'. Mantive os dados já carregados.','warn');
-      }
+      falhou.push(collectionName);
       return Array.isArray(fallback)?fallback:[];
     }
   };
+  if(!__dadosJaVieram) mostrarEstadoDados(__dadosFalharam?"tentando":"carregando");
   try{
     if($("dash-greeting")) $("dash-greeting").textContent="Carregando dados...";
 
@@ -1445,6 +1554,16 @@ async function _loadDataReal(){
       clientes:typeof renderClientes==="function"?renderClientes:null,
       lixeira:typeof renderLixeira==="function"?renderLixeira:null,
       auditoria:typeof renderAuditoria==="function"?renderAuditoria:null};
+    if(!souAAtual()) return;   // um carregamento mais novo já assumiu
+    if(falhou.length){
+      __dadosFalharam=true;
+      mostrarEstadoDados("falhou",falhou);
+      agendarNovaTentativa();
+    }else{
+      __dadosJaVieram=true; __dadosFalharam=false; __retryN=0;
+      if(__retryTimer){ clearTimeout(__retryTimer); __retryTimer=null; }
+      mostrarEstadoDados("ok");
+    }
     try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); toast('Erro ao renderizar a aba atual: '+(e?.message||e),'err'); }
 
     const refreshBtn=document.querySelector('.btn-topbar-refresh');
@@ -1460,8 +1579,10 @@ async function _loadDataReal(){
       safeGet("controleProducaoHora",{sortField:"createdAt",dir:"desc"},previous.controleProducaoHora),
       safeGet("clientes",{sortField:"nome",dir:"asc"},previous.clientes)
     ]).then(([cphDocs,cliDocs])=>{
+      if(!souAAtual()) return;   // chegou atrasado: não escreve por cima
       controleProducaoHora=cphDocs;
       clientes=cliDocs;
+      if(falhou.length){ __dadosFalharam=true; mostrarEstadoDados("falhou",falhou); agendarNovaTentativa(); }
       __dadosVersao++; try{ populateSelects(); }catch(_e){}
       if(["controlehora","clientes","fat-cliente","relatorio","backup","bancohoras"].includes(currentPage)){
         try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); }
@@ -1480,8 +1601,11 @@ async function _loadDataReal(){
     }).catch(e=>console.warn('FASE2_LOAD_WARN',e));
   }catch(e){
     console.error("LOAD_DATA_FATAL_ERROR",e);
+    if(!souAAtual()) return;
     funcionarios=previous.funcionarios;registros=previous.registros;lotes=previous.lotes;gastos=previous.gastos;pontos=previous.pontos;controleProducaoHora=previous.controleProducaoHora;clientes=previous.clientes;
-    toast("Erro ao carregar dados: "+(e?.message||e),"err");
+    __dadosFalharam=true;
+    mostrarEstadoDados("falhou",["tudo"]);
+    agendarNovaTentativa();
     __dadosVersao++; try{ populateSelects(); }catch(_e){}
     try{ ({dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,'fat-cliente':renderFatCliente}[currentPage])?.(); }catch(_e){}
   }
@@ -5447,7 +5571,11 @@ function renderDashboard(){
     `<span class="ds-ola">${saud}, ${escapeHtml(cfgDash.empresa)}</span>`
     +`<span class="ds-sep">·</span>`
     +`<span class="ds-data">${dataFmt.charAt(0).toUpperCase()+dataFmt.slice(1)}</span>`
-    +`<span class="ds-viva"><i></i>sistema no ar</span>`;
+    /* Dizer "sistema no ar" logo abaixo de "não consegui carregar os dados"
+       era contraditório: a etiqueta segue o que realmente aconteceu. */
+    +(__dadosFalharam
+      ? `<span class="ds-viva ds-viva-off"><i></i>dados desatualizados</span>`
+      : `<span class="ds-viva"><i></i>sistema no ar</span>`);
 
   // ── MÊS SELECIONADO ──
   const mesHojeStr=monthKeyLocal();
@@ -19043,6 +19171,44 @@ html[data-theme="escuro"] .summary-bar{
 }
 </style>
 <style id="mello-clean">
+.ds-viva-off{ color:#FFB4B6!important; }
+.ds-viva-off i{ background:#E5484D!important; box-shadow:none!important; }
+
+/* ── Faixa de estado dos dados ─────────────────────────────────────
+   Quando o Firebase não responde, a tela mostrava R$ 0,00 calada. Esta faixa
+   fica no alto do app e só sai quando os dados chegam de verdade. */
+#aviso-dados:empty{ display:none; }
+.av-dados{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:11px 14px; font-size:13px; font-weight:700; line-height:1.35;
+  border-bottom:1px solid transparent;
+}
+.av-falhou{
+  background:rgba(229,72,77,.14); color:#FFB4B6; border-bottom-color:rgba(229,72,77,.34);
+}
+.av-carregando{
+  background:rgba(127,167,230,.12); color:var(--t2,#9FB0C6); border-bottom-color:rgba(127,167,230,.24);
+}
+.av-txt{ flex:1 1 220px; min-width:0; }
+.av-det{ font-weight:600; opacity:.85; }
+.av-sinal{ font-size:15px; flex-shrink:0; }
+.av-btn{
+  flex-shrink:0; border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.10);
+  color:inherit; font:inherit; font-size:12px; font-weight:800;
+  padding:7px 14px; border-radius:999px; cursor:pointer; min-height:34px;
+}
+.av-btn:hover{ background:rgba(255,255,255,.18); }
+.av-giro{
+  width:14px; height:14px; flex-shrink:0; border-radius:50%;
+  border:2px solid rgba(127,167,230,.30); border-top-color:#7FA7E6;
+  animation:avGiro .7s linear infinite;
+}
+@keyframes avGiro{ to{ transform:rotate(360deg); } }
+html[data-theme="claro"] .av-falhou{ background:rgba(185,28,28,.10); color:#9B1C1C; border-bottom-color:rgba(185,28,28,.22); }
+html[data-theme="claro"] .av-carregando{ background:rgba(29,78,216,.08); color:#1E40AF; border-bottom-color:rgba(29,78,216,.18); }
+html[data-theme="claro"] .av-btn{ border-color:rgba(0,0,0,.18); background:rgba(0,0,0,.05); }
+@media (prefers-reduced-motion:reduce){ .av-giro{ animation:none; } }
+
 /* ── Dedo: alvo de toque maior sem mudar o desenho ─────────────────
    Estas pastilhas e atalhos sao compactos de proposito, porque vivem dentro de
    tabelas densas. Em vez de aumenta-los (o que desmancharia a tabela), cresce
