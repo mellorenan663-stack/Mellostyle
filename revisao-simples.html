@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Mello Style — Revisão simples</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B1220'/%3E%3Cpath d='M7 23V9l5 7 4-5 4 5 5-7v14' fill='none' stroke='%237FA7E6' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#070B14; --bg2:#0F1629; --bg3:#111B31; --bg4:#17233D; --bg5:#1D2B48;
+  --bd:rgba(255,255,255,.09); --bd2:rgba(255,255,255,.14); --bd3:rgba(255,255,255,.22);
+  --accent:#4C7BF3; --accent-lt:#7BA0FF; --accent-dim:rgba(76,123,243,.16);
+  --green:#10B981; --green-dim:rgba(16,185,129,.14);
+  --red:#EF4444; --red-dim:rgba(239,68,68,.13);
+  --amber:#F59E0B;
+  --t:#F4F4F5; --t2:#D4D4D8; --t3:#93A4BD; --t4:#64748B;
+  --fh:'DM Sans',sans-serif; --fm:'DM Mono',monospace;
+  --r:16px; --r2:12px;
+  --shadow:0 8px 28px rgba(0,6,20,.45); --shadow-lg:0 24px 72px rgba(0,6,20,.65);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:var(--bg);color:var(--t);font-family:var(--fh);font-size:15px;
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;}
+body{background:radial-gradient(1100px 600px at 50% -10%,rgba(76,123,243,.06),transparent 60%),var(--bg);}
+input,select,button,textarea{font-family:var(--fh);color:inherit;}
+button{cursor:pointer;border:none;background:none;}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:4px}
+
+/* ───────── LOGIN ───────── */
+#login-view{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;}
+.login-card{width:100%;max-width:380px;background:var(--bg2);border:1px solid var(--bd);
+  border-radius:24px;padding:34px 28px;box-shadow:var(--shadow-lg);}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+.brand-mark{width:44px;height:44px;border-radius:12px;background:#16307A;
+  border:1px solid rgba(76,123,243,.35);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.brand-mark svg{width:26px;height:26px;}
+.brand-name{font-size:19px;font-weight:800;letter-spacing:.4px;}
+.brand-sub{font-size:12.5px;color:var(--t3);font-weight:600;}
+.login-t{font-size:15px;font-weight:700;margin:22px 0 4px;}
+.login-d{font-size:13px;color:var(--t3);line-height:1.5;margin-bottom:20px;}
+.btn{width:100%;height:50px;border-radius:13px;font-size:15px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s;}
+.btn:active{filter:brightness(.9);}
+.btn-primary{background:linear-gradient(135deg,#2E52C9,#16307A);color:#fff;
+  box-shadow:0 8px 24px rgba(46,82,201,.28);}
+.btn-ghost{background:var(--bg3);border:1px solid var(--bd2);color:var(--t2);}
+.login-err{font-size:13px;color:#FCA5A5;margin-top:12px;min-height:18px;font-weight:600;}
+
+/* ───────── APP ───────── */
+#app-view{display:none;min-height:100dvh;padding-bottom:26px;}
+.topo{position:sticky;top:0;z-index:30;background:var(--bg2);border-bottom:1px solid var(--bd);
+  padding:11px 14px;display:flex;align-items:center;gap:11px;}
+.tb-mark{width:34px;height:34px;border-radius:9px;background:#16307A;border:1px solid rgba(76,123,243,.35);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.tb-mark svg{width:20px;height:20px;}
+.tb-nome{font-size:15px;font-weight:800;line-height:1.15;}
+.tb-sub{font-size:11.5px;color:var(--t3);font-weight:600;}
+.tb-sair{margin-left:auto;height:38px;padding:0 14px;border-radius:10px;background:var(--bg3);
+  border:1px solid var(--bd2);font-size:12.5px;font-weight:700;color:var(--t3);}
+
+.wrap{max-width:860px;margin:0 auto;padding:14px;}
+
+/* faixa de estado dos dados */
+#faixa:empty{display:none;}
+.fx{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 14px;font-size:13px;
+  font-weight:700;line-height:1.35;}
+.fx-erro{background:var(--red-dim);color:#FFB4B6;border-bottom:1px solid rgba(239,68,68,.32);}
+.fx-load{background:rgba(76,123,243,.12);color:var(--t3);border-bottom:1px solid rgba(76,123,243,.22);}
+.fx-txt{flex:1 1 200px;min-width:0;}
+.fx-btn{flex-shrink:0;height:36px;padding:0 15px;border-radius:999px;background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.26);color:inherit;font-size:12.5px;font-weight:800;}
+.giro{width:14px;height:14px;flex-shrink:0;border-radius:50%;border:2px solid rgba(76,123,243,.3);
+  border-top-color:var(--accent);animation:gira .7s linear infinite;}
+@keyframes gira{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.giro{animation:none}}
+
+/* abas */
+.abas{display:flex;gap:7px;background:var(--bg2);border:1px solid var(--bd);border-radius:14px;
+  padding:6px;margin-bottom:14px;}
+.aba{flex:1;height:42px;border-radius:10px;background:none;border:1px solid transparent;
+  color:var(--t3);font-size:13.5px;font-weight:700;transition:background .15s,color .15s;}
+.aba.on{background:linear-gradient(135deg,#2E52C9,#16307A);color:#fff;border-color:rgba(76,123,243,.35);}
+.aba:not(.on):active{background:var(--bg3);}
+
+/* barra de data / mês */
+.barra{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--bd);
+  border-radius:14px;padding:10px 12px;margin-bottom:13px;flex-wrap:wrap;}
+.barra label{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;}
+.barra input{height:42px;background:var(--bg3);border:1px solid var(--bd2);border-radius:10px;
+  color:var(--t);font-size:14.5px;font-weight:700;padding:0 11px;min-width:0;}
+.barra .meta-hoje{margin-left:auto;font-size:12.5px;color:var(--t3);font-weight:700;text-align:right;}
+.barra .meta-hoje b{color:var(--accent-lt);font-family:var(--fm);}
+.hoje-btn{height:42px;padding:0 13px;border-radius:10px;background:var(--bg3);border:1px solid var(--bd2);
+  font-size:12.5px;font-weight:700;color:var(--t2);}
+
+/* resumo do time */
+.time{background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:14px 16px;margin-bottom:13px;}
+.time-l{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px;}
+.time-g{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.tg{text-align:center;}
+.tg-v{font-family:var(--fm);font-size:21px;font-weight:700;line-height:1.1;}
+.tg-l{font-size:10.5px;color:var(--t4);font-weight:700;margin-top:3px;text-transform:uppercase;letter-spacing:.3px;}
+.v-neg{color:var(--red);} .v-ok{color:var(--green);} .v-n{color:var(--t);}
+
+/* cartão da pessoa */
+.pes{background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:14px 15px;margin-bottom:11px;}
+.pes-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.pes-nome{font-size:15.5px;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pes-tag{font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:999px;flex-shrink:0;}
+.tag-ok{background:var(--green-dim);color:var(--green);}
+.tag-falta{background:var(--red-dim);color:#FF8B8D;}
+.pes-ent{display:flex;gap:9px;align-items:center;margin-bottom:12px;}
+.pes-ent input{flex:1;min-width:0;height:52px;background:var(--bg3);border:1px solid var(--bd2);
+  border-radius:12px;color:var(--t);font-family:var(--fm);font-size:22px;font-weight:700;
+  text-align:center;padding:0 8px;}
+.pes-ent input:focus{outline:none;border-color:var(--accent);}
+.pes-ent button{height:52px;padding:0 17px;border-radius:12px;background:linear-gradient(135deg,#2E52C9,#16307A);
+  color:#fff;font-size:14px;font-weight:800;flex-shrink:0;}
+.pes-ent button[disabled]{opacity:.5;}
+.pes-g{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;}
+.pg{background:var(--bg3);border:1px solid var(--bd);border-radius:11px;padding:9px 6px;text-align:center;}
+.pg-v{font-family:var(--fm);font-size:18px;font-weight:700;line-height:1.1;}
+.pg-l{font-size:9.5px;color:var(--t4);font-weight:700;margin-top:3px;line-height:1.25;
+  text-transform:uppercase;letter-spacing:.2px;}
+.pes-bar{height:8px;background:var(--bg4);border-radius:5px;overflow:hidden;margin-top:11px;}
+.pes-fill{height:100%;width:0;background:linear-gradient(90deg,#2E52C9,var(--accent));border-radius:5px;
+  transition:width .4s ease;}
+.pes-fill.ok{background:linear-gradient(90deg,#0E9F6E,var(--green));}
+.pes-pe{font-size:11px;color:var(--t4);font-weight:600;margin-top:6px;}
+
+/* mês */
+.mes-dias{margin-top:11px;border-top:1px solid var(--bd);padding-top:10px;display:none;}
+.mes-dias.on{display:block;}
+.md{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);
+  font-size:13px;}
+.md:last-child{border-bottom:none;}
+.md-d{font-family:var(--fm);color:var(--t3);font-weight:600;width:96px;flex-shrink:0;}
+.md-q{font-family:var(--fm);font-weight:700;margin-left:auto;}
+.md-n{font-family:var(--fm);font-weight:700;width:74px;text-align:right;flex-shrink:0;}
+.ver-dias{width:100%;height:38px;margin-top:10px;border-radius:10px;background:var(--bg3);
+  border:1px solid var(--bd2);font-size:12.5px;font-weight:700;color:var(--t3);}
+
+/* ajustes */
+.card{background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:15px 16px;margin-bottom:13px;}
+.card-t{font-size:14.5px;font-weight:800;margin-bottom:4px;}
+.card-d{font-size:12.5px;color:var(--t3);line-height:1.5;margin-bottom:13px;}
+.ajf{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+.ajf label{flex:1;min-width:104px;display:flex;flex-direction:column;gap:5px;font-size:11px;
+  font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;}
+.ajf input{width:100%;height:48px;background:var(--bg3);border:1px solid var(--bd2);border-radius:11px;
+  color:var(--t);font-family:var(--fm);font-size:18px;font-weight:700;text-align:center;padding:0 8px;}
+.ajf input:focus{outline:none;border-color:var(--accent);}
+.col-l{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+.col-i{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--bd);
+  border-radius:11px;padding:10px 12px;}
+.col-n{flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.col-x{width:38px;height:38px;border-radius:9px;background:var(--red-dim);color:#FF8B8D;
+  font-size:16px;font-weight:800;flex-shrink:0;}
+.add-l{display:flex;gap:9px;}
+.add-l input{flex:1;min-width:0;height:46px;background:var(--bg3);border:1px solid var(--bd2);
+  border-radius:11px;color:var(--t);font-size:14.5px;padding:0 12px;}
+.add-l input:focus{outline:none;border-color:var(--accent);}
+.add-l button{height:46px;padding:0 17px;border-radius:11px;background:var(--bg4);border:1px solid var(--bd2);
+  font-size:13.5px;font-weight:700;color:var(--t2);flex-shrink:0;}
+
+.vazio{text-align:center;padding:38px 20px;color:var(--t3);}
+.vazio-i{font-size:34px;margin-bottom:10px;opacity:.6;}
+.vazio-t{font-size:15px;font-weight:700;color:var(--t2);margin-bottom:5px;}
+.vazio-d{font-size:13px;line-height:1.5;}
+
+.nota{font-size:11.5px;color:var(--t4);line-height:1.55;margin-top:10px;}
+
+/* aviso */
+#toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:900;
+  display:flex;flex-direction:column;gap:8px;width:calc(100% - 32px);max-width:420px;pointer-events:none;}
+.toast{background:var(--bg4);border:1px solid var(--bd2);border-radius:12px;padding:12px 15px;
+  font-size:13.5px;font-weight:700;box-shadow:var(--shadow);opacity:0;transform:translateY(8px);
+  transition:opacity .2s,transform .2s;}
+.toast.on{opacity:1;transform:none;}
+.toast.ok{border-color:rgba(16,185,129,.4);color:#6EE7B7;}
+.toast.err{border-color:rgba(239,68,68,.4);color:#FCA5A5;}
+
+@media (min-width:720px){
+  .pes-g{grid-template-columns:repeat(3,1fr);}
+  .wrap{padding:18px;}
+}
+</style>
+</head><body>
+
+<div id="toasts"></div>
+
+<!-- ───────── LOGIN ───────── -->
+<div id="login-view">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 23V9l5 7 4-5 4 5 5-7v14" fill="none" stroke="#7FA7E6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div>
+        <div class="brand-name">MELLO STYLE</div>
+        <div class="brand-sub">Revisão simples</div>
+      </div>
+    </div>
+    <div class="login-t">Contagem de peças por dia</div>
+    <div class="login-d">Sem lote: você escolhe a pessoa e digita quantas peças ela fez no dia.</div>
+    <button type="button" class="btn btn-primary" id="login-btn">Entrar</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<!-- ───────── APP ───────── -->
+<div id="app-view">
+  <div class="topo">
+    <div class="tb-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 23V9l5 7 4-5 4 5 5-7v14" fill="none" stroke="#7FA7E6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div>
+      <div class="tb-nome">Revisão simples</div>
+      <div class="tb-sub" id="tb-sub">peças por dia</div>
+    </div>
+    <button type="button" class="tb-sair" id="sair-btn">Sair</button>
+  </div>
+
+  <div id="faixa"></div>
+
+  <div class="wrap">
+    <div class="abas">
+      <button type="button" class="aba on" data-aba="hoje">Dia</button>
+      <button type="button" class="aba" data-aba="mes">Mês</button>
+      <button type="button" class="aba" data-aba="ajustes">Ajustes</button>
+    </div>
+
+    <!-- DIA -->
+    <div id="pg-hoje">
+      <div class="barra">
+        <label for="f-data">Dia</label>
+        <input type="date" id="f-data">
+        <button type="button" class="hoje-btn" id="btn-hoje">Hoje</button>
+        <div class="meta-hoje" id="meta-hoje"></div>
+      </div>
+      <div id="time-hoje"></div>
+      <div id="lista-hoje"></div>
+    </div>
+
+    <!-- MÊS -->
+    <div id="pg-mes" style="display:none">
+      <div class="barra">
+        <label for="f-mes">Mês</label>
+        <input type="month" id="f-mes">
+        <div class="meta-hoje" id="meta-mes"></div>
+      </div>
+      <div id="time-mes"></div>
+      <div id="lista-mes"></div>
+    </div>
+
+    <!-- AJUSTES -->
+    <div id="pg-ajustes" style="display:none">
+      <div class="card">
+        <div class="card-t">Meta e jornada</div>
+        <div class="card-d">A meta é de cada pessoa, por dia. Na sexta a jornada é menor, então a meta daquele dia cai na mesma proporção.</div>
+        <div class="ajf">
+          <label>Meta por dia (pçs)<input type="text" inputmode="numeric" id="aj-meta"></label>
+          <label>Jornada seg–qui (h)<input type="text" inputmode="decimal" id="aj-jn"></label>
+          <label>Jornada sexta (h)<input type="text" inputmode="decimal" id="aj-js"></label>
+        </div>
+        <button type="button" class="btn btn-primary" id="aj-salvar">Salvar metas</button>
+        <div class="nota" id="aj-previa"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-t">Quem revisa</div>
+        <div class="card-d">As mesmas pessoas do app de revisão por lote — mexer aqui mexe nos dois.</div>
+        <div class="col-l" id="col-lista"></div>
+        <div class="add-l">
+          <input type="text" id="col-nome" placeholder="Nome da revisora" autocomplete="off">
+          <button type="button" id="col-add">Incluir</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-t">Como o negativo é contado</div>
+        <div class="card-d" style="margin-bottom:0">
+          O negativo do dia é o que faltou para a meta daquele dia: meta menos o que a pessoa fez.
+          Quem bate ou passa da meta fica com negativo zero — não acumula crédito.<br><br>
+          O negativo do mês é a soma do que faltou em cada dia <b>com lançamento</b>. Dia sem lançamento
+          não conta como falta, porque o sistema não tem como saber se a pessoa trabalhou ou folgou.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig={apiKey:"AIzaSyCHcBrAnUFiIh8I0-8wIjqPJnAQc3f3rXM",authDomain:"jv-confecao.firebaseapp.com",projectId:"jv-confecao",storageBucket:"jv-confecao.firebasestorage.app",messagingSenderId:"1089479881122",appId:"1:1089479881122:web:10018e26e1f938d363c2fb",measurementId:"G-RC1SWE9Y6G"};
+const app=initializeApp(firebaseConfig);
+const auth=getAuth(app);
+const db=getFirestore(app);
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+const fmt=n=>Number(n||0).toLocaleString("pt-BR");
+
+/* Em aba anônima o navegador pode recusar até tocar no localStorage. */
+function lerGuardado(k){ try{ return localStorage.getItem(k); }catch(_e){ return null; } }
+function guardar(k,v){ try{ localStorage.setItem(k,v); }catch(_e){} }
+
+/* A dona digita "1.500" e não "1500": o ponto aqui é separador de milhar. */
+function inteiroBR(v){
+  let s=String(v==null?"":v).replace(/[\s ]/g,"").trim();
+  if(!s) return NaN;
+  const neg=s.startsWith("-"); if(neg) s=s.slice(1);
+  if(/^\d+$/.test(s)) return (neg?-1:1)*Number(s);
+  if(/^\d{1,3}(\.\d{3})+$/.test(s)) return (neg?-1:1)*Number(s.replace(/\./g,""));
+  return NaN;
+}
+function numBR(v){
+  let s=String(v==null?"":v).trim().replace(",",".");
+  const n=Number(s);
+  return Number.isFinite(n)?n:NaN;
+}
+
+function toast(msg,tipo){
+  const t=document.createElement("div");
+  t.className="toast "+(tipo||"");
+  t.textContent=msg;
+  $("toasts").appendChild(t);
+  requestAnimationFrame(()=>t.classList.add("on"));
+  setTimeout(()=>{ t.classList.remove("on"); setTimeout(()=>t.remove(),260); },3200);
+}
+
+/* ───────── prazo nas leituras ─────────
+   Sem prazo, o celular com sinal fraco fica pendurado sem dizer nada. */
+const PRAZO_MS=15000;
+function comPrazo(p,ms,oque){
+  return new Promise((ok,erro)=>{
+    let vivo=true;
+    const t=setTimeout(()=>{ if(!vivo) return; vivo=false;
+      const e=new Error("O servidor não respondeu em "+Math.round(ms/1000)+"s ("+oque+").");
+      e.code="mello/prazo"; erro(e); },ms);
+    Promise.resolve(p).then(v=>{ if(!vivo) return; vivo=false; clearTimeout(t); ok(v); },
+                            e=>{ if(!vivo) return; vivo=false; clearTimeout(t); erro(e); });
+  });
+}
+
+/* ───────── estado ───────── */
+const COL_COLAB="colaboradoresRevisao";   /* as mesmas pessoas do app por lote */
+const COL_METAS="metasSetores";           /* as mesmas metas */
+const COL_DIA="revisaoDiaria";            /* só deste app: pessoa + dia + peças */
+
+let colaboradores=[];       /* [{id,nome}] */
+let lancamentos=[];         /* [{id,colaborador,data,pecas}] do mês carregado */
+let metaDia=930;
+let jornada={normal:9.5,sexta:6};
+let metasDocId=null;
+let mesCarregado="";
+let dataSel="", mesSel="";
+let abaAtual="hoje";
+let abertos=new Set();      /* pessoas com o dia-a-dia aberto na aba Mês */
+let carregando=false, falhou=false;
+
+function ownerFields(){
+  const uid=auth.currentUser.uid;
+  return {ownerId:uid,uid,userId:uid,createdBy:uid,empresaId:"mello-style",perfilCriador:"revisao"};
+}
+
+/* ───────── datas ───────── */
+function hojeStr(){
+  const d=new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function mesDe(ds){ return String(ds||"").slice(0,7); }
+function ehSexta(ds){
+  const d=new Date(String(ds)+"T12:00:00");
+  return !isNaN(d) && d.getDay()===5;
+}
+const fmtDiaLongo=new Intl.DateTimeFormat("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
+const fmtDiaCurto=new Intl.DateTimeFormat("pt-BR",{weekday:"short",day:"2-digit",month:"2-digit"});
+function rotuloDia(ds,curto){
+  const d=new Date(String(ds)+"T12:00:00");
+  if(isNaN(d)) return ds||"";
+  return (curto?fmtDiaCurto:fmtDiaLongo).format(d);
+}
+const fmtMesAno=new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"});
+function rotuloMes(m){
+  const d=new Date(String(m)+"-01T12:00:00");
+  if(isNaN(d)) return m||"";
+  const s=fmtMesAno.format(d);
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+function diasDoMes(m){
+  const [y,mm]=String(m).split("-").map(Number);
+  if(!y||!mm) return [];
+  const n=new Date(y,mm,0).getDate(), out=[];
+  for(let i=1;i<=n;i++) out.push(m+"-"+String(i).padStart(2,"0"));
+  return out;
+}
+
+/* ───────── a meta do dia ─────────
+   A meta é a mesma do app por lote: tantas peças por dia, e na sexta ela cai
+   na mesma proporção da jornada (6h de 9,5h → 63% da meta). */
+function metaDoDia(ds){
+  const base=Number(metaDia)||0;
+  if(base<=0) return 0;
+  if(ehSexta(ds) && Number(jornada.normal)>0){
+    return Math.round(base*Number(jornada.sexta||0)/Number(jornada.normal));
+  }
+  return base;
+}
+
+/* ───────── as contas ─────────
+   Negativo do dia  = o que faltou para a meta daquele dia (nunca negativo ao contrário).
+   Negativo do mês  = soma do que faltou em cada dia COM lançamento. Dia sem
+                      lançamento não entra: o sistema não sabe se foi folga. */
+function porPessoa(mes){
+  const mapa=new Map();
+  colaboradores.forEach(c=>mapa.set(c.nome,{nome:c.nome,dias:new Map()}));
+  lancamentos.forEach(l=>{
+    if(mesDe(l.data)!==mes) return;
+    const n=String(l.colaborador||"").trim(); if(!n) return;
+    const p=mapa.get(n)||{nome:n,dias:new Map()};
+    p.dias.set(l.data,(p.dias.get(l.data)||0)+Number(l.pecas||0));
+    mapa.set(n,p);
+  });
+  const out=[];
+  mapa.forEach(p=>{
+    let feitoMes=0, negMes=0, metaMes=0, diasTrab=0;
+    const lista=[];
+    [...p.dias.keys()].sort().forEach(d=>{
+      const q=Number(p.dias.get(d)||0);
+      const m=metaDoDia(d);
+      const neg=Math.max(0,m-q);
+      feitoMes+=q; negMes+=neg; metaMes+=m; diasTrab++;
+      lista.push({data:d,pecas:q,meta:m,neg});
+    });
+    out.push({nome:p.nome,dias:lista,feitoMes,negMes,metaMes,diasTrab});
+  });
+  out.sort((a,b)=>b.feitoMes-a.feitoMes||a.nome.localeCompare(b.nome,"pt-BR"));
+  return out;
+}
+function doDia(nome,ds){
+  let q=0;
+  lancamentos.forEach(l=>{ if(l.data===ds && String(l.colaborador||"").trim()===nome) q+=Number(l.pecas||0); });
+  return q;
+}
+function lancamentoDe(nome,ds){
+  return lancamentos.find(l=>l.data===ds && String(l.colaborador||"").trim()===nome)||null;
+}
+
+/* ───────── faixa de estado ───────── */
+function faixa(estado,msg){
+  const el=$("faixa"); if(!el) return;
+  if(estado==="ok"){ el.className=""; el.innerHTML=""; return; }
+  if(estado==="load"){
+    el.className="fx fx-load";
+    el.innerHTML='<span class="giro" aria-hidden="true"></span><span>Carregando os lançamentos…</span>';
+    return;
+  }
+  el.className="fx fx-erro";
+  el.innerHTML='<span aria-hidden="true">⚠</span><span class="fx-txt">'+esc(msg||"Não consegui carregar. Os números abaixo podem estar incompletos.")+'</span>'
+    +'<button type="button" class="fx-btn" id="fx-retry">Tentar de novo</button>';
+  const b=$("fx-retry"); if(b) b.onclick=()=>recarregar();
+}
+
+/* ───────── carregar ───────── */
+async function carregarColaboradores(){
+  const uid=auth.currentUser?.uid; if(!uid) return;
+  const snap=await comPrazo(getDocs(query(collection(db,COL_COLAB),where("ownerId","==",uid))),PRAZO_MS,"pessoas");
+  colaboradores=snap.docs.map(d=>({id:d.id,nome:String(d.data().nome||"").trim()}))
+    .filter(c=>c.nome)
+    .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
+}
+async function carregarMetas(){
+  const uid=auth.currentUser?.uid; if(!uid) return;
+  const snap=await comPrazo(getDocs(query(collection(db,COL_METAS),where("ownerId","==",uid))),PRAZO_MS,"metas");
+  if(!snap.empty){
+    const d=snap.docs[0]; metasDocId=d.id;
+    const dd=d.data()||{};
+    const mt=dd.metasTam||{};
+    const v=Number((mt.padrao||{}).dia);
+    if(v>0) metaDia=v;
+    const j=dd.jornada||{};
+    if(Number(j.normal)>0) jornada.normal=Number(j.normal);
+    if(Number(j.sexta)>0) jornada.sexta=Number(j.sexta);
+  }
+}
+async function carregarMes(mes){
+  const uid=auth.currentUser?.uid; if(!uid) return;
+  const snap=await comPrazo(getDocs(query(collection(db,COL_DIA),where("ownerId","==",uid))),PRAZO_MS,"lançamentos");
+  lancamentos=snap.docs.map(d=>({id:d.id,...d.data()}))
+    .filter(l=>l && l.data)
+    .map(l=>({id:l.id,colaborador:String(l.colaborador||"").trim(),data:String(l.data),pecas:Number(l.pecas||0)}));
+  mesCarregado=mes;
+}
+
+async function recarregar(){
+  if(carregando) return;
+  carregando=true; falhou=false;
+  faixa("load");
+  try{
+    await carregarColaboradores();
+    await carregarMetas();
+    await carregarMes(mesSel);
+    falhou=false;
+    faixa("ok");
+  }catch(e){
+    console.error("LOAD_ERROR",e);
+    falhou=true;
+    faixa("erro", e?.code==="mello/prazo"
+      ? "O servidor não respondeu. O sinal pode estar fraco — os números abaixo podem estar incompletos."
+      : (String(e?.code||"").includes("permission")
+          ? "Sem permissão para este login."
+          : "Não consegui carregar. Verifique a internet."));
+  }finally{
+    carregando=false;
+    render();
+  }
+}
+
+/* ───────── gravar ───────── */
+async function salvarDia(nome,ds,qtd){
+  const uid=auth.currentUser?.uid;
+  if(!uid){ toast("Entre de novo para gravar.","err"); return false; }
+  const ja=lancamentoDe(nome,ds);
+  try{
+    if(ja){
+      if(qtd===0){
+        await comPrazo(deleteDoc(doc(db,COL_DIA,ja.id)),PRAZO_MS,"apagar");
+        lancamentos=lancamentos.filter(l=>l.id!==ja.id);
+      }else{
+        await comPrazo(updateDoc(doc(db,COL_DIA,ja.id),{pecas:qtd,atualizadoEm:Timestamp.now()}),PRAZO_MS,"gravar");
+        ja.pecas=qtd;
+      }
+    }else{
+      if(qtd===0) return true;                   /* nada a guardar */
+      const ref=await comPrazo(addDoc(collection(db,COL_DIA),{
+        ...ownerFields(), colaborador:nome, data:ds, pecas:qtd, criadoEm:Timestamp.now()
+      }),PRAZO_MS,"gravar");
+      lancamentos.push({id:ref.id,colaborador:nome,data:ds,pecas:qtd});
+    }
+    return true;
+  }catch(e){
+    console.error("SAVE_ERROR",e);
+    toast(e?.code==="mello/prazo"
+      ? "O servidor não respondeu. NÃO gravou — confira a internet e tente de novo."
+      : "Não consegui gravar. Confira a internet e tente de novo.","err");
+    return false;
+  }
+}
+
+/* ───────── telas ───────── */
+function render(){
+  $("tb-sub").textContent = abaAtual==="mes"
+    ? "peças e negativo do mês"
+    : abaAtual==="ajustes" ? "metas e pessoas" : rotuloDia(dataSel);
+  if(abaAtual==="hoje") renderDia();
+  else if(abaAtual==="mes") renderMes();
+  else renderAjustes();
+}
+
+function renderDia(){
+  const m=metaDoDia(dataSel);
+  $("meta-hoje").innerHTML = m>0
+    ? "meta do dia<br><b>"+fmt(m)+"</b> pçs"+(ehSexta(dataSel)?" (sexta)":"")
+    : "sem meta definida";
+
+  if(!colaboradores.length){
+    $("time-hoje").innerHTML="";
+    $("lista-hoje").innerHTML='<div class="vazio"><div class="vazio-i">👤</div>'
+      +'<div class="vazio-t">Nenhuma revisora cadastrada</div>'
+      +'<div class="vazio-d">Vá em <b>Ajustes</b> e inclua quem revisa.</div></div>';
+    return;
+  }
+
+  const pessoas=porPessoa(mesSel);
+  const porNome=new Map(pessoas.map(p=>[p.nome,p]));
+
+  let totDia=0, totNegDia=0, bateram=0;
+  colaboradores.forEach(c=>{
+    const q=doDia(c.nome,dataSel);
+    totDia+=q;
+    const neg=Math.max(0,m-q);
+    if(lancamentoDe(c.nome,dataSel)){ totNegDia+=neg; if(neg===0) bateram++; }
+  });
+  const lancadas=colaboradores.filter(c=>lancamentoDe(c.nome,dataSel)).length;
+
+  $("time-hoje").innerHTML=
+    '<div class="time"><div class="time-l">O time no dia</div><div class="time-g">'
+    +'<div class="tg"><div class="tg-v v-n">'+fmt(totDia)+'</div><div class="tg-l">peças no dia</div></div>'
+    +'<div class="tg"><div class="tg-v '+(totNegDia>0?"v-neg":"v-ok")+'">'+fmt(totNegDia)+'</div><div class="tg-l">negativo do dia</div></div>'
+    +'<div class="tg"><div class="tg-v v-n">'+bateram+'<span style="font-size:14px;color:var(--t4)">/'+lancadas+'</span></div><div class="tg-l">bateram a meta</div></div>'
+    +'</div></div>';
+
+  $("lista-hoje").innerHTML=colaboradores.map(c=>{
+    const q=doDia(c.nome,dataSel);
+    const tem=!!lancamentoDe(c.nome,dataSel);
+    const negDia=tem?Math.max(0,m-q):0;
+    const p=porNome.get(c.nome)||{negMes:0};
+    const pct=m>0?Math.min(100,Math.round(q/m*100)):0;
+    const bateu=tem&&negDia===0;
+    return '<div class="pes" data-nome="'+esc(c.nome)+'">'
+      +'<div class="pes-top"><div class="pes-nome">'+esc(c.nome)+'</div>'
+      +(tem?'<span class="pes-tag '+(bateu?"tag-ok":"tag-falta")+'">'+(bateu?"meta batida":"faltou "+fmt(negDia))+'</span>':'')
+      +'</div>'
+      +'<div class="pes-ent">'
+      +'<input type="text" inputmode="numeric" class="q-inp" value="'+(tem?q:"")+'" placeholder="0" '
+      +'aria-label="Peças de '+esc(c.nome)+' no dia">'
+      +'<button type="button" class="q-btn">Salvar</button></div>'
+      +'<div class="pes-g">'
+      +'<div class="pg"><div class="pg-v v-n">'+fmt(q)+'</div><div class="pg-l">peças<br>no dia</div></div>'
+      +'<div class="pg"><div class="pg-v '+(negDia>0?"v-neg":"v-ok")+'">'+fmt(negDia)+'</div><div class="pg-l">negativo<br>do dia</div></div>'
+      +'<div class="pg"><div class="pg-v '+(p.negMes>0?"v-neg":"v-ok")+'">'+fmt(p.negMes)+'</div><div class="pg-l">negativo<br>do mês</div></div>'
+      +'</div>'
+      +(m>0?'<div class="pes-bar"><div class="pes-fill'+(bateu?" ok":"")+'" style="width:'+pct+'%"></div></div>'
+           +'<div class="pes-pe">'+fmt(q)+' de '+fmt(m)+' pçs da meta do dia</div>':'')
+      +'</div>';
+  }).join("");
+
+  $("lista-hoje").querySelectorAll(".pes").forEach(card=>{
+    const nome=card.dataset.nome;
+    const inp=card.querySelector(".q-inp");
+    const btn=card.querySelector(".q-btn");
+    const grava=async()=>{
+      const bruto=String(inp.value||"").trim();
+      const n=bruto===""?0:inteiroBR(bruto);
+      if(!Number.isFinite(n)){ toast("Digite só o número de peças (ex: 930).","err"); inp.focus(); return; }
+      if(n<0){ toast("A quantidade não pode ser negativa.","err"); inp.focus(); return; }
+      btn.disabled=true; btn.textContent="…";
+      const ok=await salvarDia(nome,dataSel,n);
+      btn.disabled=false; btn.textContent="Salvar";
+      if(ok){ toast(n===0?"Lançamento apagado.":esc(nome.split(" ")[0])+": "+fmt(n)+" pçs.","ok"); render(); }
+    };
+    btn.addEventListener("click",grava);
+    inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); grava(); }});
+  });
+}
+
+function renderMes(){
+  const pessoas=porPessoa(mesSel).filter(p=>p.diasTrab>0);
+  const totFeito=pessoas.reduce((s,p)=>s+p.feitoMes,0);
+  const totNeg=pessoas.reduce((s,p)=>s+p.negMes,0);
+  const totMeta=pessoas.reduce((s,p)=>s+p.metaMes,0);
+  $("meta-mes").innerHTML= '<span style="color:var(--t2)">'+esc(rotuloMes(mesSel))+'</span><br>'
+    + (metaDia>0 ? "meta <b>"+fmt(metaDia)+"</b> pçs/dia" : "sem meta definida");
+
+  $("time-mes").innerHTML=
+    '<div class="time"><div class="time-l">O time no mês</div><div class="time-g">'
+    +'<div class="tg"><div class="tg-v v-n">'+fmt(totFeito)+'</div><div class="tg-l">peças no mês</div></div>'
+    +'<div class="tg"><div class="tg-v '+(totNeg>0?"v-neg":"v-ok")+'">'+fmt(totNeg)+'</div><div class="tg-l">negativo do mês</div></div>'
+    +'<div class="tg"><div class="tg-v v-n">'+fmt(totMeta)+'</div><div class="tg-l">meta somada</div></div>'
+    +'</div></div>';
+
+  if(!pessoas.length){
+    $("lista-mes").innerHTML='<div class="vazio"><div class="vazio-i">📋</div>'
+      +'<div class="vazio-t">Nenhum lançamento neste mês</div>'
+      +'<div class="vazio-d">Vá na aba <b>Dia</b> e lance quantas peças cada pessoa fez.</div></div>';
+    return;
+  }
+
+  $("lista-mes").innerHTML=pessoas.map(p=>{
+    const aberto=abertos.has(p.nome);
+    /* Um dia acima da meta não apaga o negativo de um dia abaixo, então a
+       barra conta dias que bateram — e não a soma das peças, que daria 100%
+       para quem tem negativo. */
+    const bateram=p.dias.filter(d=>d.neg===0).length;
+    const bateuTodos=bateram===p.diasTrab;
+    const pctDias=p.diasTrab>0?Math.round(bateram/p.diasTrab*100):0;
+    return '<div class="pes" data-nome="'+esc(p.nome)+'">'
+      +'<div class="pes-top"><div class="pes-nome">'+esc(p.nome)+'</div>'
+      +'<span class="pes-tag '+(p.negMes>0?"tag-falta":"tag-ok")+'">'+p.diasTrab+(p.diasTrab===1?" dia":" dias")+'</span></div>'
+      +'<div class="pes-g">'
+      +'<div class="pg"><div class="pg-v v-n">'+fmt(p.feitoMes)+'</div><div class="pg-l">peças<br>no mês</div></div>'
+      +'<div class="pg"><div class="pg-v '+(p.negMes>0?"v-neg":"v-ok")+'">'+fmt(p.negMes)+'</div><div class="pg-l">negativo<br>do mês</div></div>'
+      +'<div class="pg"><div class="pg-v v-n">'+fmt(p.metaMes)+'</div><div class="pg-l">meta<br>somada</div></div>'
+      +'</div>'
+      +'<div class="pes-bar"><div class="pes-fill'+(bateuTodos?" ok":"")+'" style="width:'+pctDias+'%"></div></div>'
+      +'<div class="pes-pe">'+bateram+' de '+p.diasTrab+(p.diasTrab===1?' dia bateu':' dias bateram')+' a meta</div>'
+      +'<button type="button" class="ver-dias">'+(aberto?"esconder os dias":"ver dia a dia")+'</button>'
+      +'<div class="mes-dias'+(aberto?" on":"")+'">'
+      + p.dias.slice().reverse().map(d=>
+          '<div class="md"><span class="md-d">'+esc(rotuloDia(d.data,true))+'</span>'
+          +'<span class="md-q">'+fmt(d.pecas)+'</span>'
+          +'<span class="md-n '+(d.neg>0?"v-neg":"v-ok")+'">'+(d.neg>0?"−"+fmt(d.neg):"0")+'</span></div>').join("")
+      +'</div></div>';
+  }).join("");
+
+  $("lista-mes").querySelectorAll(".pes").forEach(card=>{
+    const nome=card.dataset.nome;
+    card.querySelector(".ver-dias").addEventListener("click",()=>{
+      if(abertos.has(nome)) abertos.delete(nome); else abertos.add(nome);
+      renderMes();
+    });
+  });
+}
+
+function renderAjustes(){
+  $("aj-meta").value=metaDia||"";
+  $("aj-jn").value=String(jornada.normal||"").replace(".",",");
+  $("aj-js").value=String(jornada.sexta||"").replace(".",",");
+  const mSexta=metaDia>0&&Number(jornada.normal)>0
+    ? Math.round(Number(metaDia)*Number(jornada.sexta||0)/Number(jornada.normal)) : 0;
+  $("aj-previa").innerHTML="Com isso, a meta é de <b>"+fmt(metaDia)+"</b> pçs de segunda a quinta e <b>"
+    +fmt(mSexta)+"</b> pçs na sexta.";
+
+  $("col-lista").innerHTML=colaboradores.length
+    ? colaboradores.map(c=>'<div class="col-i" data-id="'+esc(c.id)+'"><span class="col-n">'+esc(c.nome)+'</span>'
+        +'<button type="button" class="col-x" aria-label="Remover '+esc(c.nome)+'">✕</button></div>').join("")
+    : '<div class="nota" style="margin:0">Ninguém cadastrado ainda.</div>';
+
+  $("col-lista").querySelectorAll(".col-i").forEach(row=>{
+    row.querySelector(".col-x").addEventListener("click",async()=>{
+      const id=row.dataset.id;
+      const c=colaboradores.find(x=>x.id===id); if(!c) return;
+      if(!confirm("Remover "+c.nome+" da lista?\n\nOs lançamentos que ela já tem continuam guardados.")) return;
+      try{
+        await comPrazo(deleteDoc(doc(db,COL_COLAB,id)),PRAZO_MS,"remover");
+        colaboradores=colaboradores.filter(x=>x.id!==id);
+        toast("Removida.","ok"); render();
+      }catch(e){ console.error(e); toast("Não consegui remover. Confira a internet.","err"); }
+    });
+  });
+}
+
+/* ───────── ações ───────── */
+$("col-add").addEventListener("click",async()=>{
+  const inp=$("col-nome");
+  const nome=String(inp.value||"").trim();
+  if(!nome){ toast("Digite o nome.","err"); inp.focus(); return; }
+  if(colaboradores.some(c=>c.nome.toLowerCase()===nome.toLowerCase())){
+    toast("Essa pessoa já está na lista.","err"); return;
+  }
+  const btn=$("col-add"); btn.disabled=true; btn.textContent="…";
+  try{
+    const ref=await comPrazo(addDoc(collection(db,COL_COLAB),{...ownerFields(),nome,criadoEm:Timestamp.now()}),PRAZO_MS,"incluir");
+    colaboradores.push({id:ref.id,nome});
+    colaboradores.sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
+    inp.value=""; toast("Incluída.","ok"); render();
+  }catch(e){ console.error(e); toast("Não consegui incluir. Confira a internet.","err"); }
+  finally{ btn.disabled=false; btn.textContent="Incluir"; }
+});
+$("col-nome").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); $("col-add").click(); }});
+
+$("aj-salvar").addEventListener("click",async()=>{
+  const m=inteiroBR($("aj-meta").value);
+  const jn=numBR($("aj-jn").value), js=numBR($("aj-js").value);
+  if(!Number.isFinite(m)||m<=0){ toast("A meta precisa ser um número de peças.","err"); $("aj-meta").focus(); return; }
+  if(!Number.isFinite(jn)||jn<=0){ toast("A jornada precisa ser um número de horas (ex: 9,5).","err"); $("aj-jn").focus(); return; }
+  if(!Number.isFinite(js)||js<=0){ toast("A jornada da sexta precisa ser um número de horas.","err"); $("aj-js").focus(); return; }
+  const btn=$("aj-salvar"); btn.disabled=true; btn.textContent="Salvando…";
+  try{
+    /* Grava no MESMO registro do app por lote, para as metas não se separarem. */
+    const payload={metasTam:{padrao:{dia:m},especial:{dia:Math.round(m*840/930)}},jornada:{normal:jn,sexta:js}};
+    if(metasDocId){
+      await comPrazo(updateDoc(doc(db,COL_METAS,metasDocId),{...ownerFields(),...payload,updatedEm:Timestamp.now()}),PRAZO_MS,"metas");
+    }else{
+      const ref=await comPrazo(addDoc(collection(db,COL_METAS),{...ownerFields(),...payload,criadoEm:Timestamp.now()}),PRAZO_MS,"metas");
+      metasDocId=ref.id;
+    }
+    metaDia=m; jornada={normal:jn,sexta:js};
+    toast("Metas salvas.","ok"); render();
+  }catch(e){ console.error(e); toast("Não consegui salvar as metas. Confira a internet.","err"); }
+  finally{ btn.disabled=false; btn.textContent="Salvar metas"; }
+});
+
+document.querySelectorAll(".aba").forEach(b=>{
+  b.addEventListener("click",()=>{
+    abaAtual=b.dataset.aba;
+    document.querySelectorAll(".aba").forEach(x=>x.classList.toggle("on",x===b));
+    $("pg-hoje").style.display    = abaAtual==="hoje"?"":"none";
+    $("pg-mes").style.display     = abaAtual==="mes"?"":"none";
+    $("pg-ajustes").style.display = abaAtual==="ajustes"?"":"none";
+    guardar("rs_aba",abaAtual);
+    render();
+  });
+});
+
+$("f-data").addEventListener("change",async()=>{
+  const v=$("f-data").value; if(!v) return;
+  dataSel=v; guardar("rs_data",dataSel);
+  const m=mesDe(dataSel);
+  if(m!==mesSel){ mesSel=m; $("f-mes").value=m; await recarregar(); }
+  else render();
+});
+$("btn-hoje").addEventListener("click",async()=>{
+  dataSel=hojeStr(); $("f-data").value=dataSel; guardar("rs_data",dataSel);
+  const m=mesDe(dataSel);
+  if(m!==mesSel){ mesSel=m; $("f-mes").value=m; await recarregar(); }
+  else render();
+});
+$("f-mes").addEventListener("change",async()=>{
+  const v=$("f-mes").value; if(!v) return;
+  mesSel=v; abertos.clear(); await recarregar();
+});
+
+/* ───────── login ───────── */
+const ACESSO_EMAIL="acesso@jvconfeccao.app", ACESSO_SENHA="jvconfeccao-acesso-2026";
+$("login-btn").addEventListener("click",async()=>{
+  const btn=$("login-btn");
+  $("login-err").textContent="";
+  btn.disabled=true; btn.textContent="Entrando…";
+  try{
+    await setPersistence(auth,browserLocalPersistence);
+    try{ await signInWithEmailAndPassword(auth,ACESSO_EMAIL,ACESSO_SENHA); }
+    catch(err){
+      const code=err&&err.code||"";
+      if(code==="auth/user-not-found"||code==="auth/invalid-credential"||code==="auth/invalid-login-credentials"){
+        await createUserWithEmailAndPassword(auth,ACESSO_EMAIL,ACESSO_SENHA);
+      } else throw err;
+    }
+  }catch(err){
+    console.error("LOGIN_ERROR",err);
+    $("login-err").textContent="Não consegui entrar. Confira a internet e tente de novo.";
+    btn.disabled=false; btn.textContent="Entrar";
+  }
+});
+$("sair-btn").addEventListener("click",async()=>{
+  if(!confirm("Deseja sair?")) return;
+  await signOut(auth);
+});
+
+onAuthStateChanged(auth,async user=>{
+  if(user&&user.uid){
+    $("login-view").style.display="none";
+    $("app-view").style.display="block";
+    $("login-btn").disabled=false; $("login-btn").textContent="Entrar";
+
+    dataSel=lerGuardado("rs_data")||hojeStr();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dataSel)) dataSel=hojeStr();
+    mesSel=mesDe(dataSel);
+    $("f-data").value=dataSel;
+    $("f-mes").value=mesSel;
+
+    const ab=lerGuardado("rs_aba");
+    if(ab && ["hoje","mes","ajustes"].includes(ab)){
+      const b=document.querySelector('.aba[data-aba="'+ab+'"]');
+      if(b) b.click();
+    }
+    await recarregar();
+  }else{
+    $("app-view").style.display="none";
+    $("login-view").style.display="flex";
+    colaboradores=[]; lancamentos=[];
+  }
+});
+
+/* Quando a internet volta ou o app volta do fundo, tenta de novo sozinho. */
+window.addEventListener("online",()=>{ if(falhou) recarregar(); });
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible" && falhou) recarregar();
+});
+</script>
+</body></html>
