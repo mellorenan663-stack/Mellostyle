@@ -364,17 +364,26 @@ window.ICO_MONITOR='<svg class="ico-chip" viewBox="0 0 24 24" aria-hidden="true"
    recusa o armazenamento: sem ela, o que a pessoa escolhe some no redesenho
    seguinte — o tema nao mudava e as metas voltavam ao padrao. */
 let __cfgMem=null;
+/* Guarda o que já foi lido do armazenamento. Sem isto, cada chamada abria o
+   localStorage e refazia o JSON.parse — e como canAccessDoc chama getConfig
+   uma vez por documento, uma carga de 5 anos fazia isso 25 mil vezes. */
+let __cfgLido=null;
 function getStoredConfig(){
+  if(__cfgLido) return {...__cfgLido};
   try{
     const bruto=localStorage.getItem("mello_config_v1");
-    if(bruto){ const o=JSON.parse(bruto); if(o&&typeof o==="object"){ __cfgMem={...o}; return o; } }
+    if(bruto){ const o=JSON.parse(bruto); if(o&&typeof o==="object"){ __cfgMem={...o}; __cfgLido=o; return {...o}; } }
   }catch(e){}
-  return __cfgMem?{...__cfgMem}:{};
+  __cfgLido=__cfgMem?{...__cfgMem}:{};
+  return {...__cfgLido};
 }
 function saveStoredConfig(cfg){
   __cfgMem={...(cfg||{})};
+  __cfgLido=null;                       /* o próximo getStoredConfig relê */
   try{localStorage.setItem("mello_config_v1",JSON.stringify(cfg||{}));}catch(e){}
 }
+/* Outra aba do mesmo navegador mexendo na configuração: solta o guardado. */
+try{ window.addEventListener("storage",e=>{ if(!e||e.key===null||e.key==="mello_config_v1") __cfgLido=null; }); }catch(_e){}
 function getConfig(){
   const cfg=getStoredConfig();
   return {
@@ -893,8 +902,8 @@ function exportCsv(filename,csv){
 
 /* ── NAVIGATE ──────────────────────────────────────────────── */
 function navigate(page){
-  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  document.querySelectorAll(".nav-btn").forEach(n=>n.classList.remove("active"));
+  document.querySelectorAll(".page.active").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".nav-btn.active").forEach(n=>n.classList.remove("active"));
   $("page-"+page)?.classList.add("active");
   $("nav-"+page)?.classList.add("active");
   currentPage=page;
@@ -957,6 +966,10 @@ let __melloDataLoadSeq=0;
 let __melloLoginToastShown=false;
 let __loginBusy=false;
 let __authOpened=false;
+/* De quem e a sessao que ja esta aberta na tela. Sem isto nao ha como saber se
+   uma nova chamada de abrirAppAposAuth e a mesma abertura chegando por outro
+   caminho (a senha e o Firebase avisam separado) ou uma troca de usuario. */
+let __uidAberto=null;
 let __loginWatchdogTimer=null;
 
 function timeoutError(code,msg){
@@ -1147,8 +1160,19 @@ function abrirAppAposAuth(user,{showToast=false}={}){
   // Sessão anônima antiga (de versão anterior do app): descarta e volta ao login.
   if(resolvedUser.isAnonymous){ try{ signOut(auth); }catch(_e){} return; }
 
+  /* Esta funcao e chamada por dois caminhos na MESMA abertura: a senha abre o
+     app e, pouco depois, o Firebase confirma a sessao e chama de novo com o
+     mesmo usuario. Cada chamada pedia a carga inteira — ler, filtrar e ordenar
+     tudo e redesenhar o painel — e loadData, vendo a primeira em andamento,
+     agendava uma repeticao completa. Resultado: duas cargas por abertura e, no
+     celular, todas as colecoes baixadas duas vezes. A segunda chamada agora so
+     garante que a tela esta a vista. */
+  const mesmaSessao = __authOpened && __uidAberto===resolvedUser.uid;
+  const jaCarregando = mesmaSessao && (!!__loadDataInflight || __dadosJaVieram);
+
   setActiveUser(resolvedUser);
   __authOpened=true;
+  __uidAberto=resolvedUser.uid;
 
   try{ localStorage.setItem("mello_active_uid",resolvedUser.uid); }catch(_e){}
 
@@ -1156,6 +1180,16 @@ function abrirAppAposAuth(user,{showToast=false}={}){
   const shell=document.getElementById("app-shell");
   if(loginPage){ loginPage.style.display="none"; loginPage.classList.remove("active"); }
   if(shell){ shell.style.display=""; shell.classList.remove("hidden-shell"); }
+
+  if(jaCarregando){
+    /* Ja aberto e com os dados vindo (ou na tela): nada de recarregar. */
+    if(currentPage==="login"){ try{ navigate("dashboard"); }catch(_e){} }
+    if(showToast && !__melloLoginToastShown && __dadosJaVieram && !__dadosFalharam){
+      __melloLoginToastShown=true;
+      try{ toast("Login realizado!"); }catch(_e){}
+    }
+    return;
+  }
 
   try{ applyTheme(getConfig().tema); }catch(e){ console.warn("THEME_AFTER_LOGIN_WARN",e); }
   try{ navigate("dashboard"); }catch(e){ console.error("NAV_AFTER_LOGIN_ERROR",e); }
@@ -1265,6 +1299,7 @@ window.doLogout=()=>{
   __senhaOk=false;
   __tentouEntrar=false;
   __authOpened=false;
+  __uidAberto=null;
   try{ mostrarTelaSenha(""); }catch(_e){}
   return signOut(auth);
 };
@@ -1330,6 +1365,7 @@ onAuthStateChanged(auth,user=>{
       setActiveUser(null);
       __melloLoginToastShown=false;
       __authOpened=false;
+      __uidAberto=null;
       __melloDataLoadSeq++;
       try{ applyTheme(getConfig().tema); }catch(_e){}
       const loginPage=document.getElementById("page-login");
@@ -1349,14 +1385,17 @@ onAuthStateChanged(auth,user=>{
 function sortByField(list, field, dir="desc"){
   if(!field) return list;
   const mult=dir==="asc"?1:-1;
-  return [...list].sort((a,b)=>{
-    const va=a?.[field], vb=b?.[field];
-    const da=va?.toDate?va.toDate():new Date(va||0);
-    const db2=vb?.toDate?vb.toDate():new Date(vb||0);
-    const na=Number.isNaN(da.getTime())?String(va||""):da.getTime();
-    const nb=Number.isNaN(db2.getTime())?String(vb||""):db2.getTime();
-    return na>nb?mult:na<nb?-mult:0;
+  /* A chave de cada item sai UMA vez. Antes o comparador criava duas datas a
+     cada comparação: ordenar 20 mil lançamentos jogava fora meio milhão de
+     objetos e enchia o coletor de lixo no meio da abertura. */
+  const comChave=list.map(item=>{
+    const v=item?.[field];
+    const d=v?.toDate?v.toDate():new Date(v||0);
+    const t=d.getTime();
+    return {item, k:Number.isNaN(t)?String(v||""):t};
   });
+  comChave.sort((a,b)=>a.k>b.k?mult:a.k<b.k?-mult:0);
+  return comChave.map(x=>x.item);
 }
 /* ── ESTADO DA CARGA DE DADOS ──────────────────────────────────────────
    Sem prazo, uma leitura presa deixa a tela em R$ 0,00 para sempre. */
@@ -1376,7 +1415,19 @@ async function getOwnedDocs(collectionName,{sortField=null,dir="desc"}={}){
   // leitura é sempre da coleção inteira, filtrada por canAccessDoc
   // (empresaId). Uma única leitura por coleção.
   const snap=await comPrazo(getDocs(collection(db,collectionName)),LEITURA_PRAZO_MS,collectionName);
-  return sortByField(snap.docs.map(d=>({id:d.id,...d.data()})).filter(canAccessDoc),sortField,dir);
+  /* Mesma regra do canAccessDoc, mas com o uid e a empresa resolvidos uma vez
+     e numa passada só: antes eram três voltas em 20 mil itens e uma leitura
+     de configuração por documento. */
+  const uid=getCurrentUserId();
+  const empresa=getConfig().empresaId||"mello-style";
+  const out=[];
+  const docs=snap.docs;
+  for(let i=0;i<docs.length;i++){
+    const item={id:docs[i].id,...docs[i].data()};
+    if(!uid || !item.ownerId || item.ownerId===uid || item.uid===uid || item.userId===uid
+       || item.createdBy===uid || item.empresaId===empresa) out.push(item);
+  }
+  return sortByField(out,sortField,dir);
 }
 async function adotarDadosAntigos(collectionName,items){
   const uid=getCurrentUserId();
@@ -1543,6 +1594,7 @@ async function _loadDataReal(){
     try{ await aplicarEscalaPadraoFuncionarios(); }catch(e){ console.warn('APLICAR_ESCALA_WARN',e); }
 
     __dadosVersao++;
+    try{ aquecerBusca(); }catch(e){}
     try{ populateSelects(); }catch(e){ console.error('POPULATE_SELECTS_ERROR',e); }
     try{ applyTheme(getConfig().tema); }catch(e){ console.warn('THEME_APPLY_WARN',e); }
     try{ if(typeof renderConfiguracoes==="function") renderConfiguracoes(); }catch(e){ console.warn('CONFIG_RENDER_WARN',e); }
@@ -1641,7 +1693,7 @@ function __porDentro(el,v){
 function completarSelectOf(el){
   if(!el||!el.dataset.ofParcial||!el.__ofDados) return;
   const d=el.__ofDados, antes=el.value;
-  el.innerHTML=d.primeira+d.itens.map(o=>o.html).join("");
+  el.innerHTML=d.primeira+d.html(0,d.n);
   delete el.dataset.ofParcial;
   if(antes&&antes!=="__of_mais__") __porDentro(el,antes);
 }
@@ -1649,18 +1701,18 @@ function completarSelectOf(el){
    1.500 opções na tela até o fim da sessão, e a travada voltava. */
 function enxugarSelectOf(el){
   if(!el||el.dataset.ofParcial||!el.__ofDados) return;
-  if(el.__ofDados.itens.length<=OF_NA_LISTA+1) return;
+  if(el.__ofDados.n<=OF_NA_LISTA+1) return;
   __montarOfParcial(el,el.value);
 }
 function __montarOfParcial(el,marcado){
   const d=el.__ofDados;
-  const curtas=d.itens.slice(0,OF_NA_LISTA);
-  if(marcado&&!curtas.some(o=>o.id===marcado)){
-    const achou=d.itens.find(o=>o.id===marcado);
-    if(achou) curtas.unshift(achou);
+  let html=d.html(0,OF_NA_LISTA);
+  if(marcado){
+    const i=d.indice(marcado);
+    if(i>=OF_NA_LISTA) html=d.html(i,i+1)+html;
   }
-  el.innerHTML=d.primeira+curtas.map(o=>o.html).join("")
-    +'<option value="__of_mais__" disabled>⋯ abra para ver todas as '+d.itens.length+' OFs</option>';
+  el.innerHTML=d.primeira+html
+    +'<option value="__of_mais__" disabled>⋯ abra para ver todas as '+d.n+' OFs</option>';
   el.dataset.ofParcial="1";
   __porDentro(el,marcado||"");
 }
@@ -1685,12 +1737,14 @@ function __ligarCompletarOf(el){
     }catch(_e){}
   }
 }
-/* itens: [{id, html}] já na ordem em que devem aparecer (mais novas primeiro). */
+/* itens: a fonte das OFs, já na ordem em que devem aparecer (mais novas
+   primeiro). O HTML de cada opção só é montado quando ela vai para a tela. */
 function preencherSelectOf(el,primeira,itens,marcado){
   if(!el) return;
-  el.__ofDados={primeira,itens};
-  if(itens.length<=OF_NA_LISTA+1){
-    el.innerHTML=primeira+itens.map(o=>o.html).join("");
+  itens.primeira=primeira;
+  el.__ofDados=itens;
+  if(itens.n<=OF_NA_LISTA+1){
+    el.innerHTML=primeira+itens.html(0,itens.n);
     delete el.dataset.ofParcial;
     if(marcado) __porDentro(el,marcado);
     return;
@@ -1698,8 +1752,25 @@ function preencherSelectOf(el,primeira,itens,marcado){
   __montarOfParcial(el,marcado);
   __ligarCompletarOf(el);
 }
+/* Em vez de 1.833 pedaços de HTML montados de uma vez na abertura (131ms, e
+   1.700 deles nem apareciam), guarda a lista e monta o trecho pedido. */
 function __itensDeLotes(lista,texto){
-  return lista.map(l=>({id:l.id,html:'<option value="'+l.id+'">'+texto(l)+'</option>'}));
+  let indicePorId=null;
+  return {
+    n:lista.length,
+    primeira:"",
+    html(de,ate){
+      let s="";
+      const fim=Math.min(ate,lista.length);
+      for(let i=de;i<fim;i++){ const l=lista[i]; s+='<option value="'+l.id+'">'+texto(l)+'</option>'; }
+      return s;
+    },
+    indice(id){
+      if(!indicePorId){ indicePorId=new Map(); for(let i=0;i<lista.length;i++) indicePorId.set(lista[i].id,i); }
+      const i=indicePorId.get(id);
+      return i===undefined?-1:i;
+    }
+  };
 }
 function populateSelects(){
   const jaMontado=$("prod-lote")?.options.length||$("cph-lote")?.options.length;
@@ -2360,6 +2431,38 @@ function loteDoId(id){
 /* Texto de busca ja normalizado, uma vez por registro. Se o registro voltar
    do banco ele e outro objeto e o texto e refeito sozinho. */
 const __chaveBusca=new WeakMap();
+/* Monta as chaves de busca em fatias, nas folgas do navegador. A primeira
+   letra digitada no Historico tinha de normalizar 22 mil lancamentos de uma
+   vez — 268ms de dedo parado. Em fatias, ninguem sente; e se a dona digitar
+   antes de acabar, buscaEm monta o que falta na hora, como sempre fez. */
+let __aquecerPendente=null;
+function aquecerBusca(){
+  const tarefas=[];
+  try{
+    if(Array.isArray(registros)) tarefas.push([registros,CAMPOS_BUSCA_REG]);
+    if(Array.isArray(clientes))  tarefas.push([clientes,CAMPOS_BUSCA_CLI]);
+    if(Array.isArray(gastos))    tarefas.push([gastos,CAMPOS_BUSCA_GASTO]);
+  }catch(_e){ return; }
+  let t=0,i=0;
+  const marca={};
+  __aquecerPendente=marca;
+  const folga=cb=>(typeof requestIdleCallback==="function"
+    ? requestIdleCallback(cb,{timeout:1500}) : setTimeout(cb,80));
+  function fatia(){
+    if(__aquecerPendente!==marca) return;          /* chegaram dados novos */
+    const fim=Date.now()+6;                        /* fatias curtas: nada travado */
+    while(t<tarefas.length){
+      const [lista,campos]=tarefas[t];
+      while(i<lista.length){
+        buscaEm(lista[i],campos); i++;
+        if(Date.now()>=fim){ folga(fatia); return; }
+      }
+      t++; i=0;
+    }
+    __aquecerPendente=null;
+  }
+  folga(fatia);
+}
 const CAMPOS_BUSCA_REG=["funcionarioNome","etapa","loteNumeroOf","loteProduto","obs"];
 const CAMPOS_BUSCA_CLI=["nome","contato","telefone","cidade","obs"];
 const CAMPOS_BUSCA_GASTO=["descricao","categoria","tipo","competencia"];
@@ -7107,10 +7210,14 @@ function renderAuditoria(){
 
   function closeInactiveLayers(){
     try{
-      document.querySelectorAll('.modal-overlay:not(.open), .sidebar-overlay:not(.visible), #gastos-drawer-overlay:not(.visible)').forEach(el=>{
-        el.classList.remove('open','visible');
-        el.style.pointerEvents='none';
-      });
+      /* Fecha o que ficou aberto ao sair da tela. O que ja esta fechado nao
+         precisa de nada: o CSS tem
+         .modal-overlay:not(.open){pointer-events:none!important} — e
+         !important ganha do estilo em linha, logo escrever pointerEvents nos
+         modais fechados nunca mudou nada e a cada troca de tela mandava o
+         navegador recalcular o estilo de todos eles de graca. */
+      document.querySelectorAll('.modal-overlay.open, .sidebar-overlay.visible, #gastos-drawer-overlay.visible, .modal-overlay.visible, .sidebar-overlay.open')
+        .forEach(el=>{ el.classList.remove('open','visible'); });
     }catch(e){}
   }
 
@@ -7138,9 +7245,13 @@ function renderAuditoria(){
         page='dashboard';
       }
 
-      document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-      document.querySelectorAll('.nav-btn').forEach(n=>n.classList.remove('active'));
-      document.querySelectorAll('.tp-btn').forEach(t=>t.classList.remove('active'));
+      /* So quem esta marcado perde a marca. Antes isto varria as 14 paginas e
+         todos os botoes do menu tirando uma classe que 13 deles nem tinham:
+         ~40 mudancas de classe por troca de tela, e cada mudanca manda o
+         navegador recalcular o estilo. */
+      document.querySelectorAll('.page.active').forEach(p=>p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn.active').forEach(n=>n.classList.remove('active'));
+      document.querySelectorAll('.tp-btn.active').forEach(t=>t.classList.remove('active'));
 
       $('page-'+page)?.classList.add('active');
       $('nav-'+page)?.classList.add('active');
@@ -13622,7 +13733,7 @@ input,select,textarea,button{font-size:16px;}
             <button class="btn-dash-nav" onclick="dashNavMes(-1)" title="Mês anterior">‹</button>
             <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
               <span id="dash-mes-label" style="font-size:13px;font-weight:700;color:var(--t);min-width:130px;text-align:center;cursor:pointer;" onclick="$('dash-mes-input').showPicker?.()??$('dash-mes-input').focus()"></span>
-              <input id="dash-mes-input" type="month" onchange="dashSetMes(this.value)" style="opacity:0;position:absolute;width:0;height:0;pointer-events:none;" aria-label="Mês do painel"/>
+              <input id="dash-mes-input" type="month" onchange="dashSetMes(this.value)" tabindex="-1" style="opacity:0;position:absolute;width:0;height:0;pointer-events:none;" aria-label="Mês do painel"/>
               <span id="dash-mes-atual-btn" onclick="dashSetMes('')" style="font-size:10px;color:var(--accent-lt);cursor:pointer;font-weight:600;text-decoration:underline;text-underline-offset:2px;">Ir para hoje</span>
             </div>
             <button class="btn-dash-nav" id="dash-mes-next" onclick="dashNavMes(1)" title="Próximo mês">›</button>
@@ -20318,22 +20429,71 @@ html[data-theme="claro"] .gpill-falta{ background:rgba(176,110,8,.1); color:#8A5
 </script>
 
 <script>
-/* acessibilidade: campos invisíveis (seletores ocultos) saem da ordem de tabulação */
+/* acessibilidade: campos invisíveis (seletores ocultos) saem da ordem de
+   tabulação — e voltam para ela quando aparecem de novo. */
 (function(){ "use strict";
-  function ajustar(){
+  var CAMPOS="input,select,textarea,button";
+  var CAMADAS=".modal-overlay,.drawer,.mobile-drawer,.sidebar,.gastos-drawer,.sidebar-overlay";
+  /* Varre a tela à vista e as camadas (modais e gavetas). Os modais fechados
+     entram de propósito: é neles que ficam os campos invisíveis que precisam
+     sair da tabulação. O resto do documento são 13 telas com display:none, que
+     o navegador já deixa de fora — medir cada campo delas era tempo jogado
+     fora (102ms no perfil da abertura, e de novo a cada troca de tela). */
+  function alvos(){
+    var lista=[];
     try{
-      document.querySelectorAll("input,select,textarea,button").forEach(function(e){
-        var s=getComputedStyle(e);
-        var invisivel=(parseFloat(s.opacity)===0)||s.visibility==="hidden";
-        if(invisivel&&e.tabIndex!==-1){ e.tabIndex=-1; e.setAttribute("aria-hidden","true"); }
-      });
+      var vista=document.querySelector(".page.active");
+      if(vista) lista.push(vista);
+      document.querySelectorAll(CAMADAS).forEach(function(m){ lista.push(m); });
     }catch(e){}
+    return lista;
   }
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(ajustar,1500); });
-  else setTimeout(ajustar,1500);
+  function umCampo(e){
+    var s=getComputedStyle(e);
+    var invisivel=(parseFloat(s.opacity)===0)||s.visibility==="hidden";
+    if(invisivel){
+      if(e.tabIndex!==-1){
+        /* Guarda o que era dele para devolver igual. Assim nunca atropelo um
+           tabindex que a tela pôs de propósito. */
+        e.setAttribute("data-tab-antes",String(e.tabIndex));
+        e.tabIndex=-1;
+        e.setAttribute("aria-hidden","true");
+      }
+    }else if(e.hasAttribute("data-tab-antes")){
+      /* Apareceu de novo — um modal que abriu. Sem isto, os 11 campos de
+         "Editar Cliente" ficavam para sempre fora do Tab e invisíveis para
+         quem usa leitor de tela, porque a varredura marcava e nunca desmarcava. */
+      var n=parseInt(e.getAttribute("data-tab-antes"),10);
+      e.removeAttribute("data-tab-antes");
+      e.removeAttribute("aria-hidden");
+      if(isFinite(n)&&n!==0) e.tabIndex=n; else e.removeAttribute("tabindex");
+    }
+  }
+  function ajustar(){
+    try{ alvos().forEach(function(raiz){ raiz.querySelectorAll(CAMPOS).forEach(umCampo); }); }catch(e){}
+  }
+  /* Só vale varrer de novo quando alguma camada de fato abriu ou fechou. */
+  var ABERTAS=".modal-overlay.open,.drawer.open,.mobile-drawer.open,.sidebar.open,.gastos-drawer.open,.sidebar-overlay.visible,#gastos-drawer-overlay.visible";
+  var ultimo=null;
+  function estado(){
+    var s="";
+    try{ document.querySelectorAll(ABERTAS).forEach(function(m){ s+=(m.id||m.className)+"|"; }); }catch(e){}
+    return s;
+  }
+  function seMudou(){
+    var e=estado();
+    if(e===ultimo) return;
+    ultimo=e; ajustar();
+  }
+  function agora(){ ultimo=estado(); ajustar(); }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(agora,1500); });
+  else setTimeout(agora,1500);
+  /* Modais e gavetas abrem por clique: depois do clique, confere. */
+  try{ document.addEventListener("click",function(){ setTimeout(seMudou,90); },true); }catch(e){}
+  try{ document.addEventListener("keyup",function(ev){ if(ev.key==="Escape") setTimeout(seMudou,90); },true); }catch(e){}
   try{
     if(typeof window.navigate==="function"&&!window.navigate.__a11y){
-      var o=window.navigate, w=function(){ var r=o.apply(this,arguments); setTimeout(ajustar,300); return r; };
+      var o=window.navigate, w=function(){ var r=o.apply(this,arguments); setTimeout(agora,300); return r; };
       w.__a11y=true; window.navigate=w;
     }
   }catch(e){}
