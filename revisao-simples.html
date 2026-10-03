@@ -469,22 +469,41 @@ function lancamentoDe(nome,ds){
 }
 
 /* ───────── faixa de estado ───────── */
+/* A abertura normal e rapida: esperar um instante antes de dizer "carregando"
+   faz com que, no dia a dia, nao apareca nada. */
+const FAIXA_ESPERA_MS=2500;
+let __faixaTimer=null;
+function limparFaixaTimer(){ if(__faixaTimer){ clearTimeout(__faixaTimer); __faixaTimer=null; } }
+/* Ja tem gente na tela? Entao os numeros sao de verdade e nao ha o que avisar. */
+function temDadosNaTela(){ return colaboradores.length>0; }
 function faixa(estado,msg){
   const el=$("faixa"); if(!el) return;
-  if(estado==="ok"){ el.className=""; el.innerHTML=""; return; }
-  if(estado==="load"){
-    el.className="fx fx-load";
-    el.innerHTML='<span class="giro" aria-hidden="true"></span><span>'+esc(msg||"Carregando os lançamentos…")+'</span>';
+  if(estado==="ok"){ limparFaixaTimer(); el.className=""; el.innerHTML=""; return; }
+  /* ── Trabalhando: carregando ou tentando de novo ──
+     Nada de avisar. Um tropeco de sinal o app resolve sozinho em segundos, e
+     encher a tela de faixa por causa disso so assusta a toa. */
+  if(estado==="load"||estado==="tentando"){
+    if(falhou) return;                      /* ja ha aviso a vista: deixa */
+    if(temDadosNaTela()){ limparFaixaTimer(); el.className=""; el.innerHTML=""; return; }
+    if(__faixaTimer) return;
+    const pintarEsperando=comBotao=>{
+      if(temDadosNaTela()||falhou) return false;
+      el.className="fx fx-load";
+      el.innerHTML='<span class="giro" aria-hidden="true"></span><span class="fx-txt">Carregando os lançamentos…</span>'
+        +(comBotao?'<button type="button" class="fx-btn" id="fx-retry">Tentar agora</button>':'');
+      if(comBotao){ const bb=$("fx-retry"); if(bb) bb.onclick=()=>{ pararTentativas(); carregando=false; recarregar(); }; }
+      return true;
+    };
+    __faixaTimer=setTimeout(()=>{
+      __faixaTimer=null;
+      if(!pintarEsperando(false)) return;
+      /* Esperando ha tempo demais sem nada na tela: segue calmo, mas ganha
+         uma saida para quem nao quer esperar. */
+      __faixaTimer=setTimeout(()=>{ __faixaTimer=null; pintarEsperando(true); },20000);
+    },FAIXA_ESPERA_MS);
     return;
   }
-  /* Insistindo: avisa, mas deixa o botão à mão para quem não quer esperar. */
-  if(estado==="tentando"){
-    el.className="fx fx-parcial";
-    el.innerHTML='<span class="giro" aria-hidden="true"></span><span class="fx-txt">'+esc(msg||"A internet está lenta — tentando de novo…")+'</span>'
-      +'<button type="button" class="fx-btn" id="fx-retry">Tentar agora</button>';
-    const bb=$("fx-retry"); if(bb) bb.onclick=()=>{ pararTentativas(); carregando=false; recarregar(); };
-    return;
-  }
+  limparFaixaTimer();
   /* Faltou uma parte só, com o resto da tela certo: isso é aviso, não erro.
      Em vermelho a dona lê como "nada aqui presta". */
   el.className=(estado==="parcial"?"fx fx-parcial":"fx fx-erro");

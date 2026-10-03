@@ -1489,25 +1489,50 @@ function listaDePartes(nomes){
   if(l.length===1) return l[0];
   return l.slice(0,-1).join(", ")+" e "+l[l.length-1];
 }
+/* A abertura normal leva uns 2 segundos. Esperar um pouco antes de dizer
+   "carregando" faz com que, no dia a dia, não apareça nada. */
+const AVISO_ESPERA_MS=2500;
+/* Tem número de verdade na tela? Basta uma das listas ter chegado. */
+function __temNumerosNaTela(){
+  try{
+    return (funcionarios&&funcionarios.length>0)||(lotes&&lotes.length>0)
+         ||(registros&&registros.length>0)||(gastos&&gastos.length>0);
+  }catch(_e){ return false; }
+}
+let __avisoTimer=null;
+function limparAvisoTimer(){ if(__avisoTimer){ clearTimeout(__avisoTimer); __avisoTimer=null; } }
 function mostrarEstadoDados(estado,detalhe){
   const el=avisoDadosEl(); if(!el) return;
-  if(estado==="ok"){ el.className=""; el.innerHTML=""; __ultimaFalha=[]; return; }
-  /* "Carregando" limpo só antes de qualquer falha. Depois que falhou, o aviso
-     fica à vista mesmo durante a nova tentativa — senão some justo quando ela
-     mais precisa dele. */
-  if(estado==="carregando"&&!__dadosFalharam){
-    el.className="av-dados av-carregando";
-    el.innerHTML='<span class="av-giro" aria-hidden="true"></span><span>Carregando os dados da fábrica…</span>';
+  if(estado==="ok"){ limparAvisoTimer(); el.className=""; el.innerHTML=""; __ultimaFalha=[]; return; }
+  /* ── Trabalhando: carregando, demorando ou tentando de novo ──
+     Nada de avisar. Um tropeço de sinal o app resolve sozinho em segundos, e
+     encher a tela de faixa por causa disso só assusta à toa. */
+  if(estado==="carregando"||estado==="demorando"||estado==="tentando"){
+    /* Já tem um aviso à vista porque algum número pode estar errado: deixa
+       como está até a nova tentativa resolver (vem "ok") ou falhar de vez. */
+    if(__dadosFalharam) return;
+    /* Com números de verdade na tela, não há o que explicar: silêncio. */
+    if(__dadosJaVieram||__temNumerosNaTela()){ limparAvisoTimer(); el.className=""; el.innerHTML=""; return; }
+    /* Sem número nenhum na tela, a tela vazia precisa de explicação — mas só
+       se estiver mesmo demorando. */
+    if(__avisoTimer) return;
+    const pintarEsperando=comBotao=>{
+      if(__dadosJaVieram||__dadosFalharam||__temNumerosNaTela()) return false;
+      el.className="av-dados av-carregando";
+      el.innerHTML='<span class="av-giro" aria-hidden="true"></span><span class="av-txt">Carregando os dados da fábrica…</span>'
+        +(comBotao?'<button type="button" class="av-btn" onclick="recarregarDados()">Tentar agora</button>':'');
+      return true;
+    };
+    __avisoTimer=setTimeout(()=>{
+      __avisoTimer=null;
+      if(!pintarEsperando(false)) return;
+      /* Passou do minuto e meio de espera sem nada na tela: o aviso continua
+         calmo, mas ganha uma saída para quem não quer esperar. */
+      __avisoTimer=setTimeout(()=>{ __avisoTimer=null; pintarEsperando(true); },20000);
+    },AVISO_ESPERA_MS);
     return;
   }
-  /* Está demorando, mas ainda está vindo: isto não é falha. */
-  if(estado==="demorando"&&!__dadosFalharam){
-    el.className="av-dados av-carregando";
-    el.innerHTML='<span class="av-giro" aria-hidden="true"></span>'
-      +'<span>Ainda baixando os dados da fábrica — a internet está lenta. Pode deixar aberto.</span>';
-    return;
-  }
-  const tentando=(estado==="carregando"||estado==="tentando");
+  limparAvisoTimer();
   if(Array.isArray(detalhe)) __ultimaFalha=detalhe;
   const quantos=__ultimaFalha.length;
   const faltou=listaDePartes(__ultimaFalha);
@@ -1524,11 +1549,8 @@ function mostrarEstadoDados(estado,detalhe){
   el.className="av-dados av-falhou"+(parcial?" av-parcial":"");
   el.innerHTML='<span class="av-sinal" aria-hidden="true">⚠</span>'
     +'<span class="av-txt">'+titulo
-      +(__motivoFalha?' <span class="av-det">Motivo: '+escapeHtml(__motivoFalha)+'.</span>':'')
-      +(tentando?' <span class="av-det">Tentando de novo…</span>':'')+'</span>'
-    +(tentando
-      ? '<span class="av-giro" aria-hidden="true"></span>'
-      : '<button type="button" class="av-btn" onclick="recarregarDados()">Tentar de novo</button>');
+      +(__motivoFalha?' <span class="av-det">Motivo: '+escapeHtml(__motivoFalha)+'.</span>':'')+'</span>'
+    +'<button type="button" class="av-btn" onclick="recarregarDados()">Tentar de novo</button>';
 }
 window.recarregarDados=function(){
   if(__retryTimer){ clearTimeout(__retryTimer); __retryTimer=null; }

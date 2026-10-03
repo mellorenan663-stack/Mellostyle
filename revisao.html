@@ -1458,12 +1458,14 @@ async function lerTeimoso(fazer,oque){
 /* Continua tentando sozinho em vez de deixar a tela de erro parada. */
 let __tentarTimer=null,__tentarN=0;
 function pararTentativas(){ if(__tentarTimer){clearTimeout(__tentarTimer);__tentarTimer=null;} __tentarN=0; }
+/* Devolve true quando ainda vai tentar sozinho de novo. */
 function agendarTentativa(){
-  if(__tentarTimer) return;
+  if(__tentarTimer) return true;
   const esperas=[5000,15000,40000];
-  if(__tentarN>=esperas.length) return;
+  if(__tentarN>=esperas.length) return false;
   const ms=esperas[__tentarN++];
   __tentarTimer=setTimeout(()=>{ __tentarTimer=null; if(!lotes.length) carregar(); },ms);
+  return true;
 }
 let __carregando=false;
 async function carregar(){
@@ -1478,12 +1480,27 @@ async function carregar(){
     render();
   }catch(e){
     console.error("LOAD_ERROR",e);
-    const motivo=e?.code?.includes("permission")?"Sem permissão para este login."
-      :e?.code==="mello/prazo"?"A internet está lenta demais. Já estou tentando de novo."
-      :"Verifique a conexão e tente novamente.";
-    agendarTentativa();
-    $("list-host").innerHTML=`<div class="empty"><div class="empty-ico">⚠</div><div class="empty-t">Não foi possível carregar</div><div class="empty-d">${motivo}</div><button type="button" class="btn" style="margin-top:12px" onclick="recarregarLotes()">Tentar de novo</button></div>`;
-    toast("Erro ao carregar lotes","err");
+    /* Ainda vai tentar sozinho: não troca a lista pela tela de erro nem solta
+       aviso. Um tropeço de sinal se resolve em segundos — avisar no meio do
+       caminho só assusta à toa. A tela de erro fica para quando acabarem as
+       tentativas e realmente não houver o que mostrar. */
+    const vaiTentarDeNovo=agendarTentativa();
+    /* Com a tela vazia a espera nao pode ser calada para sempre: depois da
+       segunda tentativa sem nada para mostrar, vale falar. Um tropeco de
+       sinal se resolve antes disso e passa despercebido, que e o ponto. */
+    const calado=vaiTentarDeNovo && (lotes.length>0 || __tentarN<2);
+    if(calado){
+      try{
+        $("list-host").innerHTML='<div class="empty"><div class="empty-t">'
+          +(__tentarN<2?'Carregando…':'A internet está lenta — tentando de novo…')+'</div></div>';
+      }catch(_e){}
+    }else{
+      const motivo=e?.code?.includes("permission")?"Sem permissão para este login."
+        :e?.code==="mello/prazo"?"A internet está lenta demais."
+        :"Verifique a conexão e tente novamente.";
+      $("list-host").innerHTML=`<div class="empty"><div class="empty-ico">⚠</div><div class="empty-t">Não foi possível carregar</div><div class="empty-d">${motivo}</div><button type="button" class="btn" style="margin-top:12px" onclick="recarregarLotes()">Tentar de novo</button></div>`;
+      toast("Erro ao carregar lotes","err");
+    }
   }finally{ __carregando=false; }
 }
 window.recarregarLotes=function(){
