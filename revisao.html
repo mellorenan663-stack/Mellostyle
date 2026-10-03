@@ -1440,6 +1440,31 @@ function comPrazo(promessa,ms,oque){
                                    e=>{ if(!vivo) return; vivo=false; clearTimeout(t); erro(e); });
   });
 }
+/* Num sinal fraco a primeira leitura falha com frequencia e a segunda passa.
+   O app desistia na primeira e punha "Nao foi possivel carregar" por cima de
+   tudo. Agora tenta de novo sozinho, e a segunda vez vai com mais tempo
+   porque esta sozinha na internet. */
+const LEITURA_PRAZO_CALMA_MS=45000;
+async function lerTeimoso(fazer,oque){
+  try{
+    return await comPrazo(fazer(),LEITURA_PRAZO_MS,oque);
+  }catch(e){
+    const c=String(e&&e.code||"");
+    if(c.includes("permission")||c.includes("unauthenticated")) throw e;
+    await new Promise(r=>setTimeout(r,900));
+    return await comPrazo(fazer(),LEITURA_PRAZO_CALMA_MS,oque);
+  }
+}
+/* Continua tentando sozinho em vez de deixar a tela de erro parada. */
+let __tentarTimer=null,__tentarN=0;
+function pararTentativas(){ if(__tentarTimer){clearTimeout(__tentarTimer);__tentarTimer=null;} __tentarN=0; }
+function agendarTentativa(){
+  if(__tentarTimer) return;
+  const esperas=[5000,15000,40000];
+  if(__tentarN>=esperas.length) return;
+  const ms=esperas[__tentarN++];
+  __tentarTimer=setTimeout(()=>{ __tentarTimer=null; if(!lotes.length) carregar(); },ms);
+}
 let __carregando=false;
 async function carregar(){
   const uid=auth.currentUser?.uid;
@@ -1447,14 +1472,16 @@ async function carregar(){
   if(__carregando) return;
   __carregando=true;
   try{
-    const snap=await comPrazo(getDocs(query(collection(db,"lotes"),where("ownerId","==",uid))),LEITURA_PRAZO_MS,"lotes");
+    const snap=await lerTeimoso(()=>getDocs(query(collection(db,"lotes"),where("ownerId","==",uid))),"lotes");
     lotes=snap.docs.map(d=>({id:d.id,...d.data()})).filter(l=>!isCancelado(l));
+    pararTentativas();
     render();
   }catch(e){
     console.error("LOAD_ERROR",e);
     const motivo=e?.code?.includes("permission")?"Sem permissão para este login."
-      :e?.code==="mello/prazo"?"O servidor não respondeu. O sinal pode estar fraco."
+      :e?.code==="mello/prazo"?"A internet está lenta demais. Já estou tentando de novo."
       :"Verifique a conexão e tente novamente.";
+    agendarTentativa();
     $("list-host").innerHTML=`<div class="empty"><div class="empty-ico">⚠</div><div class="empty-t">Não foi possível carregar</div><div class="empty-d">${motivo}</div><button type="button" class="btn" style="margin-top:12px" onclick="recarregarLotes()">Tentar de novo</button></div>`;
     toast("Erro ao carregar lotes","err");
   }finally{ __carregando=false; }

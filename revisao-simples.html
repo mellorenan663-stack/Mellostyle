@@ -69,6 +69,8 @@ button{cursor:pointer;border:none;background:none;}
   font-weight:700;line-height:1.35;}
 .fx-erro{background:var(--red-dim);color:#FFB4B6;border-bottom:1px solid rgba(239,68,68,.32);}
 .fx-load{background:rgba(76,123,243,.12);color:var(--t3);border-bottom:1px solid rgba(76,123,243,.22);}
+/* Faltou uma parte, mas o resto da tela esta em dia: aviso, nao erro. */
+.fx-parcial{background:rgba(217,160,38,.14);color:#F2C464;border-bottom:1px solid rgba(217,160,38,.32);}
 .fx-txt{flex:1 1 200px;min-width:0;}
 .fx-btn{flex-shrink:0;height:36px;padding:0 15px;border-radius:999px;background:rgba(255,255,255,.10);
   border:1px solid rgba(255,255,255,.26);color:inherit;font-size:12.5px;font-weight:800;}
@@ -334,6 +336,8 @@ function toast(msg,tipo){
 /* ───────── prazo nas leituras ─────────
    Sem prazo, o celular com sinal fraco fica pendurado sem dizer nada. */
 const PRAZO_MS=15000;
+/* Segunda tentativa: vai sozinha na internet, então vale esperar bem mais. */
+const PRAZO_CALMA_MS=45000;
 function comPrazo(p,ms,oque){
   return new Promise((ok,erro)=>{
     let vivo=true;
@@ -343,6 +347,21 @@ function comPrazo(p,ms,oque){
     Promise.resolve(p).then(v=>{ if(!vivo) return; vivo=false; clearTimeout(t); ok(v); },
                             e=>{ if(!vivo) return; vivo=false; clearTimeout(t); erro(e); });
   });
+}
+/* Insistir não adianta quando o problema é de login ou de permissão. */
+function valeTentarDeNovo(e){
+  const c=String(e&&e.code||"");
+  return !(c.includes("permission")||c.includes("unauthenticated"));
+}
+/* Em português, o que de fato aconteceu. */
+function motivoLeitura(e){
+  const c=String(e&&e.code||"");
+  if(c==="mello/prazo") return "a internet está lenta demais";
+  if(c.includes("unavailable")||c.includes("network")) return "sem conexão";
+  if(c.includes("permission")) return "sem permissão de leitura";
+  if(c.includes("resource-exhausted")||c.includes("quota")) return "o limite diário do Firebase acabou";
+  if(c.includes("unauthenticated")) return "a sessão caiu";
+  return "";
 }
 
 /* ───────── estado ───────── */
@@ -455,26 +474,36 @@ function faixa(estado,msg){
   if(estado==="ok"){ el.className=""; el.innerHTML=""; return; }
   if(estado==="load"){
     el.className="fx fx-load";
-    el.innerHTML='<span class="giro" aria-hidden="true"></span><span>Carregando os lançamentos…</span>';
+    el.innerHTML='<span class="giro" aria-hidden="true"></span><span>'+esc(msg||"Carregando os lançamentos…")+'</span>';
     return;
   }
-  el.className="fx fx-erro";
+  /* Insistindo: avisa, mas deixa o botão à mão para quem não quer esperar. */
+  if(estado==="tentando"){
+    el.className="fx fx-parcial";
+    el.innerHTML='<span class="giro" aria-hidden="true"></span><span class="fx-txt">'+esc(msg||"A internet está lenta — tentando de novo…")+'</span>'
+      +'<button type="button" class="fx-btn" id="fx-retry">Tentar agora</button>';
+    const bb=$("fx-retry"); if(bb) bb.onclick=()=>{ pararTentativas(); carregando=false; recarregar(); };
+    return;
+  }
+  /* Faltou uma parte só, com o resto da tela certo: isso é aviso, não erro.
+     Em vermelho a dona lê como "nada aqui presta". */
+  el.className=(estado==="parcial"?"fx fx-parcial":"fx fx-erro");
   el.innerHTML='<span aria-hidden="true">⚠</span><span class="fx-txt">'+esc(msg||"Não consegui carregar. Os números abaixo podem estar incompletos.")+'</span>'
     +'<button type="button" class="fx-btn" id="fx-retry">Tentar de novo</button>';
   const b=$("fx-retry"); if(b) b.onclick=()=>recarregar();
 }
 
 /* ───────── carregar ───────── */
-async function carregarColaboradores(){
+async function carregarColaboradores(prazo=PRAZO_MS){
   const uid=auth.currentUser?.uid; if(!uid) return;
-  const snap=await comPrazo(getDocs(query(collection(db,COL_COLAB),where("ownerId","==",uid))),PRAZO_MS,"pessoas");
+  const snap=await comPrazo(getDocs(query(collection(db,COL_COLAB),where("ownerId","==",uid))),prazo,"pessoas");
   colaboradores=snap.docs.map(d=>({id:d.id,nome:String(d.data().nome||"").trim()}))
     .filter(c=>c.nome)
     .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
 }
-async function carregarMetas(){
+async function carregarMetas(prazo=PRAZO_MS){
   const uid=auth.currentUser?.uid; if(!uid) return;
-  const snap=await comPrazo(getDocs(query(collection(db,COL_METAS),where("ownerId","==",uid))),PRAZO_MS,"metas");
+  const snap=await comPrazo(getDocs(query(collection(db,COL_METAS),where("ownerId","==",uid))),prazo,"metas");
   if(!snap.empty){
     const d=snap.docs[0]; metasDocId=d.id;
     const dd=d.data()||{};
@@ -486,37 +515,87 @@ async function carregarMetas(){
     if(Number(j.sexta)>0) jornada.sexta=Number(j.sexta);
   }
 }
-async function carregarMes(mes){
+async function carregarMes(mes,prazo=PRAZO_MS){
   const uid=auth.currentUser?.uid; if(!uid) return;
-  const snap=await comPrazo(getDocs(query(collection(db,COL_DIA),where("ownerId","==",uid))),PRAZO_MS,"lançamentos");
+  const snap=await comPrazo(getDocs(query(collection(db,COL_DIA),where("ownerId","==",uid))),prazo,"lançamentos");
   lancamentos=snap.docs.map(d=>({id:d.id,...d.data()}))
     .filter(l=>l && l.data)
     .map(l=>({id:l.id,colaborador:String(l.colaborador||"").trim(),data:String(l.data),pecas:Number(l.pecas||0)}));
   mesCarregado=mes;
 }
 
+/* Continua tentando sozinho, com intervalos crescentes, em vez de deixar a
+   faixa vermelha parada esperando alguém apertar o botão. */
+let __tentarTimer=null, __tentarN=0;
+function pararTentativas(){
+  if(__tentarTimer){ clearTimeout(__tentarTimer); __tentarTimer=null; }
+  __tentarN=0;
+}
+function agendarTentativa(){
+  if(__tentarTimer) return;
+  const esperas=[5000,15000,40000];
+  if(__tentarN>=esperas.length) return;
+  const ms=esperas[__tentarN++];
+  __tentarTimer=setTimeout(()=>{ __tentarTimer=null; if(falhou) recarregar(); },ms);
+}
 async function recarregar(){
   if(carregando) return;
-  carregando=true; falhou=false;
+  carregando=true;
   faixa("load");
-  try{
-    await carregarColaboradores();
-    await carregarMetas();
-    await carregarMes(mesSel);
-    falhou=false;
-    faixa("ok");
-  }catch(e){
-    console.error("LOAD_ERROR",e);
-    falhou=true;
-    faixa("erro", e?.code==="mello/prazo"
-      ? "O servidor não respondeu. O sinal pode estar fraco — os números abaixo podem estar incompletos."
-      : (String(e?.code||"").includes("permission")
-          ? "Sem permissão para este login."
-          : "Não consegui carregar. Verifique a internet."));
-  }finally{
-    carregando=false;
-    render();
+  /* As três partes são independentes: antes, qualquer uma que falhasse
+     derrubava as outras duas — bastava a última falhar para a tela virar
+     erro com as pessoas e as metas já na mão. */
+  const partes=[
+    ["as pessoas",    p=>carregarColaboradores(p)],
+    ["as metas",      p=>carregarMetas(p)],
+    ["os lançamentos",p=>carregarMes(mesSel,p)]
+  ];
+  let faltou=[], motivo="";
+  /* Primeira rodada: 15s por parte. No pior caso 45 segundos até a tela
+     mostrar alguma coisa — e não três minutos, que era o que dava quando a
+     segunda tentativa ficava embutida em cada leitura. */
+  for(const [nome,fn] of partes){
+    try{ await fn(PRAZO_MS); }
+    catch(e){
+      console.error("LOAD_ERROR",nome,e);
+      faltou.push([nome,fn,e]);
+      if(!motivo) motivo=motivoLeitura(e);
+    }
   }
+  /* Segunda rodada: só o que faltou, com mais tempo, avisando na tela. Num
+     sinal fraco a primeira leitura falha com frequência e a segunda passa. */
+  if(faltou.length && faltou.some(([,,e])=>valeTentarDeNovo(e))){
+    faixa("tentando","A internet está lenta — tentando de novo…");
+    render();
+    const resta=[];
+    /* 45 segundos para a rodada INTEIRA, não para cada parte: com a internet
+       que não responde nunca, por parte isso virava três minutos de tela
+       parada. Assim o pior caso é 45s da primeira rodada mais 45s desta. */
+    const ateQuando=Date.now()+PRAZO_CALMA_MS;
+    for(const [nome,fn,e0] of faltou){
+      if(!valeTentarDeNovo(e0)){ resta.push([nome,fn,e0]); continue; }
+      const sobra=Math.max(4000,ateQuando-Date.now());
+      try{ await fn(sobra); }
+      catch(e){ console.error("LOAD_RETRY_ERROR",nome,e); resta.push([nome,fn,e]); }
+    }
+    faltou=resta;
+    motivo=faltou.length?motivoLeitura(faltou[0][2]):"";
+  }
+  faltou=faltou.map(x=>x[0]);
+  falhou=faltou.length>0;
+  if(!falhou){
+    pararTentativas();
+    faixa("ok");
+  }else{
+    const comp=motivo?" Motivo: "+motivo+"." : "";
+    faixa(faltou.length<partes.length?"parcial":"erro",
+      faltou.length<partes.length
+        ? ("Carreguei quase tudo. Faltou "+faltou.join(" e ")+" — essa parte pode estar desatualizada."+comp+" Já estou tentando de novo.")
+        : ("Não consegui carregar os dados agora."+comp+" Já estou tentando de novo."));
+    agendarTentativa();
+  }
+  carregando=false;
+  render();
 }
 
 /* ───────── gravar ───────── */
