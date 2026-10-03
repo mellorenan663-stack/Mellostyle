@@ -1400,6 +1400,19 @@ function sortByField(list, field, dir="desc"){
 /* ── ESTADO DA CARGA DE DADOS ──────────────────────────────────────────
    Sem prazo, uma leitura presa deixa a tela em R$ 0,00 para sempre. */
 const LEITURA_PRAZO_MS=15000;
+/* Segunda rodada: a parte que não veio é baixada sozinha, então vale esperar
+   bem mais — não há mais ninguém dividindo a internet com ela. */
+const LEITURA_PRAZO_CALMA_MS=60000;
+/* Em português, o que de fato aconteceu com a leitura. */
+function motivoLeitura(e){
+  const c=String(e&&e.code||"");
+  if(c==="mello/prazo") return "a internet está lenta demais";
+  if(c.indexOf("unavailable")>=0||c.indexOf("network")>=0) return "sem conexão";
+  if(c.indexOf("permission")>=0) return "sem permissão de leitura";
+  if(c.indexOf("resource-exhausted")>=0||c.indexOf("quota")>=0) return "o limite diário do Firebase acabou";
+  if(c.indexOf("unauthenticated")>=0) return "a sessão caiu";
+  return "";
+}
 function comPrazo(promessa,ms,oque){
   return new Promise((ok,erro)=>{
     let vivo=true;
@@ -1410,11 +1423,11 @@ function comPrazo(promessa,ms,oque){
                                    e=>{ if(!vivo) return; vivo=false; clearTimeout(t); erro(e); });
   });
 }
-async function getOwnedDocs(collectionName,{sortField=null,dir="desc"}={}){
+async function getOwnedDocs(collectionName,{sortField=null,dir="desc",prazo=LEITURA_PRAZO_MS}={}){
   // Com o login de um botão (anônimo), o uid muda por aparelho — então a
   // leitura é sempre da coleção inteira, filtrada por canAccessDoc
   // (empresaId). Uma única leitura por coleção.
-  const snap=await comPrazo(getDocs(collection(db,collectionName)),LEITURA_PRAZO_MS,collectionName);
+  const snap=await comPrazo(getDocs(collection(db,collectionName)),prazo,collectionName);
   /* Mesma regra do canAccessDoc, mas com o uid e a empresa resolvidos uma vez
      e numa passada só: antes eram três voltas em 20 mil itens e uma leitura
      de configuração por documento. */
@@ -1460,6 +1473,22 @@ function avisoDadosEl(){
   return el;
 }
 let __ultimaFalha=[];
+/* Por que não veio, em português, para a faixa poder dizer. */
+let __motivoFalha="";
+/* O nome das coleções como a dona as conhece. "controleProducaoHora" não diz
+   nada para quem usa o sistema; "controle por hora" diz. */
+const NOME_PARTE={
+  funcionarios:"funcionárias", registros:"lançamentos de produção",
+  lotes:"OFs", gastos:"gastos", pontos:"faltas e horas extras",
+  clientes:"clientes", controleProducaoHora:"controle por hora",
+  configuracoes:"metas", tudo:"tudo"
+};
+function listaDePartes(nomes){
+  const l=(nomes||[]).map(n=>NOME_PARTE[n]||n);
+  if(!l.length) return "";
+  if(l.length===1) return l[0];
+  return l.slice(0,-1).join(", ")+" e "+l[l.length-1];
+}
 function mostrarEstadoDados(estado,detalhe){
   const el=avisoDadosEl(); if(!el) return;
   if(estado==="ok"){ el.className=""; el.innerHTML=""; __ultimaFalha=[]; return; }
@@ -1471,16 +1500,31 @@ function mostrarEstadoDados(estado,detalhe){
     el.innerHTML='<span class="av-giro" aria-hidden="true"></span><span>Carregando os dados da fábrica…</span>';
     return;
   }
+  /* Está demorando, mas ainda está vindo: isto não é falha. */
+  if(estado==="demorando"&&!__dadosFalharam){
+    el.className="av-dados av-carregando";
+    el.innerHTML='<span class="av-giro" aria-hidden="true"></span>'
+      +'<span>Ainda baixando os dados da fábrica — a internet está lenta. Pode deixar aberto.</span>';
+    return;
+  }
   const tentando=(estado==="carregando"||estado==="tentando");
   if(Array.isArray(detalhe)) __ultimaFalha=detalhe;
   const quantos=__ultimaFalha.length;
-  const titulo=__dadosJaVieram
-    ? "Não consegui atualizar os dados agora — o que está na tela é do último carregamento."
-    : "Não consegui carregar os dados. Os valores abaixo NÃO são os da sua fábrica.";
-  el.className="av-dados av-falhou";
+  const faltou=listaDePartes(__ultimaFalha);
+  /* Três conversas diferentes, não uma só:
+     · quase tudo veio  → diz o que faltou e que o resto está em dia;
+     · nada veio e havia dado certo antes → a tela é do carregamento anterior;
+     · nada veio e nunca deu certo → os números na tela não são da fábrica. */
+  const parcial=quantos>0&&quantos<7;
+  const titulo=parcial
+    ? ("Carreguei quase tudo. Faltou só: "+escapeHtml(faltou)+" — essa parte pode estar desatualizada; o resto da tela é de agora.")
+    : (__dadosJaVieram
+        ? "Não consegui atualizar os dados agora — o que está na tela é do último carregamento."
+        : "Não consegui carregar os dados. Os valores abaixo NÃO são os da sua fábrica.");
+  el.className="av-dados av-falhou"+(parcial?" av-parcial":"");
   el.innerHTML='<span class="av-sinal" aria-hidden="true">⚠</span>'
     +'<span class="av-txt">'+titulo
-      +(quantos&&quantos<7?' <span class="av-det">('+quantos+' de 7 partes não vieram)</span>':'')
+      +(__motivoFalha?' <span class="av-det">Motivo: '+escapeHtml(__motivoFalha)+'.</span>':'')
       +(tentando?' <span class="av-det">Tentando de novo…</span>':'')+'</span>'
     +(tentando
       ? '<span class="av-giro" aria-hidden="true"></span>'
@@ -1522,11 +1566,10 @@ function armarVigiaCarga(){
   if(__vigiaCarga) clearTimeout(__vigiaCarga);
   __vigiaCarga=setTimeout(()=>{
     __vigiaCarga=null;
-    if(__loadDataInflight){
-      __dadosFalharam=true;
-      mostrarEstadoDados("falhou",["tudo"]);
-      agendarNovaTentativa();
-    }
+    /* Ainda baixando. Antes isto declarava falha E disparava outra carga por
+       cima — numa internet fraca, a carga nova roubava banda da que já estava
+       quase terminando e as duas estouravam. Agora só avisa que demora. */
+    if(__loadDataInflight) mostrarEstadoDados("demorando");
   },CARGA_VIGIA_MS);
 }
 async function loadData(){
@@ -1554,6 +1597,8 @@ async function _loadDataReal(){
   /* As falhas são juntadas numa faixa só: seis avisos de 3,6s se cobriam e
      sumiam antes de a dona ler qualquer coisa. */
   const falhou=[];
+  /* O que não veio na primeira rodada, para tentar de novo com calma. */
+  const pendentes=[];
   const minhaCarga=++__cargaSeq;
   const souAAtual=()=>minhaCarga===__cargaSeq;
   const safeGet=async(collectionName,options,fallback)=>{
@@ -1563,7 +1608,40 @@ async function _loadDataReal(){
     }catch(e){
       console.error('LOAD_COLLECTION_ERROR',collectionName,e);
       falhou.push(collectionName);
+      pendentes.push({nome:collectionName,options,erro:e});
       return Array.isArray(fallback)?fallback:[];
+    }
+  };
+  /* Onde cada coleção mora na memória do app. */
+  const guardar={
+    funcionarios:v=>{funcionarios=v;}, registros:v=>{registros=v;},
+    lotes:v=>{lotes=v;},               gastos:v=>{gastos=v;},
+    pontos:v=>{pontos=v;},             clientes:v=>{clientes=v;},
+    controleProducaoHora:v=>{controleProducaoHora=v;}
+  };
+  /* Cinco coleções grandes baixando juntas dividem a mesma internet: num sinal
+     fraco cada uma anda a um quinto da velocidade e as cinco estouram o prazo
+     ao mesmo tempo — era isso que fazia o app dizer "5 de 7 partes não vieram"
+     com a internet funcionando. Aqui elas voltam UMA DE CADA VEZ, cada uma com
+     a banda inteira e bem mais tempo. */
+  const segundaRodada=async()=>{
+    if(!pendentes.length) return;
+    const lista=pendentes.splice(0,pendentes.length);
+    mostrarEstadoDados("demorando");
+    for(const p of lista){
+      if(!souAAtual()) return;
+      try{
+        const docs=await getOwnedDocs(p.nome,{...p.options,prazo:LEITURA_PRAZO_CALMA_MS});
+        if(!souAAtual()) return;
+        if(Array.isArray(docs)&&guardar[p.nome]){
+          guardar[p.nome](docs);
+          const i=falhou.indexOf(p.nome);
+          if(i>=0) falhou.splice(i,1);
+        }
+      }catch(e){
+        console.error('LOAD_COLLECTION_RETRY_ERROR',p.nome,e);
+        if(!__motivoFalha) __motivoFalha=motivoLeitura(e)||motivoLeitura(p.erro);
+      }
     }
   };
   if(!__dadosJaVieram) mostrarEstadoDados(__dadosFalharam?"tentando":"carregando");
@@ -1607,16 +1685,35 @@ async function _loadDataReal(){
       lixeira:typeof renderLixeira==="function"?renderLixeira:null,
       auditoria:typeof renderAuditoria==="function"?renderAuditoria:null};
     if(!souAAtual()) return;   // um carregamento mais novo já assumiu
-    if(falhou.length){
-      __dadosFalharam=true;
-      mostrarEstadoDados("falhou",falhou);
-      agendarNovaTentativa();
-    }else{
+    /* Primeiro pinta com o que JÁ chegou — quem está esperando o saldo quer
+       ver o que existe, não uma tela em R$ 0,00 até a última parte vir. Se
+       algo ficou faltando, a faixa diz que ainda está vindo e a verdade só é
+       dita depois da segunda rodada, logo abaixo. */
+    const deuCerto=()=>{
+      __motivoFalha="";
       __dadosJaVieram=true; __dadosFalharam=false; __retryN=0;
       if(__retryTimer){ clearTimeout(__retryTimer); __retryTimer=null; }
       mostrarEstadoDados("ok");
-    }
+    };
+    if(pendentes.length) mostrarEstadoDados("demorando");
+    else if(falhou.length){ __dadosFalharam=true; mostrarEstadoDados("falhou",falhou); agendarNovaTentativa(); }
+    else deuCerto();
     try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); toast('Erro ao renderizar a aba atual: '+(e?.message||e),'err'); }
+
+    /* Agora sim o que faltou, uma de cada vez e com a internet inteira para
+       si. Cinco coleções grandes baixando juntas dividem a mesma banda: num
+       sinal fraco todas estouram o prazo ao mesmo tempo, e era isso que fazia
+       o app dizer "5 de 7 partes não vieram" com a internet funcionando. */
+    if(pendentes.length){
+      await segundaRodada();
+      if(!souAAtual()) return;
+      __dadosVersao++;
+      try{ aquecerBusca(); }catch(e){}
+      try{ populateSelects(); }catch(e){ console.error('POPULATE_SELECTS_ERROR',e); }
+      if(falhou.length){ __dadosFalharam=true; mostrarEstadoDados("falhou",falhou); agendarNovaTentativa(); }
+      else deuCerto();
+      try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); }
+    }
 
     const refreshBtn=document.querySelector('.btn-topbar-refresh');
     if(refreshBtn){
@@ -1630,11 +1727,16 @@ async function _loadDataReal(){
     Promise.all([
       safeGet("controleProducaoHora",{sortField:"createdAt",dir:"desc"},previous.controleProducaoHora),
       safeGet("clientes",{sortField:"nome",dir:"asc"},previous.clientes)
-    ]).then(([cphDocs,cliDocs])=>{
+    ]).then(async([cphDocs,cliDocs])=>{
       if(!souAAtual()) return;   // chegou atrasado: não escreve por cima
       controleProducaoHora=cphDocs;
       clientes=cliDocs;
+      await segundaRodada();
+      if(!souAAtual()) return;
       if(falhou.length){ __dadosFalharam=true; mostrarEstadoDados("falhou",falhou); agendarNovaTentativa(); }
+      else if(__dadosFalharam){ __dadosJaVieram=true; __dadosFalharam=false; __retryN=0;
+        if(__retryTimer){ clearTimeout(__retryTimer); __retryTimer=null; }
+        mostrarEstadoDados("ok"); }
       __dadosVersao++; try{ populateSelects(); }catch(_e){}
       if(["controlehora","clientes","fat-cliente","relatorio","backup","bancohoras"].includes(currentPage)){
         try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); }
@@ -1654,6 +1756,7 @@ async function _loadDataReal(){
   }catch(e){
     console.error("LOAD_DATA_FATAL_ERROR",e);
     if(!souAAtual()) return;
+    __motivoFalha=motivoLeitura(e);
     funcionarios=previous.funcionarios;registros=previous.registros;lotes=previous.lotes;gastos=previous.gastos;pontos=previous.pontos;controleProducaoHora=previous.controleProducaoHora;clientes=previous.clientes;
     __dadosFalharam=true;
     mostrarEstadoDados("falhou",["tudo"]);
@@ -19300,6 +19403,11 @@ html[data-theme="escuro"] .summary-bar{
 .av-carregando{
   background:rgba(127,167,230,.12); color:var(--t2,#9FB0C6); border-bottom-color:rgba(127,167,230,.24);
 }
+/* Faltou uma parte, mas o resto da tela está em dia: isso é aviso, não erro.
+   Em vermelho a dona lia como "nada aqui presta" e os números estavam certos. */
+.av-parcial{
+  background:rgba(217,160,38,.14); color:#F2C464; border-bottom-color:rgba(217,160,38,.34);
+}
 .av-txt{ flex:1 1 220px; min-width:0; }
 .av-det{ font-weight:600; opacity:.85; }
 .av-sinal{ font-size:15px; flex-shrink:0; }
@@ -19317,6 +19425,7 @@ html[data-theme="escuro"] .summary-bar{
 @keyframes avGiro{ to{ transform:rotate(360deg); } }
 html[data-theme="claro"] .av-falhou{ background:rgba(185,28,28,.10); color:#9B1C1C; border-bottom-color:rgba(185,28,28,.22); }
 html[data-theme="claro"] .av-carregando{ background:rgba(29,78,216,.08); color:#1E40AF; border-bottom-color:rgba(29,78,216,.18); }
+html[data-theme="claro"] .av-parcial{ background:rgba(180,120,10,.10); color:#8A5A08; border-bottom-color:rgba(180,120,10,.22); }
 html[data-theme="claro"] .av-btn{ border-color:rgba(0,0,0,.18); background:rgba(0,0,0,.05); }
 @media (prefers-reduced-motion:reduce){ .av-giro{ animation:none; } }
 
