@@ -2189,6 +2189,39 @@ function calcBancoHoras(funcId,mesAno){
 
   return{faltasDia,faltasMeio,extrasSimples,extrasDuplas,faltasCustom,extrasCustom,minFaltas,minExtras,saldoMin,desconto:descontoAplicado,descontoCheio,descontoLimitado,semVinculo,valorExtras:extrasPagas,bonus:bonusFinal,bonusBloqueado:(bonusBloqueadoPorFalta||bonusBloqueadoPorSaldo)&&bonus>0,salarioBase,salarioBaseCheio:salario,admProporcional,admDiasTrab,admDiasMes,salarioFinal,registrosMes};
 }
+/* ── Mexer num lançamento sem rebaixar a fábrica inteira ──────────────
+   A lista de pontos vem do Firebase ordenada por data, da mais nova para a
+   mais antiga. Aqui ela é mantida assim depois de incluir ou mudar, para a
+   tela e o backup saírem na mesma ordem de sempre. */
+function __ordenarPontos(){
+  pontos.sort((a,b)=>String(b.data||"").localeCompare(String(a.data||"")));
+}
+/* A tabela e os cartões mostram só o "Mês de referência". Um lançamento numa
+   data de outro mês gravava e sumia da vista: a dona via "registrada!" e tela
+   nenhuma mudando, e lançava de novo. Agora a tela vai para o mês do
+   lançamento, e o aviso diz para onde foi. */
+function __mostrarMesDoPonto(data){
+  const mes=String(data||"").slice(0,7);
+  const el=$("bh-mes");
+  if(!mes||!el||el.value===mes) return "";
+  el.value=mes;
+  try{ return formatMonthLabel(mes); }catch(_e){ return mes; }
+}
+function aplicarLocalPonto(acao,dados){
+  try{
+    if(acao==="incluir"){ pontos.push(dados); __ordenarPontos(); }
+    else if(acao==="apagar"){ const i=pontos.findIndex(p=>p.id===dados); if(i>=0) pontos.splice(i,1); }
+    else if(acao==="mudar"){ const p=pontos.find(x=>x.id===dados.id); if(p) Object.assign(p,dados); __ordenarPontos(); }
+  }catch(e){ console.error("PONTO_LOCAL",e); }
+  __dadosVersao++;
+  try{ atualizarContadoresMenu(); }catch(_e){}
+  /* Só a tela que está à vista precisa ser redesenhada. */
+  try{
+    const r={bancohoras:renderBancoHoras,dashboard:renderDashboard,
+             relatorio:renderRelatorio,backup:renderBackup}[currentPage];
+    if(typeof r==="function") r();
+  }catch(e){ console.error("PONTO_RENDER",e); }
+}
 window.salvarPonto=async()=>{
   const funcId=$("bh-funcionario").value;
   const data=$("bh-data").value;
@@ -2208,22 +2241,57 @@ window.salvarPonto=async()=>{
   const trava=travarSalvar('button[onclick="salvarPonto()"]',"Registrando...");
   if(!trava.ok) return;
   try{
-    await addDoc(collection(db,"pontos"),withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,minutos,obs,criadoEm:Timestamp.now()}));
+    const dados=withOwner({funcionarioId:funcId,funcionarioNome:f.nome,data,tipo,minutos,obs,criadoEm:Timestamp.now()});
+    const ref=await addDoc(collection(db,"pontos"),dados);
     [$("bh-data"),$("bh-obs")].forEach(el=>{if(el)el.value="";});
     $("bh-tipo").value="falta";
     if($("bh-horas")) $("bh-horas").value="";
     previewHoras("bh-horas","bh-horas-preview");
-    toast(tipo==="falta"?"Falta registrada!":"Hora extra registrada!");
-    await loadData();
+    const outroMes=__mostrarMesDoPonto(data);
+    toast((tipo==="falta"?"Falta registrada!":"Hora extra registrada!")
+      +(outroMes?" Mostrando "+outroMes+".":""));
+    /* Guardado. A lista na memória recebe o mesmo que foi para o banco, e só
+       esta tela se redesenha — nada de reler a fábrica inteira. */
+    aplicarLocalPonto("incluir",{id:ref.id,...dados});
+    __piscarPonto(ref.id);
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{ trava.solta(); }
 };
 
+let __apagandoPonto=false;
 window.deletarPonto=async id=>{
+  /* Dois toques seguidos no ✕ mandavam duas remoções. */
+  if(__apagandoPonto) return;
   if(!confirm("Remover este registro do banco de horas? Ele vai para a Lixeira."))return;
-  try{await deleteDoc(doc(db,"pontos",id));toast("Removido.");await loadData();}
-  catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
+  __apagandoPonto=true;
+  /* A linha some do caminho na hora: a dona vê que o toque pegou. */
+  const linha=document.querySelector('#bh-tbody button[onclick="deletarPonto(\''+id+'\')"]')?.closest("tr");
+  if(linha) linha.style.opacity=".4";
+  try{
+    await deleteDoc(doc(db,"pontos",id));
+    toast("Removido.");
+    aplicarLocalPonto("apagar",id);
+  }catch(e){
+    console.error("SAVE_ERROR",e);
+    if(linha) linha.style.opacity="";
+    toast(firebaseErrorMessage(e),"err");
+  }
+  finally{ __apagandoPonto=false; }
 };
+/* Pisca a linha nova por um instante: sem isso, numa tabela com vários
+   lançamentos, a dona salva e não sabe qual linha é a dela. */
+function __piscarPonto(id){
+  try{
+    requestAnimationFrame(()=>{
+      const b=document.querySelector('#bh-tbody button[onclick="deletarPonto(\''+id+'\')"]');
+      const tr=b&&b.closest("tr");
+      if(!tr) return;
+      tr.classList.add("bh-novo");
+      tr.scrollIntoView({block:"nearest"});
+      setTimeout(()=>{ try{ tr.classList.remove("bh-novo"); }catch(_e){} },1800);
+    });
+  }catch(_e){}
+}
 
 function renderBancoHoras(){
   const mesEl=$("bh-mes");
@@ -3787,8 +3855,13 @@ window.salvarEdicaoPonto=async()=>{
   const f=funcionarios.find(x=>x.id===funcId);
   const btn=$("btn-salvar-edit-ponto");btn.disabled=true;btn.textContent="Salvando...";
   try{
-    await updateDoc(doc(db,"pontos",id),withOwner({funcionarioId:funcId,funcionarioNome:f?.nome||"—",data,tipo,minutos,obs}));
-    toast("Registro atualizado!");fecharModalEditarPonto();await loadData();
+    const dados=withOwner({funcionarioId:funcId,funcionarioNome:f?.nome||"—",data,tipo,minutos,obs});
+    await updateDoc(doc(db,"pontos",id),dados);
+    const outroMes=__mostrarMesDoPonto(data);
+    toast("Registro atualizado!"+(outroMes?" Mostrando "+outroMes+".":""));
+    fecharModalEditarPonto();
+    aplicarLocalPonto("mudar",{id,...dados});
+    __piscarPonto(id);
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{btn.disabled=false;btn.textContent="Salvar Alterações";}
 };
@@ -19422,6 +19495,11 @@ html[data-theme="escuro"] .summary-bar{
 .av-falhou{
   background:rgba(229,72,77,.14); color:#FFB4B6; border-bottom-color:rgba(229,72,77,.34);
 }
+/* A linha que acabou de ser lançada pisca um instante: numa tabela com vários
+   registros, sem isto a dona salva e não sabe qual linha é a dela. */
+@keyframes bhNovo{ from{ background:rgba(76,123,243,.30); } to{ background:transparent; } }
+#bh-tbody tr.bh-novo{ animation:bhNovo 1.8s ease-out; }
+@media (prefers-reduced-motion:reduce){ #bh-tbody tr.bh-novo{ animation:none; outline:2px solid var(--accent); } }
 .av-carregando{
   background:rgba(127,167,230,.12); color:var(--t2,#9FB0C6); border-bottom-color:rgba(127,167,230,.24);
 }
