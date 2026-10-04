@@ -144,6 +144,41 @@ button{cursor:pointer;border:none;background:none;}
 .md-n{font-family:var(--fm);font-weight:700;width:74px;text-align:right;flex-shrink:0;}
 .ver-dias{width:100%;height:38px;margin-top:10px;border-radius:10px;background:var(--bg3);
   border:1px solid var(--bd2);font-size:12.5px;font-weight:700;color:var(--t3);}
+/* lápis em cada linha do dia a dia: corrige ali onde o número errado aparece */
+.md-ed{width:34px;height:34px;flex-shrink:0;border-radius:9px;background:var(--bg3);
+  border:1px solid var(--bd2);color:var(--t3);font-size:13px;position:relative;}
+.md-ed::after{content:"";position:absolute;inset:-6px;}
+.md-n{width:66px;}
+
+/* botão de editar no alto da aba Dia */
+.editar-btn{height:42px;padding:0 13px;border-radius:10px;background:var(--accent-dim);
+  border:1px solid rgba(76,123,243,.38);font-size:12.5px;font-weight:700;color:var(--accent-lt);}
+
+/* ── janelinha de editar um lançamento ── */
+.ed-ov{position:fixed;inset:0;z-index:60;background:rgba(3,6,14,.74);
+  display:none;align-items:center;justify-content:center;padding:16px;}
+.ed-ov.on{display:flex;}
+.ed-bx{width:100%;max-width:420px;background:var(--bg2);border:1px solid var(--bd2);
+  border-radius:18px;padding:16px 16px 15px;box-shadow:var(--shadow-lg);
+  max-height:92vh;overflow:auto;}
+.ed-hd{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.ed-t{font-size:15.5px;font-weight:800;flex:1;}
+.ed-x{width:44px;height:44px;flex-shrink:0;border-radius:11px;background:var(--bg3);
+  border:1px solid var(--bd2);color:var(--t3);font-size:16px;font-weight:700;}
+.ed-c{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+.ed-c label{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;}
+.ed-c select,.ed-c input{width:100%;height:50px;background:var(--bg3);border:1px solid var(--bd2);
+  border-radius:11px;color:var(--t);font-size:16px;font-weight:700;padding:0 12px;}
+.ed-c input{font-family:var(--fm);font-size:20px;text-align:center;}
+.ed-c select:focus,.ed-c input:focus{outline:none;border-color:var(--accent);}
+.ed-info{background:var(--bg3);border:1px solid var(--bd);border-radius:11px;padding:10px 12px;
+  font-size:12.5px;color:var(--t3);font-weight:600;line-height:1.55;margin-bottom:13px;}
+.ed-info b{color:var(--t);font-family:var(--fm);}
+.ed-pe{display:flex;gap:9px;}
+.ed-b{height:50px;border-radius:12px;font-size:14px;font-weight:800;}
+.ed-sal{flex:1;background:var(--accent);color:#fff;border:1px solid var(--accent);}
+.ed-del{flex:0 0 112px;background:var(--red-dim);border:1px solid rgba(239,68,68,.34);color:#FF8B8D;}
+.ed-b:disabled{opacity:.5;}
 
 /* ajustes */
 .card{background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:15px 16px;margin-bottom:13px;}
@@ -224,6 +259,33 @@ button{cursor:pointer;border:none;background:none;}
 
   <div id="faixa"></div>
 
+  <!-- EDITAR UM LANÇAMENTO -->
+  <div class="ed-ov" id="ed-ov" role="dialog" aria-modal="true" aria-labelledby="ed-t">
+    <div class="ed-bx">
+      <div class="ed-hd">
+        <div class="ed-t" id="ed-t">Editar lançamento</div>
+        <button type="button" class="ed-x" id="ed-x" aria-label="Fechar">&#10005;</button>
+      </div>
+      <div class="ed-c">
+        <label for="ed-pessoa">Revisora</label>
+        <select id="ed-pessoa"></select>
+      </div>
+      <div class="ed-c">
+        <label for="ed-dia">Dia</label>
+        <input type="date" id="ed-dia">
+      </div>
+      <div class="ed-c">
+        <label for="ed-pecas">Peças revisadas</label>
+        <input type="text" inputmode="numeric" id="ed-pecas" placeholder="0">
+      </div>
+      <div class="ed-info" id="ed-info"></div>
+      <div class="ed-pe">
+        <button type="button" class="ed-b ed-del" id="ed-del">Apagar</button>
+        <button type="button" class="ed-b ed-sal" id="ed-sal">Salvar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="wrap">
     <div class="abas">
       <button type="button" class="aba on" data-aba="hoje">Dia</button>
@@ -237,6 +299,7 @@ button{cursor:pointer;border:none;background:none;}
         <label for="f-data">Dia</label>
         <input type="date" id="f-data">
         <button type="button" class="hoje-btn" id="btn-hoje">Hoje</button>
+        <button type="button" class="editar-btn" id="btn-editar">&#9998; Editar lançamento</button>
         <div class="meta-hoje" id="meta-hoje"></div>
       </div>
       <div id="time-hoje"></div>
@@ -648,6 +711,94 @@ async function salvarDia(nome,ds,qtd){
   }
 }
 
+/* ───────── janelinha de editar um lançamento ─────────
+   A mesma janela serve para os dois caminhos: o botão no alto da aba Dia
+   (escolhendo tudo do zero) e o lápis no dia a dia da aba Mês (já preenchida).
+   Ela mostra a meta daquele dia enquanto a pessoa digita, para não precisar
+   lembrar que na sexta a meta é menor. */
+let __edGravando=false;
+function abrirEditor(nome,ds){
+  if(!colaboradores.length){ toast("Cadastre as revisoras em Ajustes primeiro.","err"); return; }
+  const sel=$("ed-pessoa");
+  sel.innerHTML=colaboradores.map(c=>'<option value="'+esc(c.nome)+'">'+esc(c.nome)+'</option>').join("");
+  sel.value=(nome&&colaboradores.some(c=>c.nome===nome))?nome:colaboradores[0].nome;
+  $("ed-dia").value=ds||dataSel;
+  edPuxarValor();
+  $("ed-ov").classList.add("on");
+  setTimeout(()=>{ try{ $("ed-pecas").focus(); $("ed-pecas").select(); }catch(_e){} },60);
+}
+function fecharEditor(){
+  $("ed-ov").classList.remove("on");
+}
+/* Trocou a pessoa ou o dia: mostra o que já está guardado para esse par. */
+function edPuxarValor(){
+  const nome=$("ed-pessoa").value, ds=$("ed-dia").value;
+  const ja=(nome&&ds)?lancamentoDe(nome,ds):null;
+  $("ed-pecas").value=ja?String(ja.pecas):"";
+  edAtualizarInfo();
+}
+function edAtualizarInfo(){
+  const ds=$("ed-dia").value, nome=$("ed-pessoa").value;
+  const el=$("ed-info"); if(!el) return;
+  if(!ds){ el.innerHTML="Escolha o dia."; $("ed-del").disabled=true; return; }
+  const m=metaDoDia(ds);
+  const bruto=String($("ed-pecas").value||"").trim();
+  const n=bruto===""?0:inteiroBR(bruto);
+  const ja=(nome&&ds)?lancamentoDe(nome,ds):null;
+  $("ed-del").disabled=!ja;
+  let txt=esc(rotuloDia(ds))+(ehSexta(ds)?" (sexta)":"")+" · meta <b>"+fmt(m)+"</b> pçs";
+  if(Number.isFinite(n)&&n>=0&&bruto!==""){
+    const neg=Math.max(0,m-n);
+    txt+="<br>"+(neg>0?"vai ficar <b>"+fmt(neg)+"</b> peças abaixo da meta":"bate a meta do dia");
+  }
+  txt+=ja?"<br>hoje está guardado: <b>"+fmt(ja.pecas)+"</b> pçs":"<br>ainda não há lançamento neste dia";
+  el.innerHTML=txt;
+}
+async function edSalvar(){
+  if(__edGravando) return;
+  const nome=$("ed-pessoa").value, ds=$("ed-dia").value;
+  if(!nome){ toast("Escolha a revisora.","err"); return; }
+  if(!ds){ toast("Escolha o dia.","err"); $("ed-dia").focus(); return; }
+  const bruto=String($("ed-pecas").value||"").trim();
+  const n=bruto===""?0:inteiroBR(bruto);
+  if(!Number.isFinite(n)){ toast("Digite só o número de peças (ex: 930).","err"); $("ed-pecas").focus(); return; }
+  if(n<0){ toast("A quantidade não pode ser negativa.","err"); $("ed-pecas").focus(); return; }
+  __edGravando=true;
+  const b=$("ed-sal"); b.disabled=true; $("ed-del").disabled=true; b.textContent="…";
+  const ok=await salvarDia(nome,ds,n);
+  __edGravando=false;
+  b.disabled=false; b.textContent="Salvar";
+  if(!ok){ edAtualizarInfo(); return; }
+  toast(n===0?"Lançamento apagado.":nome.split(" ")[0]+": "+fmt(n)+" pçs em "+rotuloDia(ds,true)+".","ok");
+  fecharEditor();
+  /* Leva a tela para o dia mexido, senão a dona salva e não vê nada mudar. */
+  irParaODia(ds);
+}
+async function edApagar(){
+  if(__edGravando) return;
+  const nome=$("ed-pessoa").value, ds=$("ed-dia").value;
+  const ja=(nome&&ds)?lancamentoDe(nome,ds):null;
+  if(!ja){ toast("Não há lançamento neste dia para apagar.","err"); return; }
+  if(!confirm("Apagar as "+fmt(ja.pecas)+" peças de "+nome+" em "+rotuloDia(ds)+"?")) return;
+  __edGravando=true;
+  const b=$("ed-del"); b.disabled=true; $("ed-sal").disabled=true; b.textContent="…";
+  const ok=await salvarDia(nome,ds,0);
+  __edGravando=false;
+  b.disabled=false; b.textContent="Apagar"; $("ed-sal").disabled=false;
+  if(!ok){ edAtualizarInfo(); return; }
+  toast("Lançamento apagado.","ok");
+  fecharEditor();
+  irParaODia(ds);
+}
+/* Põe a tela no dia que acabou de ser mexido. */
+function irParaODia(ds){
+  const mes=String(ds).slice(0,7);
+  dataSel=ds;
+  if($("f-data")) $("f-data").value=ds;
+  if(mes!==mesSel){ mesSel=mes; if($("f-mes")) $("f-mes").value=mes; abertos.clear(); }
+  render();
+}
+
 /* ───────── telas ───────── */
 function render(){
   $("tb-sub").textContent = abaAtual==="mes"
@@ -780,7 +931,10 @@ function renderMes(){
       + p.dias.slice().reverse().map(d=>
           '<div class="md"><span class="md-d">'+esc(rotuloDia(d.data,true))+'</span>'
           +'<span class="md-q">'+fmt(d.pecas)+'</span>'
-          +'<span class="md-n '+(d.neg>0?"v-neg":"v-ok")+'">'+(d.neg>0?"−"+fmt(d.neg):"0")+'</span></div>').join("")
+          +'<span class="md-n '+(d.neg>0?"v-neg":"v-ok")+'">'+(d.neg>0?"−"+fmt(d.neg):"0")+'</span>'
+          +'<button type="button" class="md-ed" data-dia="'+esc(d.data)+'" '
+          +'aria-label="Editar '+esc(p.nome)+' em '+esc(rotuloDia(d.data,true))+'">&#9998;</button>'
+          +'</div>').join("")
       +'</div></div>';
   }).join("");
 
@@ -789,6 +943,10 @@ function renderMes(){
     card.querySelector(".ver-dias").addEventListener("click",()=>{
       if(abertos.has(nome)) abertos.delete(nome); else abertos.add(nome);
       renderMes();
+    });
+    /* O lápis corrige ali mesmo, sem ter de voltar na aba Dia e procurar. */
+    card.querySelectorAll(".md-ed").forEach(b=>{
+      b.addEventListener("click",()=>abrirEditor(nome,b.dataset.dia));
     });
   });
 }
@@ -890,6 +1048,21 @@ $("btn-hoje").addEventListener("click",async()=>{
 $("f-mes").addEventListener("change",async()=>{
   const v=$("f-mes").value; if(!v) return;
   mesSel=v; abertos.clear(); await recarregar();
+});
+
+/* ───────── janelinha de editar ───────── */
+$("btn-editar").addEventListener("click",()=>abrirEditor("",dataSel));
+$("ed-x").addEventListener("click",fecharEditor);
+$("ed-sal").addEventListener("click",edSalvar);
+$("ed-del").addEventListener("click",edApagar);
+$("ed-pessoa").addEventListener("change",edPuxarValor);
+$("ed-dia").addEventListener("change",edPuxarValor);
+$("ed-pecas").addEventListener("input",edAtualizarInfo);
+$("ed-pecas").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); edSalvar(); }});
+/* Tocar fora fecha; Esc também. */
+$("ed-ov").addEventListener("click",e=>{ if(e.target===$("ed-ov")) fecharEditor(); });
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&$("ed-ov").classList.contains("on")) fecharEditor();
 });
 
 /* ───────── login ───────── */
