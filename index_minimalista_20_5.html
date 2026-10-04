@@ -676,10 +676,16 @@ service cloud.firestore {
    mesmos — qualquer recarga troca as listas e a conta refaz. */
 const __resumoCache=new Map();
 let __resumoFonte=null;
+/* O resumo do mes fica guardado e so era jogado fora quando as listas eram
+   TROCADAS por outras — que e o que loadData fazia. Desde que gravar passou a
+   ajustar a lista no lugar, a identidade nao muda mais e o guardado ficava
+   velho: o painel e o relatorio mostravam o numero de antes do lancamento.
+   Agora a versao dos dados tambem conta. */
+let __resumoVersao=-1;
 function calcResumoMensal(mes){
   const fonte=[lotes,registros,gastos,funcionarios,pontos];
-  if(!__resumoFonte||__resumoFonte.some((x,i)=>x!==fonte[i])){
-    __resumoCache.clear(); __resumoFonte=fonte;
+  if(!__resumoFonte||__resumoFonte.some((x,i)=>x!==fonte[i])||__resumoVersao!==__dadosVersao){
+    __resumoCache.clear(); __resumoFonte=fonte; __resumoVersao=__dadosVersao;
   }
   if(__resumoCache.has(mes)) return __resumoCache.get(mes);
   const r=__calcResumoMensal(mes);
@@ -1962,10 +1968,12 @@ window.salvarFuncionario=async()=>{
   try{
     const escalaPadrao=getEscalaPadraoFuncionario({nome}).tipo;
     const jornadaFinal=escalaPadrao==="ketelen_7h"?420:570;
-    await addDoc(collection(db,"funcionarios"),withOwner({nome,cargo,setor,salario,bonus,jornadaMin:jornadaFinal,telefone,admissao,metaDia,status,escalaPadrao,criadoEm:Timestamp.now()}));
+    const dadosF=withOwner({nome,cargo,setor,salario,bonus,jornadaMin:jornadaFinal,telefone,admissao,metaDia,status,escalaPadrao,criadoEm:Timestamp.now()});
+    const refF=await addDoc(collection(db,"funcionarios"),dadosF);
     [$("func-nome"),$("func-cargo"),$("func-setor"),$("func-salario"),$("func-bonus"),$("func-jornada"),$("func-telefone"),$("func-admissao"),$("func-meta-dia")].forEach(el=>{if(el)el.value="";});
     if($("func-status")) $("func-status").value="Ativo";
-    toast("Funcionário cadastrado!");await loadData();
+    toast("Funcionário cadastrado!");
+    aplicarLocal("funcionarios","incluir",{id:refF.id,...dadosF});
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||"+ Cadastrar Funcionário"; } }
 };
@@ -2007,16 +2015,14 @@ window.salvarEdicaoFunc=async()=>{
   try{
     const escalaPadrao=getEscalaPadraoFuncionario({nome}).tipo;
     const jornadaFinal=escalaPadrao==="ketelen_7h"?420:570;
-    await updateDoc(doc(db,"funcionarios",id),withOwner({nome,cargo,setor,salario,bonus,jornadaMin:jornadaFinal,telefone,admissao,metaDia,status,escalaPadrao}));
-    toast("Funcionário atualizado!");fecharModalEditarFunc();await loadData();
+    const dadosFE=withOwner({nome,cargo,setor,salario,bonus,jornadaMin:jornadaFinal,telefone,admissao,metaDia,status,escalaPadrao});
+    await updateDoc(doc(db,"funcionarios",id),dadosFE);
+    toast("Funcionário atualizado!");fecharModalEditarFunc();
+    aplicarLocal("funcionarios","mudar",{id,...dadosFE});
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{btn.disabled=false;btn.textContent="Salvar";}
 };
-window.deletarFuncionario=async id=>{
-  if(!confirm("Remover este funcionário? Os registros de produção continuam. Ele vai para a Lixeira."))return;
-  try{await deleteDoc(doc(db,"funcionarios",id));toast("Removido.");await loadData();}
-  catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-};
+window.deletarFuncionario=apagarUmaLinha("funcionarios","Remover este funcionário? Os registros de produção continuam. Ele vai para a Lixeira.");
 function renderFuncionarios(){
   try{ renderReajusteSalarios(); }catch(e){ console.error("REAJ_PAINEL",e); }
   const tb=$("func-tbody");if(!tb)return;
@@ -2189,38 +2195,117 @@ function calcBancoHoras(funcId,mesAno){
 
   return{faltasDia,faltasMeio,extrasSimples,extrasDuplas,faltasCustom,extrasCustom,minFaltas,minExtras,saldoMin,desconto:descontoAplicado,descontoCheio,descontoLimitado,semVinculo,valorExtras:extrasPagas,bonus:bonusFinal,bonusBloqueado:(bonusBloqueadoPorFalta||bonusBloqueadoPorSaldo)&&bonus>0,salarioBase,salarioBaseCheio:salario,admProporcional,admDiasTrab,admDiasMes,salarioFinal,registrosMes};
 }
-/* ── Mexer num lançamento sem rebaixar a fábrica inteira ──────────────
-   A lista de pontos vem do Firebase ordenada por data, da mais nova para a
-   mais antiga. Aqui ela é mantida assim depois de incluir ou mudar, para a
-   tela e o backup saírem na mesma ordem de sempre. */
-function __ordenarPontos(){
-  pontos.sort((a,b)=>String(b.data||"").localeCompare(String(a.data||"")));
+/* ── AJUSTE LOCAL ────────────────────────────────────────────────────
+   O Firebase já confirmou a gravação; reler as sete coleções depois disso é
+   trabalho jogado fora. Estas funções ajustam a lista que está na memória e
+   redesenham só a tela à vista — do jeito que loadData deixaria. */
+const __LISTAS={
+  funcionarios:()=>funcionarios, registros:()=>registros, lotes:()=>lotes,
+  gastos:()=>gastos, pontos:()=>pontos, clientes:()=>clientes,
+  controleProducaoHora:()=>controleProducaoHora
+};
+/* A mesma ordem com que loadData traz cada coleção. */
+const __ORDEM={
+  funcionarios:["nome","asc"], registros:["criadoEm","desc"], lotes:["criadoEm","desc"],
+  gastos:["criadoEm","desc"], pontos:["data","desc"], clientes:["nome","asc"],
+  controleProducaoHora:["createdAt","desc"]
+};
+/* Estas alimentam os seletores das telas: mudou uma, os seletores precisam saber. */
+const __MEXE_SELECT={funcionarios:1,lotes:1,clientes:1};
+function __chaveOrdem(item,campo){
+  const v=item?.[campo];
+  const d=v?.toDate?v.toDate():new Date(v||0);
+  const t=d.getTime();
+  return Number.isNaN(t)?String(v||""):t;
 }
-/* A tabela e os cartões mostram só o "Mês de referência". Um lançamento numa
-   data de outro mês gravava e sumia da vista: a dona via "registrada!" e tela
-   nenhuma mudando, e lançava de novo. Agora a tela vai para o mês do
-   lançamento, e o aviso diz para onde foi. */
+/* A lista já está ordenada: entra no lugar certo, sem reordenar 20 mil itens
+   a cada gravação. Um lançamento novo cai na primeira posição. */
+function __inserirOrdenado(lista,item,colecao){
+  const [campo,dir]=__ORDEM[colecao]||[];
+  if(!campo){ lista.push(item); return; }
+  const mult=dir==="asc"?1:-1;
+  const k=__chaveOrdem(item,campo);
+  let i=0;
+  while(i<lista.length){
+    const kk=__chaveOrdem(lista[i],campo);
+    const c=k>kk?mult:k<kk?-mult:0;
+    if(c<0) break;
+    i++;
+  }
+  lista.splice(i,0,item);
+}
+function __redesenharTelaAtual(){
+  try{
+    const map={dashboard:renderDashboard,funcionarios:renderFuncionarios,producao:renderProducao,
+      lotes:renderLotes,historico:renderHistorico,gastos:renderGastos,relatorio:renderRelatorio,
+      backup:renderBackup,bancohoras:renderBancoHoras,controlehora:renderControleProducaoHora,
+      "fat-cliente":renderFatCliente,
+      clientes:typeof renderClientes==="function"?renderClientes:null,
+      lixeira:typeof renderLixeira==="function"?renderLixeira:null,
+      auditoria:typeof renderAuditoria==="function"?renderAuditoria:null};
+    map[currentPage]?.();
+  }catch(e){ console.error("RENDER_LOCAL",currentPage,e); }
+}
+/* Toda remoção do sistema era a mesma coisa: confirma, apaga no Firebase e
+   relê as sete coleções. Aqui vira uma função só — e sem a releitura. Dois
+   toques seguidos no ✕ mandavam duas remoções; agora o segundo é ignorado,
+   e a linha fica apagada enquanto a remoção acontece, para a dona ver que o
+   toque pegou. */
+let __apagando=false;
+function apagarUmaLinha(colecao,pergunta,aviso){
+  return async function(id){
+    if(__apagando) return;
+    if(!confirm(pergunta)) return;
+    __apagando=true;
+    const botao=document.querySelector('button[onclick*="'+id+'"]');
+    const linha=botao&&(botao.closest("tr")||botao.closest(".card,.cli-card,.bh-card,.trash-card"));
+    if(linha) linha.style.opacity=".4";
+    try{
+      await deleteDoc(doc(db,colecao,id));
+      toast(aviso||"Removido.");
+      aplicarLocal(colecao,"apagar",id);
+    }catch(e){
+      console.error("DELETE_ERROR",colecao,e);
+      if(linha) linha.style.opacity="";
+      toast(firebaseErrorMessage(e),"err");
+    }finally{ __apagando=false; }
+  };
+}
+function aplicarLocal(colecao,acao,dados){
+  try{
+    const lista=__LISTAS[colecao]&&__LISTAS[colecao]();
+    if(!Array.isArray(lista)) return;
+    if(acao==="incluir"){
+      __inserirOrdenado(lista,dados,colecao);
+    }else if(acao==="apagar"){
+      const i=lista.findIndex(x=>x.id===dados);
+      if(i>=0) lista.splice(i,1);
+    }else if(acao==="mudar"){
+      const i=lista.findIndex(x=>x.id===dados.id);
+      if(i>=0){
+        const item=Object.assign(lista[i],dados);
+        /* A data pode ter mudado: tira e põe de volta no lugar certo. */
+        lista.splice(i,1);
+        __inserirOrdenado(lista,item,colecao);
+      }
+    }
+  }catch(e){ console.error("LOCAL_"+colecao,e); }
+  __dadosVersao++;
+  if(__MEXE_SELECT[colecao]){ try{ populateSelects(); }catch(e){ console.error("SELECTS_LOCAL",e); } }
+  try{ atualizarContadoresMenu(); }catch(e){}
+  __redesenharTelaAtual();
+}
+
+/* A tabela e os cartões do banco de horas mostram só o "Mês de referência".
+   Um lançamento numa data de outro mês gravava e sumia da vista: a dona via
+   "registrada!" e tela nenhuma mudando, e lançava de novo. A tela passa a ir
+   para o mês do lançamento, e o aviso diz para onde foi. */
 function __mostrarMesDoPonto(data){
   const mes=String(data||"").slice(0,7);
   const el=$("bh-mes");
   if(!mes||!el||el.value===mes) return "";
   el.value=mes;
   try{ return formatMonthLabel(mes); }catch(_e){ return mes; }
-}
-function aplicarLocalPonto(acao,dados){
-  try{
-    if(acao==="incluir"){ pontos.push(dados); __ordenarPontos(); }
-    else if(acao==="apagar"){ const i=pontos.findIndex(p=>p.id===dados); if(i>=0) pontos.splice(i,1); }
-    else if(acao==="mudar"){ const p=pontos.find(x=>x.id===dados.id); if(p) Object.assign(p,dados); __ordenarPontos(); }
-  }catch(e){ console.error("PONTO_LOCAL",e); }
-  __dadosVersao++;
-  try{ atualizarContadoresMenu(); }catch(_e){}
-  /* Só a tela que está à vista precisa ser redesenhada. */
-  try{
-    const r={bancohoras:renderBancoHoras,dashboard:renderDashboard,
-             relatorio:renderRelatorio,backup:renderBackup}[currentPage];
-    if(typeof r==="function") r();
-  }catch(e){ console.error("PONTO_RENDER",e); }
 }
 window.salvarPonto=async()=>{
   const funcId=$("bh-funcionario").value;
@@ -2252,32 +2337,13 @@ window.salvarPonto=async()=>{
       +(outroMes?" Mostrando "+outroMes+".":""));
     /* Guardado. A lista na memória recebe o mesmo que foi para o banco, e só
        esta tela se redesenha — nada de reler a fábrica inteira. */
-    aplicarLocalPonto("incluir",{id:ref.id,...dados});
+    aplicarLocal("pontos","incluir",{id:ref.id,...dados});
     __piscarPonto(ref.id);
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{ trava.solta(); }
 };
 
-let __apagandoPonto=false;
-window.deletarPonto=async id=>{
-  /* Dois toques seguidos no ✕ mandavam duas remoções. */
-  if(__apagandoPonto) return;
-  if(!confirm("Remover este registro do banco de horas? Ele vai para a Lixeira."))return;
-  __apagandoPonto=true;
-  /* A linha some do caminho na hora: a dona vê que o toque pegou. */
-  const linha=document.querySelector('#bh-tbody button[onclick="deletarPonto(\''+id+'\')"]')?.closest("tr");
-  if(linha) linha.style.opacity=".4";
-  try{
-    await deleteDoc(doc(db,"pontos",id));
-    toast("Removido.");
-    aplicarLocalPonto("apagar",id);
-  }catch(e){
-    console.error("SAVE_ERROR",e);
-    if(linha) linha.style.opacity="";
-    toast(firebaseErrorMessage(e),"err");
-  }
-  finally{ __apagandoPonto=false; }
-};
+window.deletarPonto=apagarUmaLinha("pontos","Remover este registro do banco de horas? Ele vai para a Lixeira.");
 /* Pisca a linha nova por um instante: sem isso, numa tabela com vários
    lançamentos, a dona salva e não sabe qual linha é a dela. */
 function __piscarPonto(id){
@@ -2513,11 +2579,8 @@ async function finalizarCronometroProducao(){
   }catch(e){console.error("SAVE_CONTROLE_HORA_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{if(btn){btn.disabled=false;btn.textContent=old;}}
 }
-async function deletarControleProducaoHora(id){
-  if(!confirm("Excluir esta medição de produção por hora? Ela vai para a Lixeira."))return;
-  try{await deleteDoc(doc(db,"controleProducaoHora",id));toast("Medição excluída.");await loadData();if(currentPage==="controlehora")renderControleProducaoHora();}
-  catch(e){console.error("DELETE_CONTROLE_HORA_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-}
+const deletarControleProducaoHora=apagarUmaLinha("controleProducaoHora",
+  "Excluir esta medição de produção por hora? Ela vai para a Lixeira.","Medição excluída.");
 async function editarControleProducaoHora(id){
   const item=controleProducaoHora.find(x=>x.id===id);if(!item)return;
   const qtd=prompt("Quantidade de peças:",String(item.qtdPecas||""));
@@ -2965,11 +3028,7 @@ window.salvarClienteFirebase=async()=>{
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{ __salvandoClienteFb=false; }
 };
-window.deletarClienteFirebase=async id=>{
-  if(!confirm("Remover este cliente? Os lotes vinculados continuam. Ele vai para a Lixeira."))return;
-  try{await deleteDoc(doc(db,"clientes",id));toast("Removido.");await loadData();}
-  catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-};
+window.deletarClienteFirebase=apagarUmaLinha("clientes","Remover este cliente? Os lotes vinculados continuam. Ele vai para a Lixeira.");
 
 function renderFatCliente(){
   const busca=uiState.fatClienteBusca||"";
@@ -3675,25 +3734,25 @@ window.salvarRegistro=async()=>{
       if(disponivelEtapa<=0){toast(`Etapa "${etapa}" já tem ${lote.qtdTotal.toLocaleString("pt-BR")} peças (100%). Não é possível adicionar mais.`,"err");return;}
       if(qtd>disponivelEtapa){toast(`Limite da etapa "${etapa}" ultrapassado! Disponível: ${disponivelEtapa.toLocaleString("pt-BR")} pç${disponivelEtapa!==1?"s":""}. Meta do lote: ${lote.qtdTotal.toLocaleString("pt-BR")} peças.`,"err");return;}
     }
-    await addDoc(collection(db,"registros"),withOwner({funcionarioId:funcId,funcionarioNome:func?.nome||"—",etapa,qtd,obs,loteId:loteId||null,loteNumeroOf:lote?.numeroOf||null,loteProduto:lote?.produto||null,criadoEm:Timestamp.now()}));
+    const dadosReg=withOwner({funcionarioId:funcId,funcionarioNome:func?.nome||"—",etapa,qtd,obs,loteId:loteId||null,loteNumeroOf:lote?.numeroOf||null,loteProduto:lote?.produto||null,criadoEm:Timestamp.now()});
+    const refReg=await addDoc(collection(db,"registros"),dadosReg);
+    let mudouLote=null;
     if(lote && lote.status==="Aberto"){
       const origCreated=lote.criadoEm||lote.createdAt;
       const andPayload=origCreated?withOwner({status:"Em andamento",criadoEm:origCreated,createdAt:origCreated}):withOwner({status:"Em andamento"});
       await updateDoc(doc(db,"lotes",lote.id),andPayload);
+      mudouLote={id:lote.id,...andPayload};
     }
     [$("prod-qtd"),$("prod-obs")].forEach(el=>{if(el)el.value="";});
     toast("Registro salvo!");
-    await loadData();
+    if(mudouLote) aplicarLocal("lotes","mudar",mudouLote);
+    aplicarLocal("registros","incluir",{id:refReg.id,...dadosReg});
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{
     if(btn){btn.disabled=false;btn.innerHTML=btn.dataset.prevLabel||'⚡ Registrar';delete btn.dataset.prevLabel;}
   }
 };
-window.deletarRegistro=async id=>{
-  if(!confirm("Remover este registro de produção? Ele vai para a Lixeira."))return;
-  try{await deleteDoc(doc(db,"registros",id));toast("Removido.");await loadData();}
-  catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-};
+window.deletarRegistro=apagarUmaLinha("registros","Remover este registro de produção? Ele vai para a Lixeira.");
 
 /* ════════════════════════════════════════════════════════════
    EDITAR REGISTRO ─ funções completas
@@ -3747,13 +3806,18 @@ window.salvarEdicaoRegistro=async()=>{
       if(disponivelEtapa<=0){toast(`Etapa "${etapa}" já tem ${lote.qtdTotal.toLocaleString("pt-BR")} peças (100%). Não é possível salvar.`,"err");return;}
       if(qtd>disponivelEtapa){toast(`Limite da etapa "${etapa}" ultrapassado! Disponível: ${disponivelEtapa.toLocaleString("pt-BR")} pç${disponivelEtapa!==1?"s":""}. Meta: ${lote.qtdTotal.toLocaleString("pt-BR")} peças.`,"err");return;}
     }
-    await updateDoc(doc(db,"registros",id),withOwner({funcionarioId,funcionarioNome:func?.nome||"—",etapa,qtd,obs,loteId:loteId||null,loteNumeroOf:lote?.numeroOf||null,loteProduto:lote?.produto||null}));
+    const dadosEd=withOwner({funcionarioId,funcionarioNome:func?.nome||"—",etapa,qtd,obs,loteId:loteId||null,loteNumeroOf:lote?.numeroOf||null,loteProduto:lote?.produto||null});
+    await updateDoc(doc(db,"registros",id),dadosEd);
+    let mudouLoteEd=null;
     if(lote && lote.status==="Aberto"){
       const origCreated2=lote.criadoEm||lote.createdAt;
       const andPayload2=origCreated2?withOwner({status:"Em andamento",criadoEm:origCreated2,createdAt:origCreated2}):withOwner({status:"Em andamento"});
       await updateDoc(doc(db,"lotes",lote.id),andPayload2);
+      mudouLoteEd={id:lote.id,...andPayload2};
     }
-    toast("Registro atualizado!");fecharModalEditarRegistro();await loadData();
+    toast("Registro atualizado!");fecharModalEditarRegistro();
+    if(mudouLoteEd) aplicarLocal("lotes","mudar",mudouLoteEd);
+    aplicarLocal("registros","mudar",{id,...dadosEd});
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{if(btn){btn.disabled=false;btn.textContent="Salvar Alterações";}}
 };
@@ -3814,8 +3878,10 @@ window.salvarEdicaoGasto=async()=>{
   if(btn.disabled) return;
   btn.disabled=true;btn.textContent="Salvando...";
   try{
-    await updateDoc(doc(db,"gastos",id),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":null),...campoPg}));
-    toast("Gasto atualizado!");fecharModalEditarGasto();await loadData();
+    const dadosGE=withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":null),...campoPg});
+    await updateDoc(doc(db,"gastos",id),dadosGE);
+    toast("Gasto atualizado!");fecharModalEditarGasto();
+    aplicarLocal("gastos","mudar",{id,...dadosGE});
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{btn.disabled=false;btn.textContent="Salvar Alterações";}
 };
@@ -3860,7 +3926,7 @@ window.salvarEdicaoPonto=async()=>{
     const outroMes=__mostrarMesDoPonto(data);
     toast("Registro atualizado!"+(outroMes?" Mostrando "+outroMes+".":""));
     fecharModalEditarPonto();
-    aplicarLocalPonto("mudar",{id,...dados});
+    aplicarLocal("pontos","mudar",{id,...dados});
     __piscarPonto(id);
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{btn.disabled=false;btn.textContent="Salvar Alterações";}
@@ -3979,6 +4045,7 @@ function renderHistorico(){
    GASTOS
 ══════════════════════════════════════════════════════════════ */
 window.salvarGasto=async()=>{
+  __gastoNovo=null;
   const descricao=$("gasto-desc")?.value.trim()||"",valor=toNumber($("gasto-valor")?.value,0);
   const tipo=$("gasto-tipo")?.value||"fixo",competencia=$("gasto-competencia")?.value||"";
   const catSel=$("gasto-categoria")?.value||"";
@@ -4028,7 +4095,9 @@ window.salvarGasto=async()=>{
       }
       await Promise.all(docs);
     }else{
-      await addDoc(collection(db,"gastos"),withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),...extraPg,criadoEm:Timestamp.now()}));
+      const dadosG=withOwner({descricao,valor,tipo,categoria,competencia,data:(competencia?competencia+"-01":`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),...extraPg,criadoEm:Timestamp.now()});
+      const refG=await addDoc(collection(db,"gastos"),dadosG);
+      __gastoNovo={id:refG.id,...dadosG};
     }
     if($("gasto-desc")) $("gasto-desc").value="";
     if($("gasto-valor")) $("gasto-valor").value="";
@@ -4038,12 +4107,17 @@ window.salvarGasto=async()=>{
     if($("gasto-parcelas")) $("gasto-parcelas").value="1";
     if($("gasto-vencimento")) $("gasto-vencimento").value="";
     if($("gasto-parcela-preview")) $("gasto-parcela-preview").style.display="none";
-    toast(parcelas>1?`${parcelas} parcelas registradas!`:"Gasto registrado!");await loadData();
+    toast(parcelas>1?`${parcelas} parcelas registradas!`:"Gasto registrado!");
+    /* Parcelado grava vários documentos de uma vez: aí vale reler. Um gasto
+       só entra direto na lista, sem baixar a fábrica inteira de novo. */
+    if(__gastoNovo){ aplicarLocal("gastos","incluir",__gastoNovo); __gastoNovo=null; }
+    else await loadData();
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{
     if(btn){btn.disabled=false;btn.innerHTML=btn.dataset.prevLabel||'+ Registrar Gasto';delete btn.dataset.prevLabel;}
   }
 };
+let __gastoNovo=null;
 window.atualizarPreviewParcela=function(){
   const n=Math.max(1,Math.min(48,parseInt($("gasto-parcelas")?.value||"1",10)));
   const total=toNumber($("gasto-valor")?.value,0);
@@ -4299,11 +4373,7 @@ window.toggleCategoriaOutros=function(){
   wrap.style.display=sel.value==="Outros"?"":"none";
   if(sel.value!=="Outros")campo.value="";
 };
-window.deletarGasto=async id=>{
-  if(!confirm("Remover este gasto? Ele vai para a Lixeira."))return;
-  try{await deleteDoc(doc(db,"gastos",id));toast("Removido.");await loadData();}
-  catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
-};
+window.deletarGasto=apagarUmaLinha("gastos","Remover este gasto? Ele vai para a Lixeira.");
 /* ══════════════════════════════════════════════════════════════
    LEITOR DE NOTA — lê o valor da foto do cupom (OCR no aparelho)
    Nada é enviado para servidor nenhum: o Tesseract roda dentro do
@@ -4906,11 +4976,12 @@ window.marcarGastoPago=async function(id){
   const novo=!(g.pago===true);
   try{
     requireAuthUser();
-    await updateDoc(doc(db,"gastos",id),withOwner({pago:novo,pagoEm:novo?Timestamp.now():null}));
-    g.pago=novo;                               /* a tela responde na hora */
-    renderGastos();
+    const dadosPg=withOwner({pago:novo,pagoEm:novo?Timestamp.now():null});
+    await updateDoc(doc(db,"gastos",id),dadosPg);
     toast(novo?"Marcado como pago.":"Voltou para 'a pagar'.");
-    await loadData();
+    /* Já mexia na memória e ainda relia as sete coleções depois — o mesmo
+       trabalho duas vezes, e a segunda custando a fábrica inteira. */
+    aplicarLocal("gastos","mudar",{id,...dadosPg});
   }catch(e){ console.error("PAGO_ERRO",e); toast(firebaseErrorMessage(e),"err"); }
 };
 
@@ -7022,7 +7093,7 @@ window.deletarGastoDrawer=async function(id){
     await deleteDoc(doc(db,'gastos',id));
     if(snap){ addLixeira('gastos','gastos',snap); addAuditoria('removeu','gastos',snap.descricao||'gasto'); }
     toast('Removido.');
-    await loadData();
+    aplicarLocal("gastos","apagar",id);
     renderGastosDrawer();
     return true;
   }
@@ -7043,12 +7114,13 @@ window.salvarGastoDrawer=async()=>{
   const btn=document.getElementById('btn-gd-save');
   if(btn){ if(btn.disabled) return; btn.disabled=true;btn.textContent='Salvando...'; }
   try{
-    await addDoc(collection(db,'gastos'),withOwner({descricao,valor,tipo,categoria,competencia,...(vencGd?{vencimento:vencGd,pago:false}:{}),data:(competencia?competencia+'-01':`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),criadoEm:Timestamp.now()}));
+    const dadosGD=withOwner({descricao,valor,tipo,categoria,competencia,...(vencGd?{vencimento:vencGd,pago:false}:{}),data:(competencia?competencia+'-01':`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`),criadoEm:Timestamp.now()});
+    const refGD=await addDoc(collection(db,'gastos'),dadosGD);
     document.getElementById('gd-desc').value='';
     document.getElementById('gd-valor').value='';
     if(document.getElementById('gd-venc')) document.getElementById('gd-venc').value='';
     toast('Gasto registrado!');
-    await loadData();
+    aplicarLocal("gastos","incluir",{id:refGD.id,...dadosGD});
     renderGastosDrawer();
   }catch(e){toast(firebaseErrorMessage(e),'err');}
   finally{if(btn){btn.disabled=false;btn.textContent='+ Registrar';}}
