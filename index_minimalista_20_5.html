@@ -527,13 +527,28 @@ function calcMesAnterior(mes){
   const d=new Date(a,m-2,1);
   return monthKeyLocal(d);
 }
-function sameMonthFromTs(ts,mes){
+/* O mês de cada carimbo de data fica lembrado: esta conta roda em cima dos
+   20 mil lançamentos para cada mês que a tela precisa, e antes criava uma
+   data nova e remontava o texto "2026-10" toda vez. A chave é o próprio
+   objeto do carimbo — quando um registro muda, ele recebe um carimbo novo,
+   então não há risco de ficar com o mês velho. */
+const __mesDoCarimbo=new WeakMap();
+function __mesDe(ts){
+  if(ts&&typeof ts==="object"){
+    const v=__mesDoCarimbo.get(ts);
+    if(v!==undefined) return v;
+    const d=safeDate(ts);
+    // Horário local, igual ao monthKeyLocal (evita virar o mês na meia-noite UTC)
+    const k=d?d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"):null;
+    __mesDoCarimbo.set(ts,k);
+    return k;
+  }
   const d=safeDate(ts);
-  if(!d||!mes) return false;
-  // Use local timezone to match monthKeyLocal behavior (avoids UTC boundary mismatch near midnight)
-  const y=d.getFullYear();
-  const mo=String(d.getMonth()+1).padStart(2,'0');
-  return `${y}-${mo}`===mes;
+  return d?d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"):null;
+}
+function sameMonthFromTs(ts,mes){
+  if(!mes) return false;
+  return __mesDe(ts)===mes;
 }
 function snapshotDocsForCurrentOwner(snap){
   return (snap?.docs||[]).map(d=>({id:d.id,...d.data()})).filter(canAccessDoc);
@@ -3022,9 +3037,11 @@ window.salvarClienteFirebase=async()=>{
   if(__salvandoClienteFb) return;
   __salvandoClienteFb=true;
   try{
-    await addDoc(collection(db,"clientes"),withOwner({nome,contato,obs,criadoEm:Timestamp.now()}));
+    const dadosCa=withOwner({nome,contato,obs,criadoEm:Timestamp.now()});
+    const refCa=await addDoc(collection(db,"clientes"),dadosCa);
     [$("nc-nome"),$("nc-contato"),$("nc-obs")].forEach(el=>{if(el)el.value="";});
-    toast("Cliente cadastrado!");await loadData();
+    toast("Cliente cadastrado!");
+    aplicarLocal("clientes","incluir",{id:refCa.id,...dadosCa});
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{ __salvandoClienteFb=false; }
 };
@@ -3112,11 +3129,14 @@ window.salvarClienteEFechar=async function(){
   const btn=document.querySelector('button[onclick="salvarClienteEFechar()"]');
   if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML="Salvando..."; }
   try{
-    await addDoc(collection(db,"clientes"),withOwner({nome,contato,obs,criadoEm:Timestamp.now()}));
+    const dadosCb=withOwner({nome,contato,obs,criadoEm:Timestamp.now()});
+    const refCb=await addDoc(collection(db,"clientes"),dadosCb);
     [$("nc-nome"),$("nc-contato"),$("nc-obs")].forEach(el=>{if(el)el.value="";});
     fecharModalNovoCliente();
     toast("Cliente cadastrado!");
-    await loadData();
+    /* aplicarLocal já refaz os seletores, então o cliente novo pode ser
+       escolhido logo abaixo. */
+    aplicarLocal("clientes","incluir",{id:refCb.id,...dadosCb});
     // Seleciona o novo cliente automaticamente no form de lote aberto
     const loteCliente=$("lote-cliente");
     if(loteCliente && loteCliente.tagName==="SELECT") loteCliente.value=nome;
@@ -3134,9 +3154,11 @@ window.salvarClienteInline=async function(){
   const btn=document.querySelector('button[onclick="salvarClienteInline()"]');
   if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML="Salvando..."; }
   try{
-    await addDoc(collection(db,"clientes"),withOwner({nome,contato,obs,criadoEm:Timestamp.now()}));
+    const dadosCc=withOwner({nome,contato,obs,criadoEm:Timestamp.now()});
+    const refCc=await addDoc(collection(db,"clientes"),dadosCc);
     [$("cliente-nome-inline"),$("cliente-contato-inline"),$("cliente-obs-inline")].forEach(el=>{if(el)el.value="";});
-    toast("Cliente cadastrado!");await loadData();
+    toast("Cliente cadastrado!");
+    aplicarLocal("clientes","incluir",{id:refCc.id,...dadosCc});
   }catch(e){console.error("SAVE_ERROR",e);toast(firebaseErrorMessage(e),"err");}
   finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||"+ Adicionar"; } }
 };
@@ -6350,17 +6372,20 @@ function renderMetas(){
   };
 
   /* faturamento acumulado dia a dia, com a linha da meta por cima */
-  const ymdDia2=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-  const porDia=[]; let acumulado=0;
-  for(let i=1;i<=diaAtual;i++){
-    const chave=ymdDia2(new Date(mesY,mesM-1,i));
-    acumulado+=lotes.reduce((s,l)=>{
-      if(getStatusOperacionalLote(l)!=="Concluído") return s;
-      const dt=safeDate(l.concluidoEm||l.updatedAt||l.updatedEm);
-      return s+((dt&&ymdDia2(dt)===chave)?calcFaturamentoLote(l):0);
-    },0);
-    porDia.push(acumulado);
+  /* Antes isto varria TODAS as OFs uma vez para cada dia do mês — 31 × 1.842
+     = 57 mil voltas, criando data e texto em cada uma. Agora é uma passada
+     pelas OFs, somando cada uma no dia em que foi concluída. */
+  const somaDoDia=new Array(diaAtual+1).fill(0);
+  for(let k=0;k<lotes.length;k++){
+    const l=lotes[k];
+    if(getStatusOperacionalLote(l)!=="Concluído") continue;
+    const dt=safeDate(l.concluidoEm||l.updatedAt||l.updatedEm);
+    if(!dt||dt.getFullYear()!==mesY||dt.getMonth()!==mesM-1) continue;
+    const dia=dt.getDate();
+    if(dia>=1&&dia<=diaAtual) somaDoDia[dia]+=calcFaturamentoLote(l);
   }
+  const porDia=[]; let acumulado=0;
+  for(let i=1;i<=diaAtual;i++){ acumulado+=somaDoDia[i]; porDia.push(acumulado); }
   const grafico=()=>{
     if(porDia.length<2||acumulado<=0) return "";
     const w=420,h=130,teto=Math.max(mFat,acumulado)||1;
@@ -7258,11 +7283,13 @@ window.salvarCliente = async function(){
   if(btn){ if(btn.disabled) return; btn.disabled=true; btn.dataset.rot=btn.innerHTML; btn.innerHTML='Salvando...'; }
   try{
     requireAuthUser();
-    await addDoc(collection(db,'clientes'),withOwner({nome,contato,telefone,email,cidade,status,obs,criadoEm:Timestamp.now()}));
+    const dadosCd=withOwner({nome,contato,telefone,email,cidade,status,obs,criadoEm:Timestamp.now()});
+    const refCd=await addDoc(collection(db,'clientes'),dadosCd);
     addAuditoria('criou','cliente',nome);
     ['cliente-nome','cliente-contato','cliente-telefone','cliente-email','cliente-cidade','cliente-obs'].forEach(id=>{ if($(id)) $(id).value=''; });
     if($('cliente-status')) $('cliente-status').value='Ativo';
-    toast('Cliente cadastrado!'); await loadData();
+    toast('Cliente cadastrado!');
+    aplicarLocal("clientes","incluir",{id:refCd.id,...dadosCd});
   }catch(e){ console.error('SAVE_ERROR',e); toast(firebaseErrorMessage(e),'err'); }
   finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.rot||'+ Salvar cliente'; } }
 };
@@ -20767,14 +20794,20 @@ html[data-theme="claro"] .gpill-falta{ background:rgba(176,110,8,.1); color:#8A5
     ultimo=e; ajustar();
   }
   function agora(){ ultimo=estado(); ajustar(); }
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(agora,1500); });
-  else setTimeout(agora,1500);
+  /* Nada do que ela faz tem pressa: espera uma folga do navegador em vez de
+     entrar no meio da abertura. */
+  function naFolga(fn,ms){
+    if(typeof requestIdleCallback==="function") setTimeout(function(){ requestIdleCallback(fn,{timeout:4000}); },ms);
+    else setTimeout(fn,ms);
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ naFolga(agora,1500); });
+  else naFolga(agora,1500);
   /* Modais e gavetas abrem por clique: depois do clique, confere. */
   try{ document.addEventListener("click",function(){ setTimeout(seMudou,90); },true); }catch(e){}
   try{ document.addEventListener("keyup",function(ev){ if(ev.key==="Escape") setTimeout(seMudou,90); },true); }catch(e){}
   try{
     if(typeof window.navigate==="function"&&!window.navigate.__a11y){
-      var o=window.navigate, w=function(){ var r=o.apply(this,arguments); setTimeout(agora,300); return r; };
+      var o=window.navigate, w=function(){ var r=o.apply(this,arguments); naFolga(agora,300); return r; };
       w.__a11y=true; window.navigate=w;
     }
   }catch(e){}
