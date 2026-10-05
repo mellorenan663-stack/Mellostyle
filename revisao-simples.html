@@ -71,6 +71,15 @@ button{cursor:pointer;border:none;background:none;}
 .fx-load{background:rgba(76,123,243,.12);color:var(--t3);border-bottom:1px solid rgba(76,123,243,.22);}
 /* Faltou uma parte, mas o resto da tela esta em dia: aviso, nao erro. */
 .fx-parcial{background:rgba(217,160,38,.14);color:#F2C464;border-bottom:1px solid rgba(217,160,38,.32);}
+/* Avisa que a tela não está no dia (ou mês) de hoje. Sem isto, só dava para
+   perceber lendo a data no campo — e quem abre o app não lê, olha os números. */
+.n-hoje{display:none;align-items:center;gap:10px;flex-wrap:wrap;margin:-3px 0 12px;
+  background:rgba(217,160,38,.11);border:1px solid rgba(217,160,38,.28);border-radius:13px;
+  padding:11px 13px;font-size:12.5px;font-weight:700;color:#F2C464;line-height:1.4;}
+.n-hoje.on{display:flex;}
+.n-hoje .nh-b{margin-left:auto;flex-shrink:0;height:38px;padding:0 15px;border-radius:999px;
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.26);color:inherit;
+  font-size:12.5px;font-weight:800;}
 .fx-txt{flex:1 1 200px;min-width:0;}
 .fx-btn{flex-shrink:0;height:36px;padding:0 15px;border-radius:999px;background:rgba(255,255,255,.10);
   border:1px solid rgba(255,255,255,.26);color:inherit;font-size:12.5px;font-weight:800;}
@@ -302,6 +311,7 @@ button{cursor:pointer;border:none;background:none;}
         <button type="button" class="editar-btn" id="btn-editar">&#9998; Editar lançamento</button>
         <div class="meta-hoje" id="meta-hoje"></div>
       </div>
+      <div class="n-hoje" id="n-hoje"></div>
       <div id="time-hoje"></div>
       <div id="lista-hoje"></div>
     </div>
@@ -313,6 +323,7 @@ button{cursor:pointer;border:none;background:none;}
         <input type="month" id="f-mes">
         <div class="meta-hoje" id="meta-mes"></div>
       </div>
+      <div class="n-hoje" id="n-mes"></div>
       <div id="time-mes"></div>
       <div id="lista-mes"></div>
     </div>
@@ -371,6 +382,8 @@ const fmt=n=>Number(n||0).toLocaleString("pt-BR");
 /* Em aba anônima o navegador pode recusar até tocar no localStorage. */
 function lerGuardado(k){ try{ return localStorage.getItem(k); }catch(_e){ return null; } }
 function guardar(k,v){ try{ localStorage.setItem(k,v); }catch(_e){} }
+/* Guarda o dia JUNTO COM a data em que foi guardado: amanhã ele não vale mais. */
+function guardarDia(ds){ guardar("rs_data",ds); guardar("rs_data_em",hojeStr()); }
 
 /* A dona digita "1.500" e não "1500": o ponto aqui é separador de milhar. */
 function inteiroBR(v){
@@ -809,7 +822,36 @@ function render(){
   else renderAjustes();
 }
 
+/* Quantos dias para trás (ou para frente) está a tela. */
+function __distanciaDias(ds){
+  const a=new Date(hojeStr()+"T12:00:00"), b=new Date(String(ds)+"T12:00:00");
+  if(isNaN(a)||isNaN(b)) return 0;
+  return Math.round((a-b)/86400000);
+}
+function __avisarNaoEhHoje(){
+  const el=$("n-hoje"); if(!el) return;
+  if(!dataSel||dataSel===hojeStr()){ el.className="n-hoje"; el.innerHTML=""; return; }
+  const d=__distanciaDias(dataSel);
+  const quando = d>0 ? (d===1?"ontem":"há "+d+" dias")
+               : d<0 ? (d===-1?"amanhã":"daqui a "+(-d)+" dias") : "";
+  el.className="n-hoje on";
+  el.innerHTML='<span>Você está vendo <b>'+esc(rotuloDia(dataSel))+'</b>'
+    +(quando?" ("+quando+")":"")+' — não é hoje.</span>'
+    +'<button type="button" class="nh-b" id="nh-hoje">Ir para hoje</button>';
+  const bb=$("nh-hoje"); if(bb) bb.onclick=()=>$("btn-hoje")?.click();
+}
+function __avisarMesNaoEhOAtual(){
+  const el=$("n-mes"); if(!el) return;
+  const mesHoje=hojeStr().slice(0,7);
+  if(!mesSel||mesSel===mesHoje){ el.className="n-hoje"; el.innerHTML=""; return; }
+  el.className="n-hoje on";
+  el.innerHTML='<span>Você está vendo <b>'+esc(rotuloMes(mesSel))+'</b> — não é o mês de agora.</span>'
+    +'<button type="button" class="nh-b" id="nh-mes">Ir para este mês</button>';
+  const bb=$("nh-mes");
+  if(bb) bb.onclick=async()=>{ mesSel=mesHoje; $("f-mes").value=mesHoje; abertos.clear(); await recarregar(); };
+}
 function renderDia(){
+  __avisarNaoEhHoje();
   const m=metaDoDia(dataSel);
   $("meta-hoje").innerHTML = m>0
     ? "meta do dia<br><b>"+fmt(m)+"</b> pçs"+(ehSexta(dataSel)?" (sexta)":"")
@@ -887,6 +929,7 @@ function renderDia(){
 }
 
 function renderMes(){
+  __avisarMesNaoEhOAtual();
   const pessoas=porPessoa(mesSel).filter(p=>p.diasTrab>0);
   const totFeito=pessoas.reduce((s,p)=>s+p.feitoMes,0);
   const totNeg=pessoas.reduce((s,p)=>s+p.negMes,0);
@@ -1034,13 +1077,13 @@ document.querySelectorAll(".aba").forEach(b=>{
 
 $("f-data").addEventListener("change",async()=>{
   const v=$("f-data").value; if(!v) return;
-  dataSel=v; guardar("rs_data",dataSel);
+  dataSel=v; guardarDia(dataSel);
   const m=mesDe(dataSel);
   if(m!==mesSel){ mesSel=m; $("f-mes").value=m; await recarregar(); }
   else render();
 });
 $("btn-hoje").addEventListener("click",async()=>{
-  dataSel=hojeStr(); $("f-data").value=dataSel; guardar("rs_data",dataSel);
+  dataSel=hojeStr(); $("f-data").value=dataSel; guardarDia(dataSel);
   const m=mesDe(dataSel);
   if(m!==mesSel){ mesSel=m; $("f-mes").value=m; await recarregar(); }
   else render();
@@ -1097,8 +1140,12 @@ onAuthStateChanged(auth,async user=>{
     $("app-view").style.display="block";
     $("login-btn").disabled=false; $("login-btn").textContent="Entrar";
 
-    dataSel=lerGuardado("rs_data")||hojeStr();
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(dataSel)) dataSel=hojeStr();
+    /* O dia que ela estava vendo só vale dentro do mesmo dia. Guardado sem
+       prazo, o app reabria dias depois naquele dia antigo: ela via outra tela,
+       com outros números, e achava que o que tinha lançado havia sumido. */
+    dataSel=lerGuardado("rs_data")||"";
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dataSel) || lerGuardado("rs_data_em")!==hojeStr())
+      dataSel=hojeStr();
     mesSel=mesDe(dataSel);
     $("f-data").value=dataSel;
     $("f-mes").value=mesSel;
