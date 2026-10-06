@@ -1358,9 +1358,16 @@ function lotePertenceAoMes(l,mes){
   const concl=isConcluido(l)?tsMonth(l.concluidoEm||l.updatedAt||l.updatedEm||l.criadoEm||l.createdAt):"";
   return criado===mes||concl===mes;
 }
+/* Formatadores de data feitos UMA vez: cada toLocaleDateString monta um
+   formatador novo por chamada, e algumas destas rodam dentro dos laços que
+   desenham a lista. O texto na tela sai idêntico. */
+const __fmtMesAno=new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"});
+const __fmtDiaMes=new Intl.DateTimeFormat("pt-BR",{day:"2-digit",month:"2-digit"});
+const __fmtDiaLongo=new Intl.DateTimeFormat("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
+const __fmtDiaLongoN=new Intl.DateTimeFormat("pt-BR",{weekday:"long",day:"numeric",month:"long"});
 function mesLabel(mes){
   const [y,m]=mes.split("-").map(Number);
-  const t=new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  const t=__fmtMesAno.format(new Date(y,m-1,1));
   return t.charAt(0).toUpperCase()+t.slice(1);   /* "Setembro de 2026", não "De" */
 }
 function syncMonthUI(){
@@ -1417,7 +1424,7 @@ function prazoTag(prazo,concluido){
   const hoje=new Date();hoje.setHours(0,0,0,0);
   const d=new Date(prazo+"T00:00:00");
   const dias=Math.round((d-hoje)/864e5);
-  const txt=d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+  const txt=__fmtDiaMes.format(d);
   let cls="prazo-ok",label="Prazo "+txt;
   if(concluido){cls="";label="Prazo "+txt;}
   else if(dias<0){cls="prazo-late";label="Atrasado "+txt;}
@@ -2283,8 +2290,8 @@ function renderPlacar(){
   const ativas=linhas.filter(x=>x.pecas>0).length;
   /* só a primeira letra em maiúscula: em português o resto vai minúsculo */
   const dataCrua=noMes
-    ? new Date(hoje+"T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"})
-    : new Date(hoje+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
+    ? __fmtMesAno.format(new Date(hoje+"T12:00:00"))
+    : __fmtDiaLongo.format(new Date(hoje+"T12:00:00"));
   const dataTxt=dataCrua.charAt(0).toUpperCase()+dataCrua.slice(1);
 
   const corpo=ativas===0
@@ -2546,7 +2553,7 @@ function renderDias(){
   const media=diasComPeca.length?Math.round(totalMes/diasComPeca.length):0;
   let melhor=null; diasComPeca.forEach(d=>{ if(!melhor||totDia[d]>totDia[melhor]) melhor=d; });
   const nf=n=>Number(n||0).toLocaleString("pt-BR");
-  const mesTxt=(()=>{ const t=new Date(mes+"-01T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  const mesTxt=(()=>{ const t=__fmtMesAno.format(new Date(mes+"-01T12:00:00"));
     return t.charAt(0).toUpperCase()+t.slice(1); })();
   const melhorTxt=melhor?(melhor.slice(8,10)+"/"+melhor.slice(5,7)):"—";
   const resumo='<div class="cal-resumo">'
@@ -2562,7 +2569,7 @@ function renderDias(){
   else if(diasSel && dias[diasSel]){
     const pessoas=Object.keys(dias[diasSel]).map(n=>({nome:n,pecas:dias[diasSel][n].q,seg:dias[diasSel][n].s})).sort((a,b)=>b.pecas-a.pecas);
     const dd=new Date(diasSel+"T12:00:00");
-    const dl=dd.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
+    const dl=__fmtDiaLongo.format(dd);
     detail='<div class="dia-card"><div class="dia-head"><span class="dia-data">'+dl+'</span>'+
       ((segDia[diasSel]||0)>0?'<span class="dia-seg">'+segDia[diasSel].toLocaleString("pt-BR")+' de 2ª</span>':'')+
       '<span class="dia-tot">'+(totDia[diasSel]||0).toLocaleString("pt-BR")+' pçs</span></div>'+
@@ -2937,7 +2944,7 @@ body{
     try{
       const el=document.querySelector("#tb-data .tb-dia"); if(!el) return;
       const d=new Date();
-      const txt=d.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
+      const txt=__fmtDiaLongoN.format(d);
       el.textContent=txt.charAt(0).toUpperCase()+txt.slice(1);
     }catch(e){}
   }
