@@ -106,12 +106,21 @@ const __fmtDataBR=new Intl.DateTimeFormat("pt-BR");
 const __fmtMesAno=new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"});
 const __fmtMesCurto=new Intl.DateTimeFormat("pt-BR",{month:"short"});
 const __fmtNum=new Intl.NumberFormat("pt-BR");
-function fmtMoney(v){return __fmtBRL.format(toNumber(v,0));}
-function fmtNum(v){return __fmtNum.format(toNumber(v,0));}
-function fmtHoras(min){const h=Math.floor(Math.abs(min)/60),m=Math.abs(min)%60;const s=(min<0?"-":"")+(h>0?h+"h ":"")+(m>0?m+"min":"");return s||"0min";}
-function fmtHorasCompact(min){const sinal=min<0?'-':'';const total=Math.abs(min||0);const h=Math.floor(total/60),m=total%60;return `${sinal}${h}:${String(m).padStart(2,'0')}`;}
+/* Conta de ponto flutuante deixa restos como -0,0000001, e o formatador
+   escreve "-R$ 0,00" e "-0". Um valor que arredonda a zero não tem sinal. */
+function __semMenosZero(v,casas){ const f=Math.pow(10,casas); return Math.round(v*f)===0?0:v; }
+function fmtMoney(v){return __fmtBRL.format(__semMenosZero(toNumber(v,0),2));}
+function fmtNum(v){return __fmtNum.format(__semMenosZero(toNumber(v,0),3));}
+/* Pela tela os minutos chegam sempre inteiros, mas um registro importado pode
+   trazer meio minuto ("37,5") ou texto — e aí aparecia "0:37.5h". */
+function fmtHoras(min){min=Math.round(toNumber(min,0));const h=Math.floor(Math.abs(min)/60),m=Math.abs(min)%60;const s=(min<0?"-":"")+(h>0?h+"h ":"")+(m>0?m+"min":"");return s||"0min";}
+function fmtHorasCompact(min){min=Math.round(toNumber(min,0));const sinal=min<0?'-':'';const total=Math.abs(min||0);const h=Math.floor(total/60),m=total%60;return `${sinal}${h}:${String(m).padStart(2,'0')}`;}
 function getPontoMinutos(p,jornadaMin=480){
-  if(typeof p?.minutos==="number"&&!Number.isNaN(p.minutos)) return Math.max(0,p.minutos);
+  /* "120" em texto (importação, versão antiga) era ignorado: uma hora extra
+     lançada contava ZERO no saldo. */
+  const m=typeof p?.minutos==="number"?p.minutos
+        :(p?.minutos!=null&&p.minutos!=="")?toNumber(p.minutos,NaN):NaN;
+  if(Number.isFinite(m)) return Math.max(0,m);
   if(p?.tipo==="falta-dia"||p?.tipo==="extra-duplo") return jornadaMin;
   if(p?.tipo==="falta-meio"||p?.tipo==="extra-simples") return Math.round(jornadaMin/2);
   return 0;
@@ -250,19 +259,14 @@ async function aplicarEscalaPadraoFuncionarios(){
       // Atualiza também o objeto em memória: dispensa recarregar a coleção depois.
       f.escalaPadrao=padrao.tipo;
       f.jornadaMin=padrao.jornadaMin;
+      /* Grava SÓ o que mudou. Antes regravava o documento inteiro, e com
+         salario:Number(f.salario)||0 um salário guardado como texto
+         ("1.850,00", de versão antiga ou de backup) virava ZERO no banco —
+         a cada carregamento, sem ninguém pedir. updateDoc junta os campos,
+         então o resto do documento fica exatamente como estava. */
       updates.push(updateDoc(doc(db,"funcionarios",f.id), withOwner({
-        nome:f.nome||"",
-        cargo:f.cargo||"",
-        setor:f.setor||"",
-        salario:Number(f.salario)||0,
-        bonus:Number(f.bonus)||0,
         jornadaMin:padrao.jornadaMin,
-        telefone:f.telefone||"",
-        admissao:f.admissao||"",
-        metaDia:Number(f.metaDia)||0,
-        status:f.status||"Ativo",
-        escalaPadrao:padrao.tipo,
-        criadoEm:f.criadoEm||Timestamp.now()
+        escalaPadrao:padrao.tipo
       })));
     }
   }
@@ -387,17 +391,17 @@ try{ window.addEventListener("storage",e=>{ if(!e||e.key===null||e.key==="mello_
 function getConfig(){
   const cfg=getStoredConfig();
   return {
-    metaDia:Number(cfg.metaDia)||300,
-    metaMes:Number(cfg.metaMes)||6000,
-    metaFaturamento:Number(cfg.metaFaturamento)||25000,
-    metaLucro:Number(cfg.metaLucro)||8000,
-    metaMargem:Number(cfg.metaMargem)||20,
-    metaCusto:Number(cfg.metaCusto)||17000,
+    metaDia:toNumber(cfg.metaDia,0)||300,
+    metaMes:toNumber(cfg.metaMes,0)||6000,
+    metaFaturamento:toNumber(cfg.metaFaturamento,0)||25000,
+    metaLucro:toNumber(cfg.metaLucro,0)||8000,
+    metaMargem:toNumber(cfg.metaMargem,0)||20,
+    metaCusto:toNumber(cfg.metaCusto,0)||17000,
     empresa:cfg.empresa||"Mello Style",
     empresaId:cfg.empresaId||"mello-style",
     perfil:cfg.perfil||"admin",
     tema:normalizeThemeId(cfg.tema),
-    caixaEmpresa:Number(cfg.caixaEmpresa)||0,
+    caixaEmpresa:toNumber(cfg.caixaEmpresa,0),
     provisaoMeses:(cfg.provisaoMeses && typeof cfg.provisaoMeses==="object")?cfg.provisaoMeses:{},
     tetosCategoria:(cfg.tetosCategoria && typeof cfg.tetosCategoria==="object")?cfg.tetosCategoria:{}
   };
@@ -651,7 +655,7 @@ function getClientesResumo(mes=""){
     const nome=safeText(l.cliente)||"Sem cliente";
     if(!map[nome]) map[nome]={cliente:nome,lotes:0,pecas:0,faturamento:0};
     map[nome].lotes++;
-    map[nome].pecas+=(l.qtdTotal||0);
+    map[nome].pecas+=toNumber(l.qtdTotal,0);
     map[nome].faturamento+=calcFaturamentoLote(l);
   });
   return Object.values(map).sort((a,b)=>b.faturamento-a.faturamento||b.pecas-a.pecas);
@@ -662,7 +666,7 @@ function getFinanceiroCategorias(mes=""){
   const map={};
   gs.forEach(g=>{
     const nome=safeText(g.categoria)||"Sem categoria";
-    map[nome]=(map[nome]||0)+(g.valor||0);
+    map[nome]=(map[nome]||0)+toNumber(g.valor,0);   /* "1.234,56" em texto era colado, não somado */
   });
   return Object.entries(map).map(([categoria,valor])=>({categoria,valor})).sort((a,b)=>b.valor-a.valor);
 }
@@ -2045,7 +2049,7 @@ function renderFuncionarios(){
      poder comparar a média por dia com a meta por dia. */
   const fMap={},dMap={};
   registros.forEach(r=>{
-    fMap[r.funcionarioId]=(fMap[r.funcionarioId]||0)+(r.qtd||0);
+    fMap[r.funcionarioId]=(fMap[r.funcionarioId]||0)+toNumber(r.qtd,0);   /* "1.200" em texto era colado */
     const d=diaMesDe(r).dia;
     if(d){ (dMap[r.funcionarioId]||(dMap[r.funcionarioId]=new Set())).add(d); }
   });
@@ -2099,8 +2103,8 @@ function calcProvisoes(){
   const anoAtual=hoje.getFullYear();
   const mesAtual=hoje.getMonth(); // 0-11
   const itens=funcAtivas.map(f=>{
-    const salario=Number(f.salario)||0;
-    const bonus=Number(f.bonus)||0;
+    const salario=toNumber(f.salario,0);
+    const bonus=toNumber(f.bonus,0);
     const remuneracao=salario+bonus;
     const feriasAnual=remuneracao*(1+1/3);
     const decimoAnual=remuneracao;
@@ -2134,8 +2138,9 @@ window.calcProvisoes=calcProvisoes;
 function calcBancoHoras(funcId,mesAno){
   const f=funcionarios.find(x=>x.id===funcId);
   if(!f)return{faltasDia:0,faltasMeio:0,extrasSimples:0,extrasDuplas:0,minFaltas:0,minExtras:0,saldoMin:0,desconto:0,valorExtras:0,bonus:0,salarioBase:0,salarioFinal:0,faltasCustom:0,extrasCustom:0,registrosMes:[]};
-  const salario=Number(f.salario)||0;
-  const bonus=Number(f.bonus)||0;
+  /* toNumber entende "1.850,00"; Number() devolvia NaN e o ||0 virava zero. */
+  const salario=toNumber(f.salario,0);
+  const bonus=toNumber(f.bonus,0);
   const registrosMes=pontos.filter(p=>p.funcionarioId===funcId&&p.data&&p.data.slice(0,7)===mesAno);
 
   const faltasDia=registrosMes.filter(p=>p.tipo==="falta-dia").length;
@@ -2438,7 +2443,7 @@ function renderBancoHoras(){
             ${s.minExtras>0?fmtHorasCompact(s.minExtras)+"h total":"Nenhuma"}
           </div></div>
           <div class="bh-item"><div class="bh-il">Bônus${s.bonusBloqueado?" 🔒":""}</div><div class="bh-iv ${s.bonusBloqueado?"red":s.bonus>0?"green":""}">
-            ${(f.bonus||0)===0?"Sem bônus":s.bonusBloqueado?"Bloqueado (horas neg.)":"+"+fmtMoney(s.bonus)}
+            ${toNumber(f.bonus,0)===0?"Sem bônus":s.bonusBloqueado?"Bloqueado (horas neg.)":s.bonus>=0.005?"+"+fmtMoney(s.bonus):fmtMoney(0)}
           </div></div>
           <div class="bh-item bh-item-full bh-liquido ${s.saldoMin>0?'liq-pos':s.saldoMin<0?'liq-neg':''}">
             <div class="bh-liquido-info">
@@ -2447,7 +2452,7 @@ function renderBancoHoras(){
             </div>
             <div style="text-align:right;">
               <div class="bh-liquido-v">${s.saldoMin===0?"Zerado":(s.saldoMin>0?"+":"−")+fmtHorasCompact(Math.abs(s.saldoMin))+"h"}</div>
-              <div class="bh-liquido-val">${s.saldoMin>0?"+"+fmtMoney(s.valorExtras):s.saldoMin<0?"−"+fmtMoney(s.desconto):fmtMoney(0)}</div>
+              <div class="bh-liquido-val">${s.saldoMin>0&&s.valorExtras>=0.005?"+"+fmtMoney(s.valorExtras):s.saldoMin<0&&s.desconto>=0.005?"−"+fmtMoney(s.desconto):fmtMoney(0)}</div>
             </div>
           </div>
           <div class="bh-item bh-item-full bh-final-row">
@@ -4020,7 +4025,8 @@ window.aplicarFiltros=function(manterLimite){
   const faturaDe=l=>{ let v=faturaCache.get(l.id);
     if(v===undefined){ v=calcFaturamentoLote(l); faturaCache.set(l.id,v); } return v; };
   const lotesNoFiltro=[...new Set(dados.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>idxLote.get(id)).filter(Boolean);
-  const tQ=lotesNoFiltro.reduce((s,l)=>s+(l.qtdTotal||0),0);
+  /* toNumber: com "1.200" em texto, 0+"1.200" dava o texto "01.200". */
+  const tQ=lotesNoFiltro.reduce((s,l)=>s+toNumber(l.qtdTotal,0),0);
   const tF=lotesNoFiltro.reduce((s,l)=>s+faturaDe(l),0);
   if($("hr-reg"))$("hr-reg").textContent=dados.length.toLocaleString("pt-BR");
   if($("hr-qtd"))$("hr-qtd").textContent=tQ.toLocaleString("pt-BR");
@@ -4036,7 +4042,7 @@ window.aplicarFiltros=function(manterLimite){
     const k=__rotuloDia(d); if(!grupos[k])grupos[k]=[]; grupos[k].push(r);});
   cont.innerHTML=Object.entries(grupos).map(([dk,regs])=>{
     const lotesGrupo=[...new Set(regs.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>idxLote.get(id)).filter(Boolean);
-    const dQ=lotesGrupo.reduce((s,l)=>s+(l.qtdTotal||0),0);
+    const dQ=lotesGrupo.reduce((s,l)=>s+toNumber(l.qtdTotal,0),0);
     const dF=lotesGrupo.reduce((s,l)=>s+faturaDe(l),0);
     return`<div class="hg"><div class="hg-hd"><span class="hg-dia">${dk}</span><div class="hg-pills"><span class="hpill">${dQ.toLocaleString("pt-BR")} pçs</span><span class="hpill g">${fmtMoney(dF)}</span></div></div>
     <table class="htbl"><thead><tr><th>Hora</th><th>Funcionário</th><th>Etapa</th><th>Qtd</th><th>Lote</th><th>Obs</th></tr></thead>
@@ -4325,7 +4331,7 @@ window.aplicarReajusteSalarios=async function(){
    base da folha, do 13º e das férias, então o aumento precisa chegar aqui —
    a tabela de encargos cuida só do INSS e do FGTS. */
 window.reajustarSalarios=async function(){
-  const ativas=funcionarios.filter(f=>f.status!=="Inativo"&&Number(f.salario)>0);
+  const ativas=funcionarios.filter(f=>f.status!=="Inativo"&&toNumber(f.salario,0)>0);
   if(!ativas.length){ toast("Nenhuma funcionária ativa com salário cadastrado.","warn"); return; }
   const resp=prompt("Reajuste em % sobre o salário das funcionárias ativas:\n\n"
     +`(${ativas.length} funcionária(s) · use vírgula ou ponto)`, "4,10");
@@ -4336,7 +4342,7 @@ window.reajustarSalarios=async function(){
   const f=1+pct/100;
   const pctTxt=pct.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
   const mudancas=ativas.map(x=>{
-    const de=Math.round(Number(x.salario)*100)/100;
+    const de=Math.round(toNumber(x.salario,0)*100)/100;
     const para=Math.round(de*f*100)/100;
     return {id:x.id, nome:x.nome||"—", de, para, obj:x};
   }).filter(m=>m.para!==m.de);
@@ -6018,7 +6024,7 @@ function calcCaixaEmpresa(){
     return !CAIXA_EXCLUIR.some(x=>nn.includes(x));   // remove Renan, Nicole, Sabrina, Júnior, Alessandra
   });
   const itens=ativos.map(f=>{
-    const remun=(Number(f.salario)||0)+(Number(f.bonus)||0);
+    const remun=toNumber(f.salario,0)+toNumber(f.bonus,0);
     const meses=mesesProvisaoFunc(f,cfg);
     const decimo=remun*(meses/12);              // 13º proporcional (avos)
     const ferias=remun*(1+1/3)*(20/30)*(meses/12); // férias (20 dias) + 1/3 proporcional
@@ -6406,11 +6412,19 @@ function renderMetas(){
      nunca discordarem */
   const projecao=projVal(fat);
   const difProj=projecao-mFat;
-  const difPctProj=mFat>0?Math.round(difProj/mFat*100):0;
+  /* Abaixo de 1% de distância, o arredondamento dava "(−0%)". Agora vai com
+     uma casa ("−0,1%"), e quando é zero de verdade não leva sinal. */
+  const difPctBruto=mFat>0?difProj/mFat*100:0;
+  const difPctTxt=(()=>{
+    const a=Math.abs(difPctBruto);
+    if(a<0.05) return "0%";
+    const v=a<1?(Math.round(a*10)/10).toLocaleString("pt-BR"):String(Math.round(a));
+    return (difProj>=0?"+":"−")+v+"%";
+  })();
   const frase=isMesAtual&&projecao>0
     ? `No ritmo de hoje o mês fecha em <b>${fmtMoney(projecao)}</b> — `
       +`<span class="${difProj>=0?"pos":"neg"}">${difProj>=0?"+":"−"}${fmtMoney(Math.abs(difProj))} `
-      +`(${difProj>=0?"+":"−"}${Math.abs(difPctProj)}%)</span> ${difProj>=0?"acima":"abaixo"} da meta. `
+      +`(${difPctTxt})</span> ${difProj>=0?"acima":"abaixo"} da meta. `
       +`${mBatidas} de 4 metas batidas até agora.`
     : `${mBatidas} de 4 metas batidas neste mês.`;
 
@@ -7083,8 +7097,10 @@ window.closeGastosDrawer=function(){
 function renderGastosDrawer(){
   const mesAtualGD=monthKeyLocal();
   const gastosDoMes=gastos.filter(g=>(g.competencia||"")===mesAtualGD);
-  const tF=gastosDoMes.filter(g=>g.tipo==="fixo").reduce((s,g)=>s+(g.valor||0),0);
-  const tV=gastosDoMes.filter(g=>g.tipo==="variavel").reduce((s,g)=>s+(g.valor||0),0);
+  /* toNumber: um valor "1.234,56" em texto era COLADO na soma, e o total da
+     gaveta chegava a R$ 89.810.801.234,56. */
+  const tF=gastosDoMes.filter(g=>g.tipo==="fixo").reduce((s,g)=>s+toNumber(g.valor,0),0);
+  const tV=gastosDoMes.filter(g=>g.tipo==="variavel").reduce((s,g)=>s+toNumber(g.valor,0),0);
   const tT=tF+tV;
   // Folha real do mês atual (inclui extras/descontos)
   const resumoGD=calcResumoMensal(mesAtualGD);
@@ -7368,7 +7384,7 @@ function lixeiraResumo(x){
     if(i.numeroOf) p.push('OF '+i.numeroOf);
     if(i.produto) p.push(i.produto);
     if(i.cliente) p.push(i.cliente);
-    if(i.qtdTotal) p.push(Number(i.qtdTotal).toLocaleString('pt-BR')+' pçs');
+    if(i.qtdTotal) p.push(fmtNum(toNumber(i.qtdTotal,0))+' pçs');
   }else if(i.descricao){
     p.push(i.descricao);
     if(i.valor!=null) p.push(fmtMoney(i.valor));
