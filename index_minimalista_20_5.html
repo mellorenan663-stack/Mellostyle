@@ -108,6 +108,9 @@ const __fmtMesCurto=new Intl.DateTimeFormat("pt-BR",{month:"short"});
 const __fmtNum=new Intl.NumberFormat("pt-BR");
 /* Conta de ponto flutuante deixa restos como -0,0000001, e o formatador
    escreve "-R$ 0,00" e "-0". Um valor que arredonda a zero não tem sinal. */
+/* Arredonda no centavo, meio centavo para cima (como no holerite). O empurrão
+   de 1e-7 corrige o binário: 1,005 vira 1,00499999… no computador. */
+function __noCentavo(v){ const n=toNumber(v,0); return Math.round(n*100+(n>=0?1e-7:-1e-7))/100; }
 function __semMenosZero(v,casas){ const f=Math.pow(10,casas); return Math.round(v*f)===0?0:v; }
 function fmtMoney(v){return __fmtBRL.format(__semMenosZero(toNumber(v,0),2));}
 function fmtNum(v){return __fmtNum.format(__semMenosZero(toNumber(v,0),3));}
@@ -2205,8 +2208,10 @@ function calcBancoHoras(funcId,mesAno){
   // Saldo positivo paga +50%; saldo negativo vira desconto. Faltas absorvidas pelas extras não descontam de novo.
   const saldoPositivo=Math.max(0,saldoMin);
   const saldoNegativo=Math.max(0,-saldoMin);
-  const valorExtras=saldoPositivo*valorMinutoPadrao*1.5; // +50% sobre as horas extras líquidas
-  const desconto=saldoNegativo*valorMinutoPadrao;        // desconto apenas do saldo que ficou negativo
+  /* Cada valor de folha no centavo, como no holerite: assim a soma das linhas
+     bate com o total em qualquer tela. */
+  const valorExtras=__noCentavo(saldoPositivo*valorMinutoPadrao*1.5); // +50% sobre as horas extras líquidas
+  const desconto=__noCentavo(saldoNegativo*valorMinutoPadrao);        // desconto apenas do saldo que ficou negativo
 
   // Bônus é descontado (zerado) se: (a) o saldo do mês ficar negativo [regra antiga],
   // OU (b) as faltas brutas do mês somarem 9h30 ou mais (570min) — mesmo que horas extras
@@ -2230,7 +2235,7 @@ function calcBancoHoras(funcId,mesAno){
       const [ay,am,ad]=f.admissao.split("-").map(Number);
       const diasNoMes=new Date(ay,am,0).getDate();       // último dia do mês
       const diasTrabalhados=Math.max(0,diasNoMes-ad+1);  // do dia de entrada até o fim do mês
-      salarioBase=salario*(diasTrabalhados/diasNoMes);
+      salarioBase=__noCentavo(salario*(diasTrabalhados/diasNoMes));
       admProporcional=true; admDiasTrab=diasTrabalhados; admDiasMes=diasNoMes;
     }
   }
@@ -2250,7 +2255,7 @@ function calcBancoHoras(funcId,mesAno){
   const descontoCheio=descontoAplicado;
   if(descontoLimitado) descontoAplicado=aReceber;
 
-  const salarioFinal=aReceber-descontoAplicado;
+  const salarioFinal=__noCentavo(aReceber-descontoAplicado);
 
   return{faltasDia,faltasMeio,extrasSimples,extrasDuplas,faltasCustom,extrasCustom,minFaltas,minExtras,saldoMin,desconto:descontoAplicado,descontoCheio,descontoLimitado,semVinculo,valorExtras:extrasPagas,bonus:bonusFinal,bonusBloqueado:(bonusBloqueadoPorFalta||bonusBloqueadoPorSaldo)&&bonus>0,salarioBase,salarioBaseCheio:salario,admProporcional,admDiasTrab,admDiasMes,salarioFinal,registrosMes};
 }
