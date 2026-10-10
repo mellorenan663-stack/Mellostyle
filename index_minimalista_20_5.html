@@ -1818,6 +1818,16 @@ async function _loadDataReal(){
    tela custava 127ms de travada — agora só refaz quando os dados mudam
    (loadData avisa incrementando a versão). */
 let __dadosVersao=0, __selectsVersao=-1;
+/* Versão de cada coleção na memória. Gravar ajusta a lista NO LUGAR (sem
+   reler o banco), então a identidade da lista não muda mais — e quem só
+   comparava a identidade ficava com a conta velha. Toda mudança feita na
+   memória passa por __marcarMudanca. */
+const __verCol={};
+function __marcarMudanca(colecao){
+  __verCol[colecao]=(__verCol[colecao]||0)+1;
+  __dadosVersao++;
+  if(__MEXE_SELECT[colecao]){ try{ populateSelects(); }catch(e){ console.error("SELECTS_LOCAL",e); } }
+}
 
 /* ── LISTAS DE OF ENXUTAS ────────────────────────────────────────────────
    Com cinco anos de histórico, quatro listas de OF somavam 4.020 opções
@@ -2304,14 +2314,14 @@ function aplicarLocal(colecao,acao,dados){
       const i=lista.findIndex(x=>x.id===dados.id);
       if(i>=0){
         const item=Object.assign(lista[i],dados);
+        __esquecerCalculos(item);
         /* A data pode ter mudado: tira e põe de volta no lugar certo. */
         lista.splice(i,1);
         __inserirOrdenado(lista,item,colecao);
       }
     }
   }catch(e){ console.error("LOCAL_"+colecao,e); }
-  __dadosVersao++;
-  if(__MEXE_SELECT[colecao]){ try{ populateSelects(); }catch(e){ console.error("SELECTS_LOCAL",e); } }
+  __marcarMudanca(colecao);
   try{ atualizarContadoresMenu(); }catch(e){}
   __redesenharTelaAtual();
 }
@@ -2689,15 +2699,18 @@ window.toggleControleHoraEtapaOutra=toggleControleHoraEtapaOutra;
 ══════════════════════════════════════════════════════════════ */
 /* calcProg era O(lotes × lançamentos): para cada lote ele varria a lista
    inteira de lançamentos. Com 900 lotes e 9 mil lançamentos o Dashboard
-   travava mais de um segundo. Este índice é montado uma vez por carga —
-   `registros` só é trocado por inteiro, nunca editado no lugar, então comparar
-   a identidade da lista basta para saber se precisa remontar. */
-let __loteLista=null,__lotePorId=null;
+   travava mais de um segundo. Os índices abaixo são montados uma vez e
+   remontados quando a lista é trocada (recarga) OU muda no lugar (gravar,
+   apagar, editar — a versão da coleção sobe). Só a identidade não bastava:
+   lançar produção numa OF mostrava "0% desta etapa" até recarregar. */
+let __loteLista=null,__lotePorId=null,__loteVer=-1;
 /* Procurar a OF pelo id varrendo a lista inteira, uma vez por linha da tela,
    fica caro quando ha milhares de OFs. */
 function loteDoId(id){
   if(!id) return null;
-  if(__loteLista!==lotes){ __lotePorId=new Map(lotes.map(l=>[l.id,l])); __loteLista=lotes; }
+  if(__loteLista!==lotes||__loteVer!==(__verCol.lotes||0)){
+    __lotePorId=new Map(lotes.map(l=>[l.id,l])); __loteLista=lotes; __loteVer=__verCol.lotes||0;
+  }
   return __lotePorId.get(id)||null;
 }
 /* Ordenar por data montava um Date novo a cada comparacao — com 22 mil
@@ -2764,6 +2777,13 @@ function tsDe(r){
 }
 /* Dia e mes do registro, tambem calculados uma vez. */
 const __diaMes=new WeakMap();
+/* Texto da busca, carimbo e dia/mês ficam guardados pelo próprio objeto.
+   Editado no lugar, o objeto é o mesmo e o guardado ficava velho: a busca
+   achava o texto de antes da edição. */
+function __esquecerCalculos(item){
+  if(!item||typeof item!=="object") return;
+  try{ __chaveBusca.delete(item); __carimbo.delete(item); __diaMes.delete(item); }catch(_e){}
+}
 function diaMesDe(r){
   let v=__diaMes.get(r);
   if(v!==undefined) return v;
@@ -2775,9 +2795,10 @@ function diaMesDe(r){
   __diaMes.set(r,v);
   return v;
 }
-let __regLista=null,__regPorLote=null;
+let __regLista=null,__regPorLote=null,__regVer=-1;
 function registrosDoLote(loteId){
-  if(__regLista!==registros){
+  if(__regLista!==registros||__regVer!==(__verCol.registros||0)){
+    __regVer=__verCol.registros||0;
     __regPorLote=new Map();
     for(const r of registros){
       const k=r.loteId; if(!k) continue;
@@ -2921,9 +2942,13 @@ async function finalizarLoteNoFirestore(loteId,extraData={}){
     // continua com o lote local já carregado.
     console.warn("GET_LOTE_BEFORE_CONCLUDE_WARN",e?.code||e?.message||e);
   }
-  await updateDoc(doc(db,"lotes",loteId),buildLoteConclusaoPayload(loteAtual,extraData));
+  const dadosConclusao=buildLoteConclusaoPayload(loteAtual,extraData);
+  await updateDoc(doc(db,"lotes",loteId),dadosConclusao);
+  /* A memória recebe exatamente o que foi gravado (e não uma cópia parecida). */
+  __conclusaoGravada={id:loteId,dados:dadosConclusao};
   return loteAtual;
 }
+let __conclusaoGravada=null;
 /* ── Atualização local, sem recarregar o app ───────────────────
    O addDoc/updateDoc já confirmou a gravação. Chamar loadData()
    depois relia as 8 coleções do Firestore e redesenhava tudo — era
@@ -2931,7 +2956,10 @@ async function finalizarLoteNoFirestore(loteId,extraData={}){
    estado em memória é ajustado e a tela atual é redesenhada. ── */
 function aplicarLocalLote(id,campos){
   const l=lotes.find(x=>x.id===id);
-  if(l) Object.assign(l,campos);
+  if(l){ Object.assign(l,campos); __esquecerCalculos(l); }
+  /* Sem isto o resumo do mês ficava com a conta de antes: OF cancelada
+     continuava somando no faturamento, valor editado não aparecia. */
+  __marcarMudanca("lotes");
   return l;
 }
 /* Os números que cada página tem ficam visíveis já no menu: dá para ver o
@@ -2999,8 +3027,13 @@ function redesenharPreservandoRolagem(){
 }
 async function atualizarTudoAposConclusao(msg="Lote concluído.",{loteId,novosRegistros}={}){
   // Espelha em memória o que acabou de ser gravado, em vez de reler tudo.
-  if(loteId) aplicarLocalLote(loteId,{status:"Concluído",concluidoEm:Timestamp.now()});
-  if(novosRegistros&&novosRegistros.length) registros.unshift(...novosRegistros);
+  if(loteId){
+    const gravado=(__conclusaoGravada&&__conclusaoGravada.id===loteId)
+      ? __conclusaoGravada.dados : {status:"Concluído",concluidoEm:Timestamp.now()};
+    aplicarLocalLote(loteId,gravado);
+  }
+  __conclusaoGravada=null;
+  if(novosRegistros&&novosRegistros.length){ registros.unshift(...novosRegistros); __marcarMudanca("registros"); }
   closeAllTransientUI();
   redesenharPreservandoRolagem();
   toast(msg);
@@ -3261,6 +3294,9 @@ window.salvarLote=async()=>{
     const ref=await addDoc(collection(db,"lotes"),dados);
     // entra na lista em memória (ordenada por criadoEm desc, então no topo)
     lotes.unshift({id:ref.id,...dados});
+    /* Avisa o resumo do mês e os seletores: antes a OF nova não entrava no
+       faturamento do painel nem aparecia na lista da Produção. */
+    __marcarMudanca("lotes");
     [$("lote-numero"),$("lote-produto"),$("lote-qtd"),$("lote-valor"),$("lote-prazo"),$("lote-cliente"),$("lote-tamanhos"),$("lote-obs")].forEach(el=>{if(el)el.value="";});
     if($("lote-competencia")) $("lote-competencia").value=monthKeyLocal();
     if($("lote-prioridade")) $("lote-prioridade").value="Normal";
@@ -3297,6 +3333,7 @@ window.deletarLote=async id=>{
     await deleteDoc(doc(db,"lotes",id));
     const i=lotes.findIndex(l=>l.id===id);
     if(i>=0) lotes.splice(i,1);
+    __marcarMudanca("lotes");
     toast("Removido.");
     redesenharPreservandoRolagem();
   }
