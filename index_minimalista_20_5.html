@@ -575,7 +575,10 @@ function getLoteDisplay(l){
 // Nunca somar qtd de registros × valorPeca — isso multiplica por etapa.
 // Faturamento = qtdTotal × valorPeca (meta do lote, independente de quantas etapas foram lançadas).
 function calcFaturamentoLote(lote){
-  return toNumber(lote?.qtdTotal,0)*toNumber(lote?.valorPeca,0);
+  /* No centavo, como numa nota. Com preço de três casas (R$ 0,375 a peça) a OF
+     valia meio centavo a mais ou a menos, e a coluna de OFs do Relatório,
+     somada à mão, dava 1 centavo diferente do faturamento do mês. */
+  return __noCentavo(toNumber(lote?.qtdTotal,0)*toNumber(lote?.valorPeca,0));
 }
 
 function monthKeyLocal(date=new Date()){
