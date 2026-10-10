@@ -511,7 +511,7 @@ function applyTheme(themeId){
   document.documentElement.setAttribute("data-theme",tema);
   try{localStorage.setItem("mello_theme",tema);const cfg=(typeof getStoredConfig==="function"?getStoredConfig():{})||{};cfg.tema=tema;if(typeof saveStoredConfig==="function")saveStoredConfig(cfg);}catch(_e){}
   const chip=document.getElementById("theme-chip-label");
-  if(chip) chip.innerHTML=(tema==="claro"?ICO_SOL:ICO_LUA)+escapeHtml(meta.label);
+  if(chip){ chip.innerHTML=(tema==="claro"?ICO_SOL:ICO_LUA)+escapeHtml(meta.label); chip.dataset.tema=tema; }
   const sincronizar=()=>{const sel=document.getElementById("cfg-tema"); if(sel&&sel.value!==tema) sel.value=tema;};
   sincronizar();
   /* A pagina de Configuracoes pode ser redesenhada logo depois; este segundo
@@ -525,6 +525,7 @@ function cycleTheme(){
   if(currentPage==="dashboard")renderDashboard();if(currentPage==="relatorio")renderRelatorio();if(currentPage==="backup")renderBackup();
 }
 window.applyTheme=applyTheme;
+window.getThemeMeta=getThemeMeta;
 window.cycleTheme=cycleTheme;
 function calcMesAnterior(mes){
   const [a,m]=mes.split("-").map(Number);
@@ -620,8 +621,9 @@ function getLoteCompetenciaFinal(lote={}){
   return d ? monthKeyLocal(d) : monthKeyLocal();
 }
 function lotePertenceAoMes(lote={},mes="",idsComRegistro=null){
-  const statusReal=typeof getStatusOperacionalLote==="function"?getStatusOperacionalLote(lote):(lote.status||"Aberto");
-  if(statusReal==="Cancelado") return false;
+  /* Só o status gravado diz se a OF foi cancelada (é a primeira linha de
+     getStatusOperacionalLote) — sem calcular o progresso inteiro dela. */
+  if(lote?.status==="Cancelado") return false;
   const competencia=getLoteCompetencia(lote);
   // Se o lote tem mês de caixa/faturamento definido, ele entra somente naquele mês.
   // Isso permite cadastrar lote hoje e escolher se o valor cai neste mês ou no mês que vem.
@@ -641,14 +643,15 @@ window.setLoteCompetenciaRapida=function(inputId,offsetMes=0){
   el.value=monthKeyLocal(d);
 };
 
-function getClientesResumo(mes=""){
+function getClientesResumo(mes="",lotesDoMesProntos=null){
   let baseLotes=[];
-  if(mes){
-    const regsM=registros.filter(r=>sameMonthFromTs(r.criadoEm,mes));
-    const idsComRegistro=new Set(regsM.map(r=>r.loteId).filter(Boolean));
-    baseLotes=lotes.filter(l=>lotePertenceAoMes(l,mes,idsComRegistro));
+  /* O resumo do mês já filtrou estes lotes com a mesma regra: não refaz. */
+  if(mes&&Array.isArray(lotesDoMesProntos)){
+    baseLotes=lotesDoMesProntos;
+  }else if(mes){
+    baseLotes=lotes.filter(l=>lotePertenceAoMes(l,mes));
   }else{
-    baseLotes=lotes.filter(l=>(typeof getStatusOperacionalLote==="function"?getStatusOperacionalLote(l):(l.status||"Aberto"))!=="Cancelado");
+    baseLotes=lotes.filter(l=>l?.status!=="Cancelado");
   }
   const map={};
   baseLotes.forEach(l=>{
@@ -712,11 +715,14 @@ function calcResumoMensal(mes){
   return r;
 }
 function __calcResumoMensal(mes){
-  const regsM=registros.filter(r=>sameMonthFromTs(r.criadoEm,mes));
-  const idsComRegistro=new Set(regsM.map(r=>r.loteId).filter(Boolean));
+  /* Os lançamentos do mês só são lidos pelo Relatório — o painel não usa.
+     Separar os 20 mil lançamentos por mês fica para quando alguém pedir. */
+  const fonteRegs=registros;
+  let regsMGuardado=null;
+  const regsDoMes=()=>regsMGuardado||(regsMGuardado=fonteRegs.filter(r=>sameMonthFromTs(r.criadoEm,mes)));
   // totalPecas/faturamento sempre vêm da meta oficial dos lotes do período.
   // Isso evita multiplicar lote por quantidade de etapas ou por registros repetidos.
-  const lotesDoMes=lotes.filter(l=>lotePertenceAoMes(l,mes,idsComRegistro));
+  const lotesDoMes=lotes.filter(l=>lotePertenceAoMes(l,mes));
   const totalPecas=lotesDoMes.reduce((s,l)=>s+toNumber(l.qtdTotal,0),0);
   const faturamento=lotesDoMes.reduce((s,l)=>s+calcFaturamentoLote(l),0);
   const gastosM=gastos.filter(g=>(g.competencia||"")===mes);
@@ -741,10 +747,10 @@ function __calcResumoMensal(mes){
   const margem=faturamento>0?Math.round((lucro/faturamento)*100):0;
   const custoPorPeca=totalPecas>0?custo/totalPecas:0;
   const ticketMedioPeca=totalPecas>0?faturamento/totalPecas:0;
-  const clientes=getClientesResumo(mes);
+  const clientes=getClientesResumo(mes,lotesDoMes);
   const topCliente=clientes[0]||null;
   const categorias=getFinanceiroCategorias(mes);
-  return {mes,regsM,lotesDoMes,totalPecas,faturamento,gastosM,fixo,variavel,folha,folhaBase,bonusTotal,extrasTotal,descontosTotal,custo,lucro,margem,custoPorPeca,ticketMedioPeca,clientes,topCliente,categorias};
+  return {mes,get regsM(){ return regsDoMes(); },lotesDoMes,totalPecas,faturamento,gastosM,fixo,variavel,folha,folhaBase,bonusTotal,extrasTotal,descontosTotal,custo,lucro,margem,custoPorPeca,ticketMedioPeca,clientes,topCliente,categorias};
 }
 /* ── Excel de verdade (.xlsx), sem biblioteca externa ──────────
    Um .xlsx é um ZIP com XMLs dentro. Aqui o ZIP é gravado sem
@@ -1482,6 +1488,9 @@ async function adotarDadosAntigos(collectionName,items){
    Seis avisos de 3,6s que se cobrem não informam ninguém. Esta faixa fica no
    alto do app até os dados chegarem de verdade. */
 let __dadosJaVieram=false, __dadosFalharam=false, __retryTimer=null, __retryN=0;
+/* A primeira leitura já terminou (bem ou mal)? Antes disso o painel não
+   desenha R$ 0,00 como se fosse a verdade. */
+let __primeiraCargaFeita=false;
 /* Cada carregamento leva um número; resposta atrasada de um carregamento
    antigo não pode escrever por cima do novo. */
 let __cargaSeq=0;
@@ -1742,6 +1751,10 @@ async function _loadDataReal(){
       if(__retryTimer){ clearTimeout(__retryTimer); __retryTimer=null; }
       mostrarEstadoDados("ok");
     };
+    /* Se algo ficou para a segunda rodada e NADA chegou ainda, o painel
+       continua dizendo que está buscando — em vez de R$ 0,00 — até ela
+       terminar. Com parte dos dados na tela, ele já mostra o que veio. */
+    if(!pendentes.length) __primeiraCargaFeita=true;
     if(pendentes.length) mostrarEstadoDados("demorando");
     else if(falhou.length){ __dadosFalharam=true; mostrarEstadoDados("falhou",falhou); agendarNovaTentativa(); }
     else deuCerto();
@@ -1754,6 +1767,7 @@ async function _loadDataReal(){
     if(pendentes.length){
       await segundaRodada();
       if(!souAAtual()) return;
+      __primeiraCargaFeita=true;
       __dadosVersao++;
       try{ aquecerBusca(); }catch(e){}
       try{ populateSelects(); }catch(e){ console.error('POPULATE_SELECTS_ERROR',e); }
@@ -1802,6 +1816,7 @@ async function _loadDataReal(){
     }).catch(e=>console.warn('FASE2_LOAD_WARN',e));
   }catch(e){
     console.error("LOAD_DATA_FATAL_ERROR",e);
+    __primeiraCargaFeita=true;
     if(!souAAtual()) return;
     __motivoFalha=motivoLeitura(e);
     funcionarios=previous.funcionarios;registros=previous.registros;lotes=previous.lotes;gastos=previous.gastos;pontos=previous.pontos;controleProducaoHora=previous.controleProducaoHora;clientes=previous.clientes;
@@ -1817,7 +1832,7 @@ async function _loadDataReal(){
 /* Estas listas chegam a 1.500 opções cada. Reconstruir a cada visita à
    tela custava 127ms de travada — agora só refaz quando os dados mudam
    (loadData avisa incrementando a versão). */
-let __dadosVersao=0, __selectsVersao=-1;
+let __dadosVersao=0;
 /* Versão de cada coleção na memória. Gravar ajusta a lista NO LUGAR (sem
    reler o banco), então a identidade da lista não muda mais — e quem só
    comparava a identidade ficava com a conta velha. Toda mudança feita na
@@ -1932,14 +1947,26 @@ function __itensDeLotes(lista,texto){
     }
   };
 }
+/* Cada grupo de seletores depende de uma coleção só. Antes, qualquer mudança
+   (até chegar a lista de clientes) remontava os três grupos — e o das OFs
+   filtra e escreve as 1.800 OFs. Agora só o grupo cuja coleção mudou. */
+let __selAssin={};
+function __assinaturaSel(lista,col){ return {lista,v:__verCol[col]||0}; }
+function __mudouSel(chave,lista,col){
+  const a=__selAssin[chave];
+  return !a||a.lista!==lista||a.v!==(__verCol[col]||0);
+}
 function populateSelects(){
   const jaMontado=$("prod-lote")?.options.length||$("cph-lote")?.options.length;
-  if(__selectsVersao===__dadosVersao && jaMontado) return;
-  __selectsVersao=__dadosVersao;
+  const fazF=!jaMontado||__mudouSel("f",funcionarios,"funcionarios");
+  const fazL=!jaMontado||__mudouSel("l",lotes,"lotes");
+  const fazC=!jaMontado||__mudouSel("c",clientes,"clientes");
+  if(!fazF&&!fazL&&!fazC) return;
+  __selAssin={f:__assinaturaSel(funcionarios,"funcionarios"),l:__assinaturaSel(lotes,"lotes"),c:__assinaturaSel(clientes,"clientes")};
   const sf=$("prod-funcionario");
-  if(sf)sf.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
+  if(fazF&&sf)sf.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const sl=$("prod-lote");
-  if(sl){
+  if(fazL&&sl){
     const anterior=sl.value;
     preencherSelectOf(sl,'<option value="">— Nenhum —</option>',
       __itensDeLotes(lotes.filter(l=>l.status!=="Cancelado"),
@@ -1947,32 +1974,34 @@ function populateSelects(){
       anterior);
   }
   const sf2=$("bh-funcionario");
-  if(sf2)sf2.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
+  if(fazF&&sf2)sf2.innerHTML='<option value="">— Selecione —</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const sfPonto=$("ponto-funcionario");
-  if(sfPonto){
+  if(fazF&&sfPonto){
     const valorAnterior=sfPonto.value;
     sfPonto.innerHTML='<option value="">— Selecione —</option>'+funcionarios.filter(f=>f.status!=="Inativo").map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
     if(valorAnterior && funcionarios.some(f=>f.id===valorAnterior)) sfPonto.value=valorAnterior;
   }
   const cphF=$("cph-funcionario"), cphFiltroF=$("cph-filtro-funcionario");
   const funcionariosAtivos=funcionarios.filter(f=>f.status!=="Inativo");
-  const optsFunc='<option value="">— Selecione —</option>'+funcionariosAtivos.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
-  if(cphF)cphF.innerHTML=optsFunc;
-  if(cphFiltroF)cphFiltroF.innerHTML='<option value="">Todas</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
+  const optsFunc=!fazF?"":'<option value="">— Selecione —</option>'+funcionariosAtivos.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
+  if(fazF&&cphF)cphF.innerHTML=optsFunc;
+  if(fazF&&cphFiltroF)cphFiltroF.innerHTML='<option value="">Todas</option>'+funcionarios.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("");
   const cphL=$("cph-lote"), cphFiltroL=$("cph-filtro-lote");
-  if(cphL) preencherSelectOf(cphL,'<option value="">— Sem lote / avulso —</option>',
-    __itensDeLotes(lotes.filter(l=>getStatusOperacionalLote(l)!=="Cancelado"),
+  /* "Cancelado" só vem do status gravado (primeira linha de
+     getStatusOperacionalLote): não precisa calcular o progresso de cada OF. */
+  if(fazL&&cphL) preencherSelectOf(cphL,'<option value="">— Sem lote / avulso —</option>',
+    __itensDeLotes(lotes.filter(l=>l?.status!=="Cancelado"),
       l=>`${escapeHtml(rotuloOf(l.numeroOf))} — ${escapeHtml(l.produto||"—")}${l.cliente?" • "+escapeHtml(l.cliente):""}`),
     cphL.value);
-  if(cphFiltroL) preencherSelectOf(cphFiltroL,'<option value="">Todos</option>',
+  if(fazL&&cphFiltroL) preencherSelectOf(cphFiltroL,'<option value="">Todos</option>',
     __itensDeLotes(lotes,l=>`${escapeHtml(rotuloOf(l.numeroOf))} — ${escapeHtml(l.produto||"—")}`),
     cphFiltroL.value);
   // Preencher selects de cliente nos formulários de lote
-  const clienteOpts='<option value="">— Nenhum —</option>'+clientes.map(c=>`<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`).join("");
+  const clienteOpts=!fazC?"":'<option value="">— Nenhum —</option>'+clientes.map(c=>`<option value="${escapeHtml(c.nome)}">${escapeHtml(c.nome)}</option>`).join("");
   const lcSel=$("lote-cliente");
-  if(lcSel && lcSel.tagName==="SELECT") lcSel.innerHTML=clienteOpts;
+  if(fazC&&lcSel && lcSel.tagName==="SELECT") lcSel.innerHTML=clienteOpts;
   const elcSel=$("edit-lote-cliente");
-  if(elcSel && elcSel.tagName==="SELECT") elcSel.innerHTML=clienteOpts;
+  if(fazC&&elcSel && elcSel.tagName==="SELECT") elcSel.innerHTML=clienteOpts;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2810,7 +2839,20 @@ function registrosDoLote(loteId){
   }
   return __regPorLote.get(loteId)||[];
 }
+/* O progresso de cada OF é pedido várias vezes por desenho (status, painel,
+   contadores do menu) e refazia a soma toda vez. Fica guardado até os dados
+   mudarem: toda gravação, edição ou recarga sobe a versão. Quem usa só lê o
+   resultado — ninguém o altera. */
+const __progGuardado=new WeakMap();
 function calcProg(lote){
+  if(!lote||typeof lote!=="object") return __calcProg(lote);
+  const g=__progGuardado.get(lote);
+  if(g&&g.v===__dadosVersao&&g.r===registros) return g.p;
+  const p=__calcProg(lote);
+  __progGuardado.set(lote,{v:__dadosVersao,r:registros,p});
+  return p;
+}
+function __calcProg(lote){
   const meta=toNumber(lote?.qtdTotal,0);
   const regsLote=registrosDoLote(lote?.id);
   const porEtapa={};
@@ -6258,6 +6300,15 @@ window.calcFolhaPagamento=calcFolhaPagamento;
 ══════════════════════════════════════════════════════════════ */
 function renderMetas(){
   const el=document.getElementById("dash-metas"); if(!el) return;
+  /* Enquanto a primeira leitura não termina, o painel dizia "R$ 0,00",
+     "Lucro ATRASADO", "0 de 4 metas" e "nada precisa de atenção" — tudo
+     falso, e ainda custava um desenho inteiro que seria jogado fora. */
+  if(!__primeiraCargaFeita&&!__temNumerosNaTela()){
+    el.innerHTML='<div class="card dash-esperando" role="status"><span class="av-giro" aria-hidden="true"></span>'
+      +'<div><b>Buscando os números da fábrica…</b><span class="de-txt">Faturamento, metas e produção aparecem aqui assim que chegarem.</span></div></div>';
+    ["dash-agora","dash-caixa","dash-folha"].forEach(id=>{ const x=document.getElementById(id); if(x) x.innerHTML=""; });
+    return;
+  }
   const cfg=getConfig();
   const agora=new Date();
   const mesHojeStr=monthKeyLocal();
@@ -17590,10 +17641,19 @@ tr:last-child td{ border-bottom:none!important; }
       ].join("");
       select.addEventListener("change",function(){ if(typeof window.applyTheme==="function") window.applyTheme(select.value); });
     }
+    /* Isto roda a cada mudança na tela. Reaplicar o tema toda vez regravava a
+       configuração inteira no armazenamento do navegador e redesenhava o
+       botão do tema — à toa: só precisa quando a tela não está no tema
+       configurado (ou o botão foi redesenhado sem o nome do tema). */
     try{
       if(typeof window.applyTheme==="function"){
         const cfg=typeof window.getConfig==="function" ? window.getConfig() : {};
-        window.applyTheme(cfg.tema || localStorage.getItem("mello_theme") || "escuro");
+        const desejado=cfg.tema || localStorage.getItem("mello_theme") || "escuro";
+        const meta=typeof window.getThemeMeta==="function"?window.getThemeMeta(desejado):null;
+        const tema=meta&&meta.id?meta.id:desejado;
+        const chip=document.getElementById("theme-chip-label");
+        if(document.documentElement.getAttribute("data-theme")!==tema||(chip&&chip.dataset.tema!==tema))
+          window.applyTheme(desejado);
       }
     }catch(e){}
   }
@@ -19675,6 +19735,11 @@ html[data-theme="escuro"] .summary-bar{
   animation:avGiro .7s linear infinite;
 }
 @keyframes avGiro{ to{ transform:rotate(360deg); } }
+/* O painel enquanto a primeira leitura não termina. */
+.dash-esperando{ display:flex; align-items:center; gap:14px; margin:4px 0 18px; }
+.dash-esperando .av-giro{ width:20px; height:20px; }
+.dash-esperando b{ display:block; font-size:15px; color:var(--t); margin-bottom:3px; }
+.dash-esperando .de-txt{ display:block; font-size:13px; color:var(--t2); line-height:1.45; }
 html[data-theme="claro"] .av-falhou{ background:rgba(185,28,28,.10); color:#9B1C1C; border-bottom-color:rgba(185,28,28,.22); }
 html[data-theme="claro"] .av-carregando{ background:rgba(29,78,216,.08); color:#1E40AF; border-bottom-color:rgba(29,78,216,.18); }
 html[data-theme="claro"] .av-parcial{ background:rgba(180,120,10,.10); color:#8A5A08; border-bottom-color:rgba(180,120,10,.22); }
