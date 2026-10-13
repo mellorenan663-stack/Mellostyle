@@ -1,0 +1,1254 @@
+<title>Lâmpada Bíblica</title>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;1,7..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Serif+Hebrew:wght@400;500&display=swap">
+<style>
+/* Layout: trilho de navegação à esquerda (desktop) / barra inferior (celular); coluna de leitura de ~68ch.
+   Identidade: manuscrito iluminado — tinta azul-lápis, rubricas em vermelho (números de capítulo e versículo, como nos códices), ouro para destaques.
+   Tipos: EB Garamond (os tipos de Claude Garamond imprimiram as Bíblias de Estienne, que numerou os versículos em 1551), Literata para leitura longa, IBM Plex Sans para a interface. */
+:root{
+  --bg:#f4f5f7; --surface:#ffffff; --surface-2:#eceef3; --line:#d9dce5;
+  --ink:#192132; --ink-2:#4a5368; --ink-3:#737c91;
+  --lapis:#27458f; --lapis-soft:#e3e9f7;
+  --rubric:#a3302a; --gold:#a9822a; --gold-soft:#f6edd3;
+  --ok:#2f7a4f;
+  --hl1:rgba(232,190,70,.42); --hl2:rgba(110,190,130,.38); --hl3:rgba(110,155,235,.36); --hl4:rgba(230,120,140,.34);
+  --shadow:0 1px 2px rgba(25,33,50,.06),0 8px 24px rgba(25,33,50,.08);
+  --f-display:"EB Garamond",Garamond,"Times New Roman",serif;
+  --f-read:"Literata",Georgia,"Times New Roman",serif;
+  --f-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-heb:"Noto Serif Hebrew","Times New Roman",serif;
+  --read-size:1.1rem;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1320; --surface:#151b2b; --surface-2:#1c2336; --line:#2a3249;
+  --ink:#e7e9f0; --ink-2:#b4bacb; --ink-3:#858ca2;
+  --lapis:#93abf2; --lapis-soft:#1f2a48;
+  --rubric:#e5806f; --gold:#dcbb62; --gold-soft:#2d2716;
+  --ok:#6cc391;
+  --hl1:rgba(220,180,70,.30); --hl2:rgba(100,190,130,.26); --hl3:rgba(110,150,240,.30); --hl4:rgba(230,110,135,.28);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1320; --surface:#151b2b; --surface-2:#1c2336; --line:#2a3249;
+  --ink:#e7e9f0; --ink-2:#b4bacb; --ink-3:#858ca2;
+  --lapis:#93abf2; --lapis-soft:#1f2a48;
+  --rubric:#e5806f; --gold:#dcbb62; --gold-soft:#2d2716;
+  --ok:#6cc391;
+  --hl1:rgba(220,180,70,.30); --hl2:rgba(100,190,130,.26); --hl3:rgba(110,150,240,.30); --hl4:rgba(230,110,135,.28);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--lapis);outline-offset:2px;border-radius:4px}
+a{color:var(--lapis)}
+h1,h2,h3{font-family:var(--f-display);font-weight:500;text-wrap:balance;margin:0;line-height:1.15}
+p{margin:0}
+.app{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100%}
+/* ---------- trilho ---------- */
+.rail{position:sticky;top:env(safe-area-inset-top,0px);height:100vh;height:100dvh;overflow-y:auto;border-right:1px solid var(--line);background:var(--surface);padding-block:20px;padding-inline:14px;display:flex;flex-direction:column;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;padding-inline:8px}
+.brand svg{flex:none}
+.brand b{font-family:var(--f-display);font-weight:500;font-size:1.45rem;letter-spacing:.01em}
+.brand small{display:block;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.navgroup{display:flex;flex-direction:column;gap:2px}
+.navlabel{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:6px 10px 4px}
+.navbtn{display:flex;align-items:center;gap:10px;border:0;background:none;padding:8px 10px;border-radius:8px;text-align:left;color:var(--ink-2);font-size:.92rem}
+.navbtn:hover{background:var(--surface-2);color:var(--ink)}
+.navbtn[aria-current="page"]{background:var(--lapis-soft);color:var(--lapis);font-weight:500}
+.navbtn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.rail-foot{margin-top:auto;display:flex;gap:6px;padding-inline:4px}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-size:.8rem;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
+.iconbtn:hover{border-color:var(--ink-3);color:var(--ink)}
+.iconbtn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* ---------- área principal ---------- */
+.main{min-width:0;padding-block:28px 120px;padding-inline:clamp(16px,4vw,48px)}
+.wrap{max-width:1040px;margin-inline:auto;display:flex;flex-direction:column;gap:28px}
+.narrow{max-width:720px;margin-inline:auto}
+.eyebrow{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--rubric);font-weight:600}
+.pagehead{display:flex;flex-direction:column;gap:8px}
+.pagehead h1{font-size:clamp(2rem,4.5vw,2.9rem)}
+.pagehead p{color:var(--ink-2);max-width:62ch;font-size:1rem}
+.lead{font-family:var(--f-read);font-size:1.05rem;line-height:1.7;color:var(--ink)}
+.muted{color:var(--ink-3)}
+.small{font-size:.85rem}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:8px;min-width:0}
+button.card{text-align:left;color:inherit}
+button.card:hover,.card.clickable:hover{border-color:var(--lapis);box-shadow:var(--shadow)}
+.card h3{font-size:1.3rem}
+.card .meta{font-size:.78rem;color:var(--ink-3);letter-spacing:.02em}
+.card p{color:var(--ink-2);font-size:.92rem}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:.8rem;color:var(--ink-2)}
+button.chip:hover{border-color:var(--lapis);color:var(--lapis)}
+.chip[aria-pressed="true"]{background:var(--lapis);border-color:var(--lapis);color:var(--surface)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-block;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:4px;background:var(--surface-2);color:var(--ink-2);font-weight:500}
+.tag.at{background:var(--gold-soft);color:var(--gold)}
+.tag.nt{background:var(--lapis-soft);color:var(--lapis)}
+.btn{border:1px solid var(--lapis);background:var(--lapis);color:var(--surface);border-radius:8px;padding:8px 14px;font-weight:500;font-size:.9rem;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--lapis)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.input{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;font-size:.95rem}
+.input:focus{border-color:var(--lapis);outline:none;box-shadow:0 0 0 3px var(--lapis-soft)}
+textarea.input{resize:vertical;min-height:110px;font-family:var(--f-read);line-height:1.6}
+.section-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.section-title h2{font-size:1.55rem}
+.ref{color:var(--lapis);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--lapis) 35%,transparent);text-underline-offset:2px;cursor:pointer;background:none;border:0;padding:0;font:inherit}
+.ref:hover{text-decoration-color:var(--lapis)}
+.prose{font-family:var(--f-read);font-size:1rem;line-height:1.75;color:var(--ink);display:flex;flex-direction:column;gap:12px}
+.prose h3{font-size:1.35rem;margin-top:8px;color:var(--ink)}
+.prose ul,.prose ol{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:4px}
+.prose strong{font-weight:500;color:var(--ink)}
+.quote{font-family:var(--f-display);font-size:1.25rem;line-height:1.45;font-style:italic;border-left:2px solid var(--gold);padding-left:14px;color:var(--ink)}
+dl.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px;margin:0}
+dl.kv dt{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+dl.kv dd{margin:0;font-family:var(--f-read);line-height:1.65}
+@media (max-width:560px){dl.kv{grid-template-columns:1fr;gap:2px}dl.kv dd{margin-bottom:10px}}
+/* ---------- início ---------- */
+.hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px}
+@media (max-width:820px){.hero{grid-template-columns:1fr}}
+.votd{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:clamp(20px,3vw,32px);display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden}
+.votd .initial{font-family:var(--f-display);color:var(--rubric);font-size:4.2rem;line-height:.8;float:left;margin:6px 10px 0 0}
+.votd blockquote{margin:0;font-family:var(--f-read);font-size:clamp(1.15rem,2.2vw,1.4rem);line-height:1.6}
+.votd .src{font-family:var(--f-display);font-size:1.1rem;color:var(--ink-2);font-style:italic}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat b{display:block;font-family:var(--f-display);font-size:1.9rem;font-weight:500;font-variant-numeric:tabular-nums;line-height:1}
+.stat span{font-size:.78rem;color:var(--ink-3)}
+.bar{height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--gold);border-radius:99px}
+/* ---------- leitor ---------- */
+.reader-top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);margin-inline:calc(-1*clamp(16px,4vw,48px));padding:10px clamp(16px,4vw,48px);border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.reader-top .pick{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;font-family:var(--f-display);font-size:1.12rem;display:inline-flex;align-items:center;gap:8px}
+.reader-top .pick:hover{border-color:var(--lapis)}
+.reader-top .spacer{flex:1}
+.searchbox{display:flex;gap:6px;flex:1 1 220px;max-width:340px}
+.searchbox .input{padding:7px 12px;font-size:.88rem}
+.chapter{max-width:68ch;margin-inline:auto;display:flex;flex-direction:column;gap:18px;padding-top:22px}
+.chap-head{display:flex;align-items:flex-end;gap:16px;border-bottom:1px solid var(--line);padding-bottom:14px}
+.chap-num{font-family:var(--f-display);color:var(--rubric);font-size:clamp(3.6rem,9vw,5.4rem);line-height:.8;font-weight:500;font-variant-numeric:lining-nums}
+.chap-head h1{font-size:clamp(1.6rem,3.6vw,2.2rem)}
+.chap-head .sub{font-size:.8rem;color:var(--ink-3);letter-spacing:.04em}
+.text{font-family:var(--f-read);font-size:var(--read-size);line-height:1.85;color:var(--ink)}
+.text.lines .v{display:block;margin-bottom:6px}
+.v{cursor:pointer;border-radius:3px;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.v:hover{background:color-mix(in srgb,var(--lapis) 7%,transparent)}
+.v.sel{background:var(--lapis-soft);box-shadow:0 0 0 2px var(--lapis-soft)}
+.v.h1{background:var(--hl1)}.v.h2{background:var(--hl2)}.v.h3{background:var(--hl3)}.v.h4{background:var(--hl4)}
+.v.flash{animation:flash 1.8s ease-out}
+@keyframes flash{0%{background:var(--gold-soft);box-shadow:0 0 0 3px var(--gold)}100%{box-shadow:0 0 0 0 transparent}}
+.vn{font-family:var(--f-ui);font-size:.62em;color:var(--rubric);font-weight:600;vertical-align:super;line-height:0;margin-right:3px;margin-left:2px;font-variant-numeric:tabular-nums}
+.v.has-note .vn::after{content:"•";color:var(--gold);margin-left:1px}
+.lx{border-bottom:1.5px dotted var(--gold);cursor:help}
+.lx:hover{background:var(--gold-soft)}
+.chap-nav{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:16px;flex-wrap:wrap}
+.notice{display:flex;gap:12px;align-items:flex-start;background:var(--gold-soft);border:1px solid color-mix(in srgb,var(--gold) 35%,transparent);border-radius:10px;padding:12px 14px;font-size:.9rem}
+.notice b{font-weight:600}
+.notice svg{width:20px;height:20px;flex:none;margin-top:1px;stroke:var(--gold);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.notice .grow{flex:1;min-width:0}
+details.intro{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+details.intro summary{cursor:pointer;font-weight:500;color:var(--ink-2);font-size:.9rem}
+details.intro[open] summary{margin-bottom:12px}
+.result{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-family:var(--f-read);line-height:1.6}
+.result:hover{border-color:var(--lapis)}
+.result b{font-family:var(--f-ui);font-size:.78rem;color:var(--rubric);font-weight:600;display:block;letter-spacing:.03em}
+.result mark{background:var(--gold-soft);color:inherit;border-radius:2px;padding:0 1px}
+/* ---------- barra de ações do versículo ---------- */
+.sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:14px;padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;max-width:calc(100% - 24px);width:max-content}
+.sheet .lbl{font-family:var(--f-display);font-size:1.05rem;padding-right:4px}
+.swatch{width:26px;height:26px;border-radius:50%;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.swatch.s1{background:var(--hl1)}.swatch.s2{background:var(--hl2)}.swatch.s3{background:var(--hl3)}.swatch.s4{background:var(--hl4)}
+.swatch.s0{background:var(--surface);position:relative}
+.swatch.s0::after{content:"";position:absolute;inset:11px 3px;background:var(--ink-3);transform:rotate(45deg)}
+/* ---------- modal ---------- */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(10,14,24,.45);display:flex;align-items:flex-end;justify-content:center;padding:12px}
+@media (min-width:700px){.modal{align-items:center}}
+.modal-card{background:var(--surface);border-radius:16px;width:min(680px,100%);max-height:min(86vh,860px);overflow:auto;padding:22px clamp(18px,3vw,28px) 26px;box-shadow:var(--shadow);position:relative;display:flex;flex-direction:column;gap:14px}
+.modal-x{position:absolute;top:10px;right:10px;border:0;background:var(--surface-2);width:32px;height:32px;border-radius:50%;font-size:1.1rem;color:var(--ink-2)}
+.modal-x:hover{color:var(--ink)}
+.picker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px}
+.picker-grid button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px;text-align:left;font-size:.86rem}
+.picker-grid button:hover{border-color:var(--lapis);color:var(--lapis)}
+.picker-grid button.cur{background:var(--lapis-soft);border-color:var(--lapis);color:var(--lapis)}
+.chap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:6px}
+.chap-grid button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 0;font-variant-numeric:tabular-nums}
+.chap-grid button:hover{border-color:var(--lapis)}
+.chap-grid button.read{background:var(--gold-soft);border-color:color-mix(in srgb,var(--gold) 40%,transparent)}
+.chap-grid button.cur{background:var(--lapis);color:var(--surface);border-color:var(--lapis)}
+.orig{font-size:2rem;line-height:1.3;font-family:var(--f-display)}
+.orig.he{font-family:var(--f-heb);direction:rtl;text-align:left;unicode-bidi:plaintext}
+.translit{font-family:var(--f-display);font-style:italic;font-size:1.2rem;color:var(--ink-2)}
+.strong{font-family:var(--f-ui);font-size:.75rem;letter-spacing:.06em;color:var(--ink-3);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+/* ---------- estudo ---------- */
+.passage{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.passage .text{font-size:1.02rem}
+.notes{display:flex;flex-direction:column;gap:0;border-left:2px solid var(--line);margin-left:6px}
+.note{position:relative;padding:0 0 18px 22px}
+.note::before{content:"";position:absolute;left:-6px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--rubric)}
+.note .vref{font-family:var(--f-ui);font-size:.75rem;font-weight:600;color:var(--rubric);letter-spacing:.06em}
+.note p{font-family:var(--f-read);line-height:1.7}
+.voices{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.voice{border-top:2px solid var(--gold);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.voice b{font-family:var(--f-display);font-size:1.15rem;font-weight:500}
+.voice p{font-family:var(--f-read);font-size:.95rem;line-height:1.65;color:var(--ink-2)}
+.qs{display:flex;flex-direction:column;gap:8px;margin:0;padding-left:1.2em;font-family:var(--f-read);line-height:1.65}
+/* ---------- linha do tempo ---------- */
+.timeline{display:flex;flex-direction:column}
+.tl{display:grid;grid-template-columns:150px 18px minmax(0,1fr);gap:0 12px}
+.tl .d{font-variant-numeric:tabular-nums;font-size:.82rem;color:var(--ink-2);text-align:right;padding-top:2px}
+.tl .dot{position:relative}
+.tl .dot::before{content:"";position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--line)}
+.tl .dot::after{content:"";position:absolute;left:3px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--surface);border:2px solid var(--lapis)}
+.tl.nt .dot::after{border-color:var(--rubric)}
+.tl .body{padding-bottom:18px;display:flex;flex-direction:column;gap:3px}
+.tl .body b{font-family:var(--f-display);font-size:1.15rem;font-weight:500}
+.tl .body p{font-size:.92rem;color:var(--ink-2)}
+@media (max-width:560px){.tl{grid-template-columns:18px minmax(0,1fr)}.tl .d{grid-column:2;text-align:left;order:-1;padding-top:0}.tl .dot{grid-row:1/span 2}}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:none;padding:10px 14px;border-bottom:2px solid transparent;color:var(--ink-3);white-space:nowrap;font-weight:500}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--rubric)}
+/* ---------- pergunte ---------- */
+.chat{display:flex;flex-direction:column;gap:14px}
+.msg{border-radius:12px;padding:14px 16px;max-width:100%}
+.msg.user{background:var(--lapis-soft);align-self:flex-end;max-width:85%;font-size:.95rem}
+.msg.ai{background:var(--surface);border:1px solid var(--line)}
+.thinking{color:var(--ink-3);font-style:italic;font-family:var(--f-read)}
+.composer{display:flex;flex-direction:column;gap:8px;position:sticky;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--bg);padding-top:8px}
+@media (min-width:861px){.composer{bottom:0;padding-bottom:12px}}
+/* ---------- planos ---------- */
+.day{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.day.done{opacity:.62}
+.day .n{font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--ink-3);width:54px;flex:none}
+.day .refs{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px 10px}
+.check{width:24px;height:24px;border:1.5px solid var(--ink-3);border-radius:6px;background:var(--surface);flex:none;display:grid;place-items:center;padding:0}
+.check[aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
+.check[aria-pressed="true"]::after{content:"";width:6px;height:11px;border:solid var(--surface);border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+/* ---------- barra inferior (celular) ---------- */
+.tabbar{display:none}
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .rail{position:fixed;inset:0 auto 0 0;width:min(300px,86vw);z-index:40;transform:translateX(-105%);transition:transform .25s;box-shadow:var(--shadow);padding-top:calc(20px + env(safe-area-inset-top,0px))}
+  .rail.open{transform:none}
+  .scrim{position:fixed;inset:0;background:rgba(10,14,24,.4);z-index:39}
+  .main{padding-bottom:110px}
+  .tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
+  .tabbar button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.68rem;color:var(--ink-3);padding:4px 0}
+  .tabbar button[aria-current="page"]{color:var(--lapis)}
+  .tabbar svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .sheet{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+}
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(16px + env(safe-area-inset-top,0px));z-index:60;background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:99px;font-size:.88rem;box-shadow:var(--shadow)}
+.fade-in{animation:fadein .25s ease-out}
+@keyframes fadein{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></symbol>
+ <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></symbol>
+ <symbol id="i-study" viewBox="0 0 24 24"><path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5z"/><path d="M12 6v14"/></symbol>
+ <symbol id="i-scroll" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
+ <symbol id="i-word" viewBox="0 0 24 24"><path d="M4 19l5-14h1l5 14"/><path d="M6 14h7"/><path d="M17 9h4M19 7v6"/></symbol>
+ <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c2.9.3 5.5 2.6 5.5 5.8"/></symbol>
+ <symbol id="i-pillar" viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M5 9v9M9.5 9v9M14.5 9v9M19 9v9"/><path d="M3 21h18"/></symbol>
+ <symbol id="i-time" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+ <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
+ <symbol id="i-plan" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M9 15l2 2 4-4"/></symbol>
+ <symbol id="i-ask" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M10 9.2a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.4M12 14.2v.1"/></symbol>
+ <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+ <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+ <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+ <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+ <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+ <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+</svg>
+
+<div class="app">
+ <aside class="rail" id="rail" aria-label="Navegação">
+  <div class="brand">
+   <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><path d="M6 22c0-3 4-5 11-5s11 2 11 5-4 4-11 4-11-1-11-4z" fill="var(--gold)" opacity=".9"/><path d="M26 21c3-1 4-3 4-5" stroke="var(--gold)" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M17 17c-2-3 0-6 0-9 2 3 4 5 2 9" fill="var(--rubric)"/></svg>
+   <div><b>Lâmpada</b><small>Estudos bíblicos</small></div>
+  </div>
+  <div class="navgroup" id="nav"></div>
+  <div class="rail-foot">
+   <button class="iconbtn" id="themeBtn" title="Alternar tema"><svg><use href="#i-moon"/></svg><span>Tema</span></button>
+  </div>
+ </aside>
+ <main class="main" id="main" tabindex="-1"></main>
+</div>
+<nav class="tabbar" id="tabbar" aria-label="Seções principais"></nav>
+<div class="sheet" id="sheet" hidden></div>
+<div class="modal" id="modal" hidden><div class="modal-card" role="dialog" aria-modal="true"><button class="modal-x" id="modalX" aria-label="Fechar">×</button><div id="modalBody" style="display:flex;flex-direction:column;gap:14px"></div></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="dados/biblia.js"></script>
+<script src="dados/livros.js"></script>
+<script src="dados/lexico.js"></script>
+<script src="dados/teologos.js"></script>
+<script src="dados/doutrinas.js"></script>
+<script src="dados/historia.js"></script>
+<script src="dados/hermeneutica.js"></script>
+<script src="dados/estudos.js"></script>
+<script>
+(function(){
+"use strict";
+const B = window.BIBLIA_TEXTO, L = window.LIVROS, CAPS = window.CAPS, LEX = window.LEXICO;
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const main = $("#main");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+const ico = (id, cls="") => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
+
+/* ---------- armazenamento local (por pessoa, neste navegador) ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("lamp:"+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("lamp:"+k, JSON.stringify(v)); }catch(e){} }
+};
+const S = {
+  hl: store.get("hl", {}),          // "b-c-v": 1..4
+  notes: store.get("notes", {}),    // "b-c-v": {t, d}
+  read: new Set(store.get("read", [])), // "b-c"
+  plans: store.get("plans", {}),    // planId: {start, done:[dias]}
+  pos: store.get("pos", {b:42, c:1}),
+  lexOn: store.get("lexOn", true),
+  lines: store.get("lines", false),
+  size: store.get("size", 1.1),
+  depth: store.get("depth", "default")
+};
+const save = k => {
+  if(k==="read") store.set("read", [...S.read]); else store.set(k, S[k]);
+};
+
+/* ---------- tema ---------- */
+(function(){
+  const t = store.get("theme", null);
+  if(t) document.documentElement.setAttribute("data-theme", t);
+  $("#themeBtn").onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme")
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = cur === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    store.set("theme", next);
+  };
+})();
+document.documentElement.style.setProperty("--read-size", S.size+"rem");
+
+/* ---------- referências bíblicas ---------- */
+const BOOKMAP = new Map();
+function addKey(k, i, loose){
+  const a = k.toLowerCase().replace(/\s+/g,"");
+  if(!BOOKMAP.has(a)) BOOKMAP.set(a, i);
+  if(loose){ const n = norm(a); if(!BOOKMAP.has(n)) BOOKMAP.set(n, i); }
+}
+L.forEach((l,i) => addKey(l.abrev, i, false));
+L.forEach((l,i) => addKey(l.nome, i, false));
+[["Joao",42],["João",42],["Jo",42],["Jó",17],["Job",17],["Salmo",18],["Cântico dos Cânticos",21],["Cânticos",21],["Cantares de Salomão",21],["Apoc",65],["Atos dos Apóstolos",43],["Filemon",56],["Mt",39]].forEach(([k,i])=>addKey(k,i,false));
+L.forEach((l,i) => { addKey(l.abrev, i, true); addKey(l.nome, i, true); });
+
+function bookIdx(name){
+  const a = String(name).toLowerCase().replace(/[\s.]+/g,"");
+  if(BOOKMAP.has(a)) return BOOKMAP.get(a);
+  const n = norm(a);
+  return BOOKMAP.has(n) ? BOOKMAP.get(n) : -1;
+}
+function parseRef(str){
+  const m = String(str).trim().match(/^([1-3]?\s*[^\d\s:][^\d:]*?)\.?\s*(\d+)(?:\s*[:.]\s*(\d+)(?:\s*[-–]\s*(\d+))?)?\s*$/u);
+  if(!m) return null;
+  const b = bookIdx(m[1]);
+  if(b < 0) return null;
+  const c = +m[2];
+  if(c < 1 || c > CAPS[b]) return null;
+  const v1 = m[3] ? +m[3] : null, v2 = m[4] ? +m[4] : v1;
+  return {b, c, v1, v2};
+}
+const refLabel = (b,c,v1,v2) => `${L[b].nome} ${c}${v1 ? ":"+v1 + (v2 && v2!==v1 ? "–"+v2 : "") : ""}`;
+
+/* transforma referências em botões dentro de texto já escapado */
+const REF_RE = /(?<![\p{L}\d])([1-3]\s?)?([A-ZÁÉÍÓÚÂÊÔÃÕ][a-záéíóúâêôãõç]{1,14})\.?\s(\d{1,3})(?::(\d{1,3})(?:[-–](\d{1,3}))?)?(?![\d\p{L}])/gu;
+function linkify(html){
+  return html.replace(REF_RE, (all, pre, name, c, v1, v2) => {
+    const b = bookIdx((pre||"") + name);
+    if(b < 0 || +c > CAPS[b] || +c < 1) return all;
+    if(v1 && +v1 > B[b][+c-1].length) return all;
+    return `<button class="ref" data-ref="${b}|${c}|${v1||""}|${v2||v1||""}">${all}</button>`;
+  });
+}
+const T = s => linkify(esc(s)); // texto do conteúdo com referências clicáveis
+
+function verseText(b,c,v1,v2){
+  const ch = B[b][c-1]; if(!ch) return [];
+  const a = v1 || 1, z = Math.min(v2 || (v1 ? v1 : ch.length), ch.length);
+  const out = [];
+  for(let v=a; v<=z; v++) out.push([v, ch[v-1]]);
+  return out;
+}
+
+/* ---------- léxico: marcar palavras no texto ---------- */
+const LEXBY = Object.fromEntries(LEX.map(e => [e.id, e]));
+const LEX_TRIG = new Map();
+LEX.forEach(e => (e.pt||[]).forEach(w => {
+  const k = w.toLowerCase();
+  if(!LEX_TRIG.has(k)) LEX_TRIG.set(k, []);
+  LEX_TRIG.get(k).push({e, w});
+}));
+const trigList = [...LEX_TRIG.keys()].sort((a,b)=>b.length-a.length)
+  .map(w => w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\s+/g,"\\s+"));
+const LEX_RE = new RegExp(`(?<![\\p{L}])(${trigList.join("|")})(?![\\p{L}])`, "giu");
+function markLex(text, testament, used){
+  return esc(text).replace(LEX_RE, m => {
+    const cands = LEX_TRIG.get(m.toLowerCase().replace(/\s+/g," ")) || [];
+    for(const {e, w} of cands){
+      if(!e.t.split(",").includes(testament)) continue;
+      if(e.cs && w !== m) continue;
+      if(used.has(e.id)) continue;
+      used.add(e.id);
+      return `<span class="lx" data-lx="${e.id}" title="${esc(e.tr)}">${m}</span>`;
+    }
+    return m;
+  });
+}
+
+/* ---------- utilidades de interface ---------- */
+let toastT;
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200);
+}
+let modalCleanup = null;
+function openModal(html, onMount){
+  if(modalCleanup){ modalCleanup(); modalCleanup = null; }
+  delete $("#modalBody").dataset.answer;
+  $("#modalBody").innerHTML = html;
+  $("#modal").hidden = false;
+  $("#modalBody").scrollTop = 0; $(".modal-card").scrollTop = 0;
+  onMount && onMount($("#modalBody"));
+  setTimeout(() => $("#modalX").focus(), 10);
+}
+function closeModal(){
+  if(modalCleanup){ modalCleanup(); modalCleanup = null; }
+  $("#modal").hidden = true; $("#modalBody").innerHTML = "";
+}
+$("#modalX").onclick = closeModal;
+$("#modal").addEventListener("click", e => { if(e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", e => { if(e.key === "Escape"){ if(!$("#modal").hidden) closeModal(); else clearSel(); } });
+
+async function copyText(txt){
+  try{ await navigator.clipboard.writeText(txt); toast("Copiado"); }
+  catch(e){
+    openModal(`<h2>Copiar</h2><p class="muted small">Selecione o texto abaixo e copie.</p><textarea class="input" id="copyArea" readonly>${esc(txt)}</textarea>`,
+      b => { const a = $("#copyArea", b); a.focus(); a.select(); });
+  }
+}
+
+/* cliques globais: referências e palavras do léxico */
+document.addEventListener("click", e => {
+  const r = e.target.closest(".ref");
+  if(r){ e.preventDefault(); e.stopPropagation(); const [b,c,v1,v2] = r.dataset.ref.split("|"); showRefModal(+b, +c, v1?+v1:null, v2?+v2:null); return; }
+  const lx = e.target.closest("[data-lx]");
+  if(lx){ e.preventDefault(); e.stopPropagation(); showLex(lx.dataset.lx); return; }
+  const op = e.target.closest("[data-open]");
+  if(op){ e.preventDefault(); const [b,c,v] = op.dataset.open.split("|").map(Number); openReader(b,c,v,v); return; }
+  const go = e.target.closest("[data-go]");
+  if(go){ e.preventDefault(); location.hash = go.dataset.go; return; }
+});
+
+function showRefModal(b, c, v1, v2){
+  const vs = verseText(b, c, v1, v2);
+  const label = refLabel(b, c, v1, v2);
+  const body = vs.length > 40 ? vs.slice(0, 40) : vs;
+  openModal(`
+    <div class="eyebrow">${L[b].t === "AT" ? "Antigo Testamento" : "Novo Testamento"}</div>
+    <h2 style="font-size:1.8rem">${esc(label)}</h2>
+    <div class="text" style="font-size:1.02rem">${body.map(([v,t]) => `<span><sup class="vn">${v}</sup>${esc(t)} </span>`).join("")}${vs.length > 40 ? `<p class="muted small">…continua no leitor.</p>` : ""}</div>
+    <div class="row">
+      <button class="btn" id="openReader">${ico("book")} Abrir no leitor</button>
+      <button class="btn ghost" id="copyRef">${ico("copy")} Copiar</button>
+    </div>`, bd => {
+      $("#openReader", bd).onclick = () => { closeModal(); openReader(b, c, v1, v2); };
+      $("#copyRef", bd).onclick = () => copyText(vs.map(x=>x[1]).join(" ") + ` (${label})`);
+    });
+}
+
+function lexHTML(e){
+  const isHe = e.l === "he";
+  return `
+    <div class="eyebrow">${isHe ? "Hebraico" : "Grego"} · ${e.t.replace(",", " e ")}</div>
+    <div class="orig ${isHe ? "he" : ""}" lang="${isHe ? "he" : "grc"}">${esc(e.o)}</div>
+    <div class="row"><span class="translit">${esc(e.tr)}</span><span class="strong">Strong ${esc(e.s)}</span></div>
+    <p class="lead" style="font-weight:500">${T(e.def)}</p>
+    <p class="lead">${T(e.exp)}</p>
+    <div><div class="eyebrow" style="color:var(--ink-3);margin-bottom:6px">Onde aparece</div><div class="chips">${e.ref.map(r => `<span class="chip">${T(r)}</span>`).join("")}</div></div>
+    <div><div class="eyebrow" style="color:var(--ink-3);margin-bottom:6px">O que os estudiosos destacam</div><p class="lead">${T(e.teo)}</p></div>
+    <p class="muted small">Traduzido em português por: ${e.pt.map(esc).join(", ")}. No leitor, a palavra marcada indica o termo original mais provável; confira num léxico ou interlinear quando o sentido for decisivo.</p>`;
+}
+function showLex(id){ const e = LEXBY[id]; if(e) openModal(lexHTML(e)); }
+
+/* ---------- navegação ---------- */
+const NAV = [
+  {id:"inicio", t:"Início", i:"home"},
+  {id:"biblia", t:"Bíblia", i:"book"},
+  {id:"estudos", t:"Estudos", i:"study"},
+  {id:"livros", t:"Livros", i:"scroll"},
+  {id:"lexico", t:"Palavras", i:"word"},
+  {id:"teologos", t:"Teólogos", i:"people"},
+  {id:"doutrinas", t:"Doutrinas", i:"pillar"},
+  {id:"historia", t:"História", i:"time"},
+  {id:"metodo", t:"Como estudar", i:"compass"},
+  {id:"planos", t:"Planos", i:"plan"},
+  {id:"pergunte", t:"Pergunte", i:"ask"},
+  {id:"meus", t:"Minhas notas", i:"pen"}
+];
+$("#nav").innerHTML = `<div class="navlabel">Ler</div>` +
+  NAV.slice(0,4).map(n => navBtn(n)).join("") + `<div class="navlabel">Aprofundar</div>` +
+  NAV.slice(4,9).map(n => navBtn(n)).join("") + `<div class="navlabel">Praticar</div>` +
+  NAV.slice(9).map(n => navBtn(n)).join("");
+function navBtn(n){ return `<button class="navbtn" data-nav="${n.id}">${ico(n.i)}<span>${n.t}</span></button>`; }
+$("#tabbar").innerHTML = ["inicio","biblia","estudos","lexico"].map(id => {
+  const n = NAV.find(x => x.id === id);
+  return `<button data-nav="${id}">${ico(n.i)}<span>${n.t}</span></button>`;
+}).join("") + `<button id="moreBtn">${ico("menu")}<span>Mais</span></button>`;
+document.addEventListener("click", e => {
+  const n = e.target.closest("[data-nav]");
+  if(n){ closeRail(); location.hash = n.dataset.nav; }
+});
+$("#moreBtn").onclick = () => {
+  $("#rail").classList.add("open");
+  const s = document.createElement("div"); s.className = "scrim"; s.id = "scrim"; s.onclick = closeRail;
+  document.body.appendChild(s);
+};
+function closeRail(){ $("#rail").classList.remove("open"); $("#scrim")?.remove(); }
+
+function setCurrent(id){
+  $$("[data-nav]").forEach(b => b.toggleAttribute("aria-current", false));
+  $$(`[data-nav="${id}"]`).forEach(b => b.setAttribute("aria-current", "page"));
+}
+
+const ROUTES = {};
+function route(){
+  const h = (location.hash || "#inicio").slice(1);
+  clearSel();
+  let m;
+  if((m = h.match(/^ler-(\d+)-(\d+)$/))){ const b = +m[1], c = +m[2]; if(L[b] && c>=1 && c<=CAPS[b]){ S.pos = {b, c}; save("pos"); } setCurrent("biblia"); return renderReader(); }
+  if((m = h.match(/^estudo-([\w]+)$/))){ setCurrent("estudos"); return renderEstudo(m[1]); }
+  if((m = h.match(/^livro-([\w]+)$/))){ setCurrent("livros"); return renderLivro(m[1]); }
+  if((m = h.match(/^teologo-([\w]+)$/))){ setCurrent("teologos"); return renderTeologo(m[1]); }
+  if((m = h.match(/^doutrina-([\w]+)$/))){ setCurrent("doutrinas"); return renderDoutrina(m[1]); }
+  if((m = h.match(/^plano-([\w]+)$/))){ setCurrent("planos"); return renderPlano(m[1]); }
+  const id = ROUTES[h] ? h : "inicio";
+  setCurrent(id);
+  ROUTES[id]();
+}
+function paint(html){
+  main.innerHTML = `<div class="wrap fade-in">${html}</div>`;
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+
+/* ======================= INÍCIO ======================= */
+const VOTD = ["Jo 3:16","Sl 23:1","Is 40:31","Rm 8:28","Fp 4:6-7","Pv 3:5-6","Js 1:9","Mt 11:28","Lm 3:22-23","Rm 5:8","2Co 5:17","Gl 2:20","Ef 2:8-9","Hb 11:1","Sl 46:1","Mq 6:8","Mt 5:16","Jo 14:6","1Jo 4:19","Sl 119:105","Is 41:10","Rm 12:2","Cl 3:23","1Pe 5:7","Sl 37:5","Mt 6:33","Jo 1:14","Hb 4:16","Ap 21:4","Sl 51:10","Is 53:5","Rm 1:16","1Co 13:13","2Tm 3:16","Tg 1:22","Fp 1:21","Sl 90:12","Dt 6:5","Hc 3:17-18","Jo 11:25","Sl 139:14","Mt 28:20","Rm 15:13","Is 26:3","Sl 27:1","Ne 8:10","Jo 15:5","2Co 12:9","1Ts 5:16-18","Sl 1:1-2"];
+ROUTES.inicio = () => {
+  const day = Math.floor((Date.now() - new Date().getTimezoneOffset()*60000) / 86400000);
+  const r = parseRef(VOTD[day % VOTD.length]);
+  const vs = verseText(r.b, r.c, r.v1, r.v2);
+  const first = vs.map(x=>x[1]).join(" ");
+  const pos = S.pos;
+  const total = 1189, readN = S.read.size;
+  const nNotes = Object.keys(S.notes).length, nHl = Object.keys(S.hl).length;
+  const feat = window.ESTUDOS[day % window.ESTUDOS.length];
+  const activePlan = Object.keys(S.plans)[0];
+  let planHTML = "";
+  if(activePlan && PLANS[activePlan]){
+    const p = PLANS[activePlan], days = planDays(p), done = new Set(S.plans[activePlan].done || []);
+    const next = days.findIndex((d,i) => !dayDone(activePlan, i, d, done));
+    if(next >= 0) planHTML = `<div class="card"><div class="meta">Seu plano · ${esc(p.nome)}</div><h3>Dia ${next+1} de ${days.length}</h3><div class="chips">${days[next].map(([b,c]) => `<button class="chip" data-go="ler-${b}-${c}">${esc(L[b].abrev)} ${c}</button>`).join("")}</div><div class="bar"><i style="width:${(done.size/days.length*100).toFixed(1)}%"></i></div><button class="btn ghost" data-go="plano-${activePlan}" style="align-self:flex-start">Ver plano</button></div>`;
+  }
+  paint(`
+    <div class="pagehead"><div class="eyebrow">Lâmpada para os meus pés · Salmo 119:105</div><h1>Estude a Bíblia com quem mais a estudou</h1>
+    <p>Texto completo, introdução aos 66 livros, palavras em hebraico e grego, a voz de teólogos de vinte séculos e um professor para tirar dúvidas.</p></div>
+    <div class="hero">
+      <div class="votd">
+        <div class="eyebrow">Versículo do dia</div>
+        <blockquote><span class="initial" aria-hidden="true">${esc(first.charAt(0))}</span>${esc(first.slice(1))}</blockquote>
+        <div class="row" style="justify-content:space-between"><span class="src">${esc(refLabel(r.b, r.c, r.v1, r.v2))}</span>
+        <span class="row"><button class="btn ghost" data-go="ler-${r.b}-${r.c}">Ler o capítulo</button><button class="btn" id="votdAsk">${ico("spark")} Explicar</button></span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <button class="card" data-go="ler-${pos.b}-${pos.c}"><div class="meta">Continuar lendo</div><h3>${esc(L[pos.b].nome)} ${pos.c}</h3><p>${esc((B[pos.b][pos.c-1][0]||"").slice(0,110))}…</p></button>
+        <div class="stats">
+          <div class="stat"><b>${readN}</b><span>de ${total} capítulos lidos</span><div class="bar" style="margin-top:8px"><i style="width:${(readN/total*100).toFixed(2)}%"></i></div></div>
+          <div class="stat"><b>${nNotes + nHl}</b><span>notas e destaques</span></div>
+        </div>
+      </div>
+    </div>
+    ${planHTML}
+    <div class="section-title"><h2>Estudo em destaque</h2><button class="ref" data-go="estudos">Todos os estudos</button></div>
+    <button class="card" data-go="estudo-${feat.id}"><div class="meta">${esc(feat.ref)} · ${esc(feat.cat)}</div><h3>${esc(feat.titulo)}</h3><p>${esc(feat.tema)}</p></button>
+    <div class="section-title"><h2>Por onde começar</h2></div>
+    <div class="grid">
+      ${[
+        ["metodo","Como estudar a Bíblia","Nove passos de observação, interpretação e aplicação, e os erros mais comuns."],
+        ["historia","Panorama da história","De Abraão ao Apocalipse: datas, impérios e grupos do tempo de Jesus."],
+        ["lexico","Palavras no original",`${LEX.length} termos hebraicos e gregos explicados, como hesed, logos e charis.`],
+        ["teologos","Teólogos",`${window.TEOLOGOS.length} grandes intérpretes, de Ireneu a Keller, com ideias e obras.`],
+        ["doutrinas","Doutrinas","Trindade, Cristo, salvação, Igreja e o fim: textos, história e posições das tradições."],
+        ["pergunte","Pergunte ao professor","Tire dúvidas sobre qualquer passagem ou tema, com a resposta de vários teólogos."]
+      ].map(([g,t,d]) => `<button class="card" data-go="${g}"><h3>${t}</h3><p>${d}</p></button>`).join("")}
+    </div>`);
+  $("#votdAsk").onclick = () => explainVerses(r.b, r.c, vs.map(x=>x[0]));
+};
+
+/* ======================= LEITOR ======================= */
+let SEL = new Set();
+function openReader(b, c, v1, v2){
+  S.pos = {b, c}; save("pos");
+  pendingFlash = v1 ? [v1, v2 || v1] : null;
+  const h = `#ler-${b}-${c}`;
+  if(location.hash === h) renderReader(); else location.hash = h;
+}
+let pendingFlash = null;
+ROUTES.biblia = () => { location.replace(`#ler-${S.pos.b}-${S.pos.c}`); };
+
+function renderReader(){
+  const {b, c} = S.pos, lv = L[b];
+  const ch = B[b][c-1];
+  const used = new Set();
+  const est = window.ESTUDOS.filter(e => e.b === b && e.c === c || (e.antes && e.b === b && e.antes[0] === c));
+  const verses = ch.map((t, i) => {
+    const v = i+1, k = `${b}-${c}-${v}`;
+    const cls = ["v"]; if(S.hl[k]) cls.push("h"+S.hl[k]); if(S.notes[k]) cls.push("has-note");
+    const body = S.lexOn ? markLex(t, lv.t, used) : esc(t);
+    return `<span class="${cls.join(" ")}" data-v="${v}" id="v${v}"><sup class="vn">${v}</sup>${body} </span>`;
+  }).join("");
+  const isRead = S.read.has(`${b}-${c}`);
+  main.innerHTML = `
+    <div class="reader-top">
+      <button class="pick" id="pickBook">${esc(lv.nome)} ${c} <span class="muted small">▾</span></button>
+      <button class="iconbtn" id="prevC" aria-label="Capítulo anterior" ${b===0&&c===1?"disabled":""}><svg><use href="#i-left"/></svg></button>
+      <button class="iconbtn" id="nextC" aria-label="Próximo capítulo" ${b===65&&c===22?"disabled":""}><svg><use href="#i-right"/></svg></button>
+      <span class="spacer"></span>
+      <form class="searchbox" id="searchForm" role="search"><input class="input" id="q" placeholder="Buscar palavra ou referência (Jo 3:16)" aria-label="Buscar na Bíblia"><button class="iconbtn" aria-label="Buscar"><svg><use href="#i-search"/></svg></button></form>
+      <button class="iconbtn" id="optBtn" aria-label="Opções de leitura">Aa</button>
+    </div>
+    <article class="chapter fade-in">
+      <header class="chap-head">
+        <span class="chap-num">${c}</span>
+        <div><div class="sub">${lv.t === "AT" ? "Antigo Testamento" : "Novo Testamento"} · ${esc(lv.grupo)}</div><h1>${esc(lv.nome)}</h1></div>
+      </header>
+      ${c === 1 ? `<details class="intro" open><summary>Sobre o livro de ${esc(lv.nome)}</summary>${livroBrief(lv)}</details>` : `<details class="intro"><summary>Sobre o livro de ${esc(lv.nome)}</summary>${livroBrief(lv)}</details>`}
+      ${est.map(e => `<div class="notice">${ico("study")}<div class="grow"><b>Estudo aprofundado:</b> ${esc(e.titulo)} <span class="muted">(${esc(e.ref)})</span></div><button class="btn ghost" data-go="estudo-${e.id}">Abrir</button></div>`).join("")}
+      <div class="text ${S.lines ? "lines" : ""}" id="chText">${verses}</div>
+      <p class="muted small">${S.lexOn ? "Palavras com sublinhado pontilhado têm explicação do termo original. Toque num versículo para destacar, anotar ou pedir explicação." : "Toque num versículo para destacar, anotar ou pedir explicação."}</p>
+      <div class="chap-nav">
+        <button class="btn ghost" id="prevC2" ${b===0&&c===1?"disabled":""}>${ico("left")} Anterior</button>
+        <button class="btn ${isRead ? "ghost" : ""}" id="markRead">${isRead ? "Lido ✓" : "Marcar como lido"}</button>
+        <button class="btn ghost" id="nextC2" ${b===65&&c===22?"disabled":""}>Próximo ${ico("right")}</button>
+      </div>
+      <p class="muted small">Texto: Bíblia Livre (BLIVRE), tradução aberta sob licença Creative Commons Atribuição 3.0 Brasil.</p>
+    </article>`;
+  const go = d => { let nb = b, nc = c + d; if(nc < 1){ nb--; nc = CAPS[nb]; } else if(nc > CAPS[nb]){ nb++; nc = 1; } if(L[nb]) openReader(nb, nc); };
+  $("#prevC").onclick = $("#prevC2").onclick = () => go(-1);
+  $("#nextC").onclick = $("#nextC2").onclick = () => go(1);
+  $("#markRead").onclick = () => {
+    const k = `${b}-${c}`;
+    if(S.read.has(k)) S.read.delete(k); else { S.read.add(k); toast("Capítulo marcado como lido"); }
+    save("read"); renderReader();
+  };
+  $("#pickBook").onclick = () => bookPicker();
+  $("#optBtn").onclick = readingOptions;
+  $("#searchForm").onsubmit = e => { e.preventDefault(); const q = $("#q").value.trim(); if(q) doSearch(q); };
+  $("#chText").addEventListener("click", e => {
+    if(e.target.closest("[data-lx]")) return;
+    const v = e.target.closest(".v"); if(!v) return;
+    const n = +v.dataset.v;
+    if(SEL.has(n)) SEL.delete(n); else SEL.add(n);
+    v.classList.toggle("sel");
+    renderSheet();
+  });
+  if(pendingFlash){
+    const [a, z] = pendingFlash; pendingFlash = null;
+    requestAnimationFrame(() => {
+      const el = $("#v"+a);
+      if(el){ el.scrollIntoView({block:"center"}); for(let v=a; v<=z; v++) $("#v"+v)?.classList.add("flash"); }
+    });
+  } else window.scrollTo(0,0);
+}
+
+function livroBrief(lv){
+  return `<dl class="kv">
+    <dt>Tema</dt><dd>${T(lv.tema)}</dd>
+    <dt>Autor</dt><dd>${T(lv.autor)}</dd>
+    <dt>Data</dt><dd>${T(lv.data)}</dd>
+    <dt>Contexto</dt><dd>${T(lv.contexto)}</dd>
+  </dl><div class="row" style="margin-top:12px"><button class="btn ghost" data-go="livro-${lv.id}">Introdução completa</button></div>`;
+}
+
+function bookPicker(){
+  const {b, c} = S.pos;
+  const grp = t => L.map((l,i)=>[l,i]).filter(([l])=>l.t===t).map(([l,i]) => `<button data-b="${i}" class="${i===b?"cur":""}">${esc(l.nome)}</button>`).join("");
+  openModal(`<h2 style="font-size:1.6rem">Escolha o livro</h2>
+    <div class="eyebrow">Antigo Testamento · 39 livros</div><div class="picker-grid">${grp("AT")}</div>
+    <div class="eyebrow">Novo Testamento · 27 livros</div><div class="picker-grid">${grp("NT")}</div>`, bd => {
+      bd.addEventListener("click", e => { const t = e.target.closest("[data-b]"); if(t) chapterPicker(+t.dataset.b); });
+    });
+}
+function chapterPicker(b){
+  const cur = S.pos;
+  let h = "";
+  for(let c=1; c<=CAPS[b]; c++){
+    const cls = (cur.b===b && cur.c===c) ? "cur" : (S.read.has(`${b}-${c}`) ? "read" : "");
+    h += `<button data-c="${c}" class="${cls}">${c}</button>`;
+  }
+  openModal(`<h2 style="font-size:1.6rem">${esc(L[b].nome)}</h2><p class="muted small">${CAPS[b]} capítulo${CAPS[b]>1?"s":""} · dourado = já lido</p><div class="chap-grid">${h}</div>`, bd => {
+    bd.addEventListener("click", e => { const t = e.target.closest("[data-c]"); if(t){ closeModal(); openReader(b, +t.dataset.c); } });
+  });
+}
+function readingOptions(){
+  openModal(`<h2 style="font-size:1.6rem">Opções de leitura</h2>
+    <label class="row" style="justify-content:space-between"><span>Tamanho do texto</span><input type="range" id="optSize" min="0.95" max="1.5" step="0.05" value="${S.size}"></label>
+    <label class="row"><input type="checkbox" id="optLex" ${S.lexOn?"checked":""}> <span>Marcar palavras com explicação do original</span></label>
+    <label class="row"><input type="checkbox" id="optLines" ${S.lines?"checked":""}> <span>Um versículo por linha</span></label>`, bd => {
+      $("#optSize", bd).oninput = e => { S.size = +e.target.value; save("size"); document.documentElement.style.setProperty("--read-size", S.size+"rem"); };
+      $("#optLex", bd).onchange = e => { S.lexOn = e.target.checked; save("lexOn"); renderReader(); };
+      $("#optLines", bd).onchange = e => { S.lines = e.target.checked; save("lines"); renderReader(); };
+    });
+}
+
+/* barra de ações para versículos selecionados */
+function clearSel(){ SEL.clear(); $$(".v.sel").forEach(v => v.classList.remove("sel")); $("#sheet").hidden = true; }
+function renderSheet(){
+  const sh = $("#sheet");
+  if(!SEL.size){ sh.hidden = true; return; }
+  const {b, c} = S.pos;
+  const vs = [...SEL].sort((a,z)=>a-z);
+  const label = `${L[b].abrev} ${c}:${compactVs(vs)}`;
+  sh.innerHTML = `<span class="lbl">${esc(label)}</span>
+    ${[1,2,3,4].map(n => `<button class="swatch s${n}" data-hl="${n}" aria-label="Destacar com cor ${n}"></button>`).join("")}
+    <button class="swatch s0" data-hl="0" aria-label="Remover destaque"></button>
+    <button class="iconbtn" id="shNote">${ico("pen")} Anotar</button>
+    <button class="iconbtn" id="shCopy">${ico("copy")} Copiar</button>
+    <button class="btn" id="shAsk">${ico("spark")} Explicar</button>
+    <button class="iconbtn" id="shX" aria-label="Fechar">×</button>`;
+  sh.hidden = false;
+  sh.onclick = e => {
+    const h = e.target.closest("[data-hl]");
+    if(h){
+      const n = +h.dataset.hl;
+      vs.forEach(v => { const k = `${b}-${c}-${v}`; if(n) S.hl[k] = n; else delete S.hl[k]; });
+      save("hl"); clearSel(); renderReader(); toast(n ? "Destacado" : "Destaque removido");
+    }
+  };
+  $("#shX").onclick = clearSel;
+  $("#shCopy").onclick = () => copyText(vs.map(v => B[b][c-1][v-1]).join(" ") + ` (${L[b].nome} ${c}:${compactVs(vs)}, Bíblia Livre)`);
+  $("#shNote").onclick = () => noteEditor(b, c, vs[0]);
+  $("#shAsk").onclick = () => explainVerses(b, c, vs);
+}
+function compactVs(vs){
+  const out = []; let s = vs[0], p = vs[0];
+  for(let i=1; i<=vs.length; i++){
+    if(vs[i] === p+1){ p = vs[i]; continue; }
+    out.push(s === p ? `${s}` : `${s}-${p}`); s = p = vs[i];
+  }
+  return out.join(",");
+}
+function noteEditor(b, c, v){
+  const k = `${b}-${c}-${v}`, cur = S.notes[k];
+  openModal(`<div class="eyebrow">Anotação</div><h2 style="font-size:1.6rem">${esc(refLabel(b,c,v))}</h2>
+    <p class="lead muted">${esc(B[b][c-1][v-1])}</p>
+    <textarea class="input" id="noteTxt" placeholder="O que Deus está mostrando neste versículo?">${esc(cur ? cur.t : "")}</textarea>
+    <div class="row"><button class="btn" id="noteSave">Salvar</button>${cur ? `<button class="btn ghost" id="noteDel">Excluir</button>` : ""}</div>
+    <p class="muted small">As anotações ficam guardadas só neste navegador.</p>`, bd => {
+      $("#noteTxt", bd).focus();
+      $("#noteSave", bd).onclick = () => {
+        const t = $("#noteTxt", bd).value.trim();
+        if(t) S.notes[k] = {t, d: new Date().toISOString().slice(0,10)}; else delete S.notes[k];
+        save("notes"); closeModal(); clearSel(); if(location.hash.startsWith("#ler-")) renderReader(); else route(); toast("Anotação salva");
+      };
+      const del = $("#noteDel", bd);
+      if(del) del.onclick = () => { delete S.notes[k]; save("notes"); closeModal(); clearSel(); route(); toast("Anotação excluída"); };
+    });
+}
+
+/* busca */
+function doSearch(q){
+  const r = parseRef(q);
+  if(r){ openReader(r.b, r.c, r.v1, r.v2); return; }
+  const nq = norm(q);
+  if(nq.length < 3){ toast("Digite ao menos 3 letras"); return; }
+  const res = [];
+  let count = 0;
+  for(let b=0; b<66; b++) for(let c=0; c<B[b].length; c++) for(let v=0; v<B[b][c].length; v++){
+    if(norm(B[b][c][v]).includes(nq)){ count++; if(res.length < 300) res.push([b,c+1,v+1]); }
+  }
+  const at = res.filter(x=>L[x[0]].t==="AT").length;
+  const hiRe = new RegExp(nq.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"), "g");
+  const hi = t => {
+    // destaca ignorando acentos: mapeia posições no texto normalizado
+    const n = norm(t); let out = "", last = 0, m;
+    hiRe.lastIndex = 0;
+    while((m = hiRe.exec(n))){ out += esc(t.slice(last, m.index)) + "<mark>" + esc(t.slice(m.index, m.index + m[0].length)) + "</mark>"; last = m.index + m[0].length; }
+    return out + esc(t.slice(last));
+  };
+  main.innerHTML = `<div class="wrap narrow fade-in">
+    <div class="pagehead"><div class="eyebrow">Busca</div><h1>“${esc(q)}”</h1>
+    <p>${count} versículo${count!==1?"s":""} encontrado${count!==1?"s":""}${count>300?" (mostrando os 300 primeiros)":""} · ${at} no AT, ${res.length-at} no NT.</p></div>
+    <form class="searchbox" id="sf2" style="max-width:none"><input class="input" id="q2" value="${esc(q)}" aria-label="Nova busca"><button class="btn">Buscar</button></form>
+    <div style="display:flex;flex-direction:column;gap:8px">${res.map(([b,c,v]) => `<button class="result" data-open="${b}|${c}|${v}"><b>${esc(L[b].nome)} ${c}:${v}</b>${hi(B[b][c-1][v-1])}</button>`).join("") || `<p class="muted">Nada encontrado. Tente outra forma da palavra (ex.: “amou” em vez de “amar”).</p>`}</div>
+    <button class="btn ghost" data-go="ler-${S.pos.b}-${S.pos.c}">${ico("left")} Voltar ao leitor</button></div>`;
+  window.scrollTo(0,0);
+  $("#sf2").onsubmit = e => { e.preventDefault(); const nq2 = $("#q2").value.trim(); if(nq2) doSearch(nq2); };
+}
+
+/* ======================= PROFESSOR (Claude) ======================= */
+let samplePromise = null;
+function getSample(){
+  if(!samplePromise) samplePromise = (window.claude && window.claude.use) ? window.claude.use("sample").catch(() => null) : Promise.resolve(null);
+  return samplePromise;
+}
+const SAMPLE_ERR = {
+  not_granted:"Você não permitiu que esta página use o Claude. A explicação está desativada nesta visita.",
+  sampling_disabled:"O Claude não está disponível para esta conta.",
+  rate_limited:"Muitas perguntas seguidas. Espere um pouco e tente de novo.",
+  session_expired:"Sua sessão expirou. Entre novamente no Claude.",
+  refused:"Não foi possível responder a esse pedido. Tente reformular.",
+  prompt_too_large:"A pergunta ficou grande demais. Selecione menos versículos.",
+  empty_completion:"Não veio resposta. Tente simplificar a pergunta."
+};
+const errMsg = e => SAMPLE_ERR[e && e.code] || "A conexão falhou. Tente novamente.";
+
+function md(text){
+  const lines = esc(text).split("\n");
+  let out = "", list = null;
+  const inline = s => linkify(s.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g,"$1<em>$2</em>"));
+  const close = () => { if(list){ out += `</${list}>`; list = null; } };
+  for(const raw of lines){
+    const l = raw.trimEnd();
+    let m;
+    if((m = l.match(/^#{1,4}\s+(.*)/))){ close(); out += `<h3>${inline(m[1])}</h3>`; }
+    else if((m = l.match(/^\s*[-•*]\s+(.*)/))){ if(list !== "ul"){ close(); out += "<ul>"; list = "ul"; } out += `<li>${inline(m[1])}</li>`; }
+    else if((m = l.match(/^\s*\d+[.)]\s+(.*)/))){ if(list !== "ol"){ close(); out += "<ol>"; list = "ol"; } out += `<li>${inline(m[1])}</li>`; }
+    else if(!l.trim()){ close(); }
+    else { close(); out += `<p>${inline(l)}</p>`; }
+  }
+  close();
+  return out;
+}
+
+const TEACHER = `Você é um professor de Bíblia e teologia, com domínio de hebraico, aramaico e grego, de história do Antigo Oriente e do mundo greco-romano, e da história da interpretação cristã (Pais da Igreja, medievais, reformadores, puritanos, estudiosos modernos e contemporâneos de várias tradições: católica, ortodoxa, luterana, reformada, anglicana, wesleyana, batista e pentecostal).
+Regras:
+- Responda em português do Brasil, com clareza para um leigo dedicado, sem perder profundidade.
+- Quando citar teólogos, resuma as ideias com suas palavras. Use aspas apenas para citações de fonte conhecida e indique a obra. Nunca invente citações.
+- Quando houver divergência entre tradições ou estudiosos, apresente as principais posições com respeito e diga onde há consenso.
+- Para palavras no original, dê a palavra, a transliteração e o sentido; inclua o número de Strong só se tiver certeza.
+- Cite referências bíblicas no formato abreviado brasileiro (ex.: Jo 3:16, 1Co 13:4-7, Sl 23:1).
+- Use títulos com ### e listas curtas. Não use tabelas.`;
+
+async function explainVerses(b, c, vs){
+  clearSel();
+  vs = [...vs].sort((a,z)=>a-z);
+  const lv = L[b], label = `${lv.nome} ${c}:${compactVs(vs)}`;
+  const txt = vs.map(v => `${v} ${B[b][c-1][v-1]}`).join("\n");
+  const ctxStart = Math.max(1, vs[0]-3), ctxEnd = Math.min(B[b][c-1].length, vs[vs.length-1]+3);
+  const ctx = verseText(b, c, ctxStart, ctxEnd).map(([v,t]) => `${v} ${t}`).join("\n");
+  const prompt = `${TEACHER}
+
+Explique a passagem ${label}.
+Texto (Bíblia Livre):
+${txt}
+
+Versículos ao redor (${lv.nome} ${c}:${ctxStart}-${ctxEnd}):
+${ctx}
+
+Dados do livro de ${lv.nome}: autor: ${lv.autor} Data: ${lv.data} Contexto: ${lv.contexto} Tema: ${lv.tema}
+
+Organize assim:
+### Contexto
+Onde a passagem está no livro e na história; situação dos primeiros leitores.
+### Palavras no original
+2 a 4 palavras-chave em ${lv.t === "AT" ? "hebraico (ou aramaico)" : "grego"}.
+### O que o texto quer dizer
+Explicação versículo a versículo ou por ideias, em linguagem simples.
+### O que os grandes teólogos disseram
+De 3 a 5 intérpretes de épocas diferentes (por exemplo um Pai da Igreja, um medieval, um reformador e um estudioso moderno), indicando a tradição de cada um. Mostre divergências quando existirem.
+### Conexões com o resto da Bíblia
+Textos paralelos e como a passagem se relaciona com Cristo.
+### Para refletir
+2 ou 3 perguntas de aplicação pessoal.
+Use no máximo 700 palavras.`;
+  openModal(`<div class="eyebrow">Professor de Bíblia</div><h2 style="font-size:1.8rem">${esc(label)}</h2>
+    <div class="text" style="font-size:1rem">${vs.map(v => `<sup class="vn">${v}</sup>${esc(B[b][c-1][v-1])} `).join("")}</div>
+    <div class="row"><span class="small muted">Profundidade:</span><button class="chip" data-depth="default" aria-pressed="${S.depth==="default"}">Normal</button><button class="chip" data-depth="complex" aria-pressed="${S.depth==="complex"}">Mais profunda (mais lenta)</button></div>
+    <div class="prose" id="ansBox"><p class="thinking">Consultando o professor…</p></div>
+    <div class="row"><button class="iconbtn" id="ansStop">Parar</button><button class="iconbtn" id="ansFollow">${ico("ask")} Continuar a conversa</button></div>
+    <p class="muted small">Resposta gerada pelo Claude a partir do texto e do contexto. Confira as referências; resumos de teólogos são aproximações, não citações literais.</p>`, async bd => {
+      let ctl;
+      modalCleanup = () => ctl?.abort();
+      const run = async () => {
+        const box = $("#ansBox", bd);
+        ctl?.abort();
+        const my = ctl = new AbortController();
+        box.innerHTML = `<p class="thinking">Consultando o professor… (pode levar alguns segundos)</p>`;
+        const sample = await getSample();
+        if(my !== ctl) return;
+        if(!sample){ box.innerHTML = `<p>O professor responde quando esta página está aberta dentro do Claude. Enquanto isso, use as introduções dos livros, o léxico e os estudos.</p>`; $("#ansStop", bd).hidden = true; return; }
+        try{
+          const res = await sample(prompt, {modelTier: S.depth, signal: my.signal, onText: ({text}) => { if(my === ctl) box.innerHTML = md(text); }});
+          if(my !== ctl) return;
+          box.innerHTML = md(res.text) + (res.truncated ? `<p class="muted small">A resposta foi cortada por tamanho.</p>` : "");
+          bd.dataset.answer = res.text;
+        }catch(e){
+          if(my !== ctl) return;
+          if(e && e.code === "cancelled"){ if(e.text){ box.innerHTML = md(e.text); bd.dataset.answer = e.text; } return; }
+          box.innerHTML = (e && e.text ? md(e.text) : "") + `<p class="muted">${esc(errMsg(e))}</p>`;
+        }
+      };
+      $$("[data-depth]", bd).forEach(btn => btn.onclick = () => {
+        S.depth = btn.dataset.depth; save("depth");
+        $$("[data-depth]", bd).forEach(x => x.setAttribute("aria-pressed", x === btn)); run();
+      });
+      $("#ansStop", bd).onclick = () => ctl?.abort();
+      $("#ansFollow", bd).onclick = () => {
+        closeModal();
+        CHAT.turns = [{role:"user", content: `Estou estudando ${label}: "${vs.map(v => B[b][c-1][v-1]).join(" ")}"`}];
+        if(bd.dataset.answer) CHAT.turns.push({role:"assistant", content: bd.dataset.answer});
+        CHAT.seed = true;
+        location.hash = "pergunte";
+      };
+      run();
+    });
+}
+
+const CHAT = {turns: [], seed: false, ctl: null};
+ROUTES.pergunte = () => {
+  const sugs = ["Por que Deus permitiu o sofrimento de Jó?","Qual a diferença entre justificação e santificação?","Como católicos e protestantes leem Tiago 2?","O que significa “Filho do Homem”?","Como interpretar o milênio de Apocalipse 20?","Quem escreveu Hebreus?","O que Agostinho e Pelágio discutiram?","Como a Páscoa aponta para Jesus?"];
+  paint(`<div class="narrow" style="display:flex;flex-direction:column;gap:20px;width:100%">
+    <div class="pagehead"><div class="eyebrow">Pergunte ao professor</div><h1>Dúvidas sobre a Bíblia</h1>
+    <p>Pergunte sobre uma passagem, uma palavra, uma doutrina ou um teólogo. As respostas reúnem contexto histórico, línguas originais e a visão de intérpretes de várias épocas e tradições.</p></div>
+    <div class="chat" id="chat"></div>
+    <div class="chips" id="sugs">${sugs.map(s => `<button class="chip" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}</div>
+    <form class="composer" id="chatForm">
+      <textarea class="input" id="chatIn" rows="3" placeholder="Ex.: O que significa “graça” em Efésios 2:8?" style="min-height:76px;font-family:var(--f-ui)"></textarea>
+      <div class="row" style="justify-content:space-between"><span class="row"><button class="chip" type="button" data-depth="default" aria-pressed="${S.depth==="default"}">Normal</button><button class="chip" type="button" data-depth="complex" aria-pressed="${S.depth==="complex"}">Mais profunda</button></span>
+      <span class="row"><button class="iconbtn" type="button" id="chatNew">Nova conversa</button><button class="btn" id="chatSend">${ico("ask")} Perguntar</button></span></div>
+    </form>
+    <p class="muted small" id="chatNote">Respostas geradas pelo Claude. Confira as referências bíblicas citadas.</p></div>`);
+  const chat = $("#chat");
+  const drawTurns = () => {
+    chat.innerHTML = CHAT.turns.map((t,i) => t.role === "user"
+      ? (CHAT.seed && i===0 ? `<div class="notice">${ico("book")}<div class="grow">${esc(t.content)}</div></div>` : `<div class="msg user">${esc(t.content)}</div>`)
+      : `<div class="msg ai prose">${md(t.content)}</div>`).join("");
+    $("#sugs").hidden = CHAT.turns.length > 0;
+  };
+  drawTurns();
+  $$("[data-depth]").forEach(btn => btn.onclick = () => { S.depth = btn.dataset.depth; save("depth"); $$("[data-depth]").forEach(x => x.setAttribute("aria-pressed", x === btn)); });
+  $("#chatNew").onclick = () => { CHAT.ctl?.abort(); CHAT.turns = []; CHAT.seed = false; drawTurns(); $("#chatIn").focus(); };
+  $("#sugs").onclick = e => { const s = e.target.closest("[data-sug]"); if(s){ $("#chatIn").value = s.dataset.sug; send(); } };
+  $("#chatIn").addEventListener("keydown", e => { if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); } });
+  $("#chatForm").onsubmit = e => { e.preventDefault(); send(); };
+  async function send(){
+    const q = $("#chatIn").value.trim();
+    if(!q) return;
+    const sample = await getSample();
+    if(!sample){ $("#chatNote").textContent = "O professor responde quando esta página está aberta dentro do Claude."; return; }
+    $("#chatIn").value = "";
+    CHAT.turns.push({role:"user", content:q});
+    drawTurns();
+    const bubble = document.createElement("div"); bubble.className = "msg ai prose"; bubble.innerHTML = `<p class="thinking">Pensando…</p>`;
+    chat.appendChild(bubble); bubble.scrollIntoView({block:"nearest"});
+    const btn = $("#chatSend"); btn.disabled = true;
+    CHAT.ctl?.abort(); CHAT.ctl = new AbortController();
+    const turns = CHAT.turns.slice(-12);
+    if(turns[0].role !== "user") turns.shift();
+    try{
+      const res = await sample([{role:"user", content: TEACHER + "\n\nResponda às perguntas a seguir. Seja completo, mas vá direto ao ponto (até 600 palavras, salvo se pedirem mais)."}, ...turns], {cache:false, modelTier:S.depth, signal:CHAT.ctl.signal, onText:({text}) => { bubble.innerHTML = md(text); }});
+      CHAT.turns.push({role:"assistant", content: res.text});
+      bubble.innerHTML = md(res.text);
+    }catch(e){
+      if(e && e.text){ CHAT.turns.push({role:"assistant", content:e.text}); bubble.innerHTML = md(e.text); }
+      if(!(e && e.code === "cancelled")) bubble.insertAdjacentHTML("beforeend", `<p class="muted">${esc(errMsg(e))}</p>`);
+    }finally{ if(btn.isConnected) btn.disabled = false; }
+  }
+  if(CHAT.seed && CHAT.turns.length && CHAT.turns[CHAT.turns.length-1].role === "assistant") $("#chatIn").focus();
+};
+
+/* ======================= ESTUDOS ======================= */
+ROUTES.estudos = () => {
+  const cats = ["Antigo Testamento","Novo Testamento"];
+  paint(`<div class="pagehead"><div class="eyebrow">${window.ESTUDOS.length} estudos aprofundados</div><h1>Estudos de passagens-chave</h1>
+    <p>Cada estudo traz o texto, o contexto histórico, notas versículo a versículo, palavras no original, a leitura dos teólogos, a ligação com Cristo e perguntas para refletir.</p></div>
+    ${cats.map(cat => `<div class="section-title"><h2>${cat}</h2></div><div class="grid">${window.ESTUDOS.filter(e=>e.cat===cat).map(e => `
+      <button class="card" data-go="estudo-${e.id}"><div class="meta">${esc(e.ref)}</div><h3>${esc(e.titulo)}</h3><p>${esc(e.tema)}</p></button>`).join("")}</div>`).join("")}`);
+};
+function renderEstudo(id){
+  const e = window.ESTUDOS.find(x => x.id === id);
+  if(!e){ location.hash = "estudos"; return; }
+  const idx = window.ESTUDOS.indexOf(e), nx = window.ESTUDOS[idx+1], pv = window.ESTUDOS[idx-1];
+  const pre = e.antes ? verseText(e.b, e.antes[0], e.antes[1], e.antes[2]).map(([v,t]) => `<sup class="vn">${e.antes[0]}:${v}</sup>${esc(t)} `).join("") : "";
+  const vs = verseText(e.b, e.c, e.v[0], e.v[1]).map(([v,t]) => `<sup class="vn">${v}</sup>${esc(t)} `).join("");
+  paint(`<div class="narrow" style="display:flex;flex-direction:column;gap:26px;width:100%">
+    <div class="pagehead"><div class="eyebrow">Estudo · ${esc(e.ref)}</div><h1>${esc(e.titulo)}</h1><p class="lead">${T(e.tema)}</p>
+      <div class="row"><button class="btn ghost" id="toReader">${ico("book")} Ler no capítulo</button><button class="btn" id="askStudy">${ico("spark")} Perguntar sobre o texto</button></div></div>
+    <details class="passage" open><summary class="eyebrow" style="cursor:pointer;color:var(--ink-3)">Texto bíblico · Bíblia Livre</summary><div class="text" style="margin-top:10px">${pre}${vs}</div></details>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Contexto</h2></div><p class="lead">${T(e.contexto)}</p></section>
+    <section style="display:flex;flex-direction:column;gap:14px"><div class="section-title"><h2>Versículo a versículo</h2></div>
+      <div class="notes">${e.notas.map(n => `<div class="note"><div class="vref">${/:/.test(n.v) ? "" : "v. "}${esc(n.v)}</div><p>${T(n.t)}</p></div>`).join("")}</div></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Palavras no original</h2><span class="muted small">toque para abrir</span></div>
+      <div class="chips">${e.palavras.map(p => LEXBY[p] ? `<button class="chip" data-lx="${p}"><span ${LEXBY[p].l==="he"?'lang="he" style="font-family:var(--f-heb)"':'lang="grc"'}>${esc(LEXBY[p].o)}</span> · <i>${esc(LEXBY[p].tr)}</i></button>` : "").join("")}</div></section>
+    <section style="display:flex;flex-direction:column;gap:14px"><div class="section-title"><h2>O que os teólogos disseram</h2></div>
+      <div class="voices">${e.teologos.map(([n,t]) => `<div class="voice"><b>${esc(n)}</b><p>${T(t)}</p></div>`).join("")}</div></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Cristo no texto</h2></div><p class="lead">${T(e.cristo)}</p></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Para refletir</h2></div><ol class="qs">${e.perguntas.map(q => `<li>${T(q)}</li>`).join("")}</ol></section>
+    <div class="chap-nav">${pv ? `<button class="btn ghost" data-go="estudo-${pv.id}">${ico("left")} ${esc(pv.titulo)}</button>` : "<span></span>"}${nx ? `<button class="btn ghost" data-go="estudo-${nx.id}">${esc(nx.titulo)} ${ico("right")}</button>` : ""}</div>
+  </div>`);
+  $("#toReader").onclick = () => openReader(e.b, e.c, e.v[0], e.v[1]);
+  $("#askStudy").onclick = () => explainVerses(e.b, e.c, Array.from({length: Math.min(e.v[1]-e.v[0]+1, 30)}, (_,i) => e.v[0]+i));
+}
+
+/* ======================= LIVROS ======================= */
+ROUTES.livros = () => {
+  const groups = [...new Set(L.map(l => l.grupo))];
+  paint(`<div class="pagehead"><div class="eyebrow">66 livros</div><h1>Introdução aos livros</h1>
+    <p>Autor, data, contexto histórico, tema, estrutura, como cada livro aponta para Cristo e o que os grandes intérpretes destacaram.</p></div>
+    <input class="input" id="lf" placeholder="Filtrar livros (ex.: profetas, Paulo, Salmos)" aria-label="Filtrar livros">
+    <div id="lgrid" style="display:flex;flex-direction:column;gap:22px"></div>`);
+  const draw = q => {
+    const nq = norm(q||"");
+    $("#lgrid").innerHTML = groups.map(g => {
+      const items = L.filter(l => l.grupo === g && (!nq || norm(l.nome+" "+l.grupo+" "+l.autor+" "+l.tema).includes(nq)));
+      if(!items.length) return "";
+      return `<div style="display:flex;flex-direction:column;gap:10px"><div class="row"><span class="tag ${items[0].t.toLowerCase()}">${items[0].t}</span><h2 style="font-size:1.35rem">${esc(g)}</h2></div>
+      <div class="grid">${items.map(l => `<button class="card" data-go="livro-${l.id}"><div class="meta">${CAPS[L.indexOf(l)]} capítulos · ${esc(l.data.split(";")[0].slice(0,60))}</div><h3>${esc(l.nome)}</h3><p>${esc(l.tema)}</p></button>`).join("")}</div></div>`;
+    }).join("") || `<p class="muted">Nenhum livro encontrado.</p>`;
+  };
+  draw(""); $("#lf").oninput = e => draw(e.target.value);
+};
+function renderLivro(id){
+  const i = L.findIndex(l => l.id === id), l = L[i];
+  if(!l){ location.hash = "livros"; return; }
+  const est = window.ESTUDOS.filter(e => e.b === i);
+  let chaps = ""; for(let c=1; c<=CAPS[i]; c++) chaps += `<button data-go="ler-${i}-${c}" class="${S.read.has(`${i}-${c}`)?"read":""}">${c}</button>`;
+  paint(`<div class="narrow" style="display:flex;flex-direction:column;gap:24px;width:100%">
+    <div class="pagehead"><div class="row"><span class="tag ${l.t.toLowerCase()}">${l.t === "AT" ? "Antigo Testamento" : "Novo Testamento"}</span><span class="tag">${esc(l.grupo)}</span></div>
+      <h1>${esc(l.nome)}</h1><p class="translit">${esc(l.hebraico || l.grego || "")}</p><p class="lead">${T(l.tema)}</p></div>
+    <dl class="kv">
+      <dt>Autor</dt><dd>${T(l.autor)}</dd>
+      <dt>Data</dt><dd>${T(l.data)}</dd>
+      <dt>Contexto</dt><dd>${T(l.contexto)}</dd>
+      <dt>Versículos-chave</dt><dd>${T(l.chave)}</dd>
+    </dl>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Estrutura</h2></div><ol class="qs">${l.estrutura.map(s => `<li>${T(s)}</li>`).join("")}</ol></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Cristo em ${esc(l.nome)}</h2></div><p class="lead">${T(l.cristo)}</p></section>
+    <section style="display:flex;flex-direction:column;gap:14px"><div class="section-title"><h2>Vozes da tradição</h2></div><div class="voices">${l.teologos.map(([n,t]) => `<div class="voice"><b>${esc(n)}</b><p>${T(t)}</p></div>`).join("")}</div></section>
+    ${est.length ? `<section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Estudos deste livro</h2></div><div class="grid">${est.map(e => `<button class="card" data-go="estudo-${e.id}"><div class="meta">${esc(e.ref)}</div><h3>${esc(e.titulo)}</h3></button>`).join("")}</div></section>` : ""}
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Ler</h2><span class="muted small">dourado = lido</span></div><div class="chap-grid">${chaps}</div></section>
+    <div class="chap-nav">${L[i-1] ? `<button class="btn ghost" data-go="livro-${L[i-1].id}">${ico("left")} ${esc(L[i-1].nome)}</button>` : "<span></span>"}${L[i+1] ? `<button class="btn ghost" data-go="livro-${L[i+1].id}">${esc(L[i+1].nome)} ${ico("right")}</button>` : ""}</div>
+  </div>`);
+}
+
+/* ======================= LÉXICO ======================= */
+ROUTES.lexico = () => {
+  paint(`<div class="pagehead"><div class="eyebrow">${LEX.length} palavras</div><h1>Palavras no original</h1>
+    <p>A Bíblia foi escrita em hebraico, aramaico e grego. Cada palavra aqui traz a forma original, a transliteração, o número de Strong, o sentido e o que os estudiosos destacam. No leitor, essas palavras aparecem sublinhadas.</p></div>
+    <div class="row"><input class="input" id="xf" placeholder="Buscar: amor, graça, hesed, logos…" aria-label="Buscar palavra" style="flex:1 1 260px">
+      <span class="chips"><button class="chip" data-lang="" aria-pressed="true">Todas</button><button class="chip" data-lang="he" aria-pressed="false">Hebraico</button><button class="chip" data-lang="gr" aria-pressed="false">Grego</button></span></div>
+    <div class="grid" id="xgrid"></div>`);
+  let lang = "";
+  const draw = () => {
+    const nq = norm($("#xf").value);
+    const items = LEX.filter(e => (!lang || e.l === lang) && (!nq || norm([e.tr, e.o, e.def, e.pt.join(" "), e.s].join(" ")).includes(nq)));
+    $("#xgrid").innerHTML = items.map(e => `<button class="card" data-lx="${e.id}">
+      <div class="row" style="justify-content:space-between"><span class="tag ${e.l==="he"?"at":"nt"}">${e.l==="he"?"Hebraico":"Grego"}</span><span class="strong">${esc(e.s)}</span></div>
+      <div class="orig ${e.l==="he"?"he":""}" style="font-size:1.6rem" lang="${e.l==="he"?"he":"grc"}">${esc(e.o)}</div>
+      <div class="translit" style="font-size:1.05rem">${esc(e.tr)}</div><p>${esc(e.def)}</p></button>`).join("") || `<p class="muted">Nenhuma palavra encontrada.</p>`;
+  };
+  draw();
+  $("#xf").oninput = draw;
+  $$("[data-lang]").forEach(b => b.onclick = () => { lang = b.dataset.lang; $$("[data-lang]").forEach(x => x.setAttribute("aria-pressed", x === b)); draw(); });
+};
+
+/* ======================= TEÓLOGOS ======================= */
+ROUTES.teologos = () => {
+  const eras = [...new Set(window.TEOLOGOS.map(t => t.era))];
+  paint(`<div class="pagehead"><div class="eyebrow">Vinte séculos de leitura</div><h1>Teólogos e intérpretes</h1>
+    <p>Os grandes nomes que moldaram a forma como a Igreja lê a Bíblia, de várias tradições. Conhecer suas ideias ajuda a ler com profundidade e a evitar reinventar erros antigos.</p></div>
+    ${eras.map(era => `<div class="section-title"><h2>${esc(era)}</h2></div><div class="grid">${window.TEOLOGOS.filter(t=>t.era===era).map(t => `
+      <button class="card" data-go="teologo-${t.id}"><div class="meta">${esc(t.anos)} · ${esc(t.trad)}</div><h3>${esc(t.nome)}</h3><p>${esc(t.resumo)}</p></button>`).join("")}</div>`).join("")}`);
+};
+function renderTeologo(id){
+  const t = window.TEOLOGOS.find(x => x.id === id);
+  if(!t){ location.hash = "teologos"; return; }
+  paint(`<div class="narrow" style="display:flex;flex-direction:column;gap:24px;width:100%">
+    <div class="pagehead"><div class="eyebrow">${esc(t.era)} · ${esc(t.anos)}</div><h1>${esc(t.nome)}</h1><p class="muted">${esc(t.trad)} · ${esc(t.lugar)}</p><p class="lead">${T(t.resumo)}</p></div>
+    <p class="quote">${T(t.citacao)}</p>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Ideias principais</h2></div><ul class="qs">${t.ideias.map(x => `<li>${T(x)}</li>`).join("")}</ul></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Obras</h2></div><div class="chips">${t.obras.map(o => `<span class="chip">${esc(o)}</span>`).join("")}</div></section>
+    <div class="notice">${ico("book")}<div class="grow"><b>Para começar a ler:</b> ${T(t.ler)}</div></div>
+    <button class="btn" id="askT" style="align-self:flex-start">${ico("ask")} Perguntar sobre ${esc(t.nome.split(" (")[0])}</button>
+    <button class="btn ghost" data-go="teologos" style="align-self:flex-start">${ico("left")} Todos os teólogos</button>
+  </div>`);
+  $("#askT").onclick = () => { CHAT.turns = []; CHAT.seed = false; location.hash = "pergunte"; setTimeout(() => { const i = $("#chatIn"); if(i){ i.value = `Como ${t.nome.split(" (")[0]} interpretava a Bíblia, e qual a contribuição dele para entender as Escrituras hoje?`; i.focus(); } }, 50); };
+}
+
+/* ======================= DOUTRINAS ======================= */
+ROUTES.doutrinas = () => {
+  paint(`<div class="pagehead"><div class="eyebrow">Teologia sistemática</div><h1>As grandes doutrinas</h1>
+    <p>O que a Bíblia ensina sobre cada tema, os textos principais, como a Igreja chegou às suas formulações e onde as tradições cristãs concordam e divergem.</p></div>
+    <div class="grid">${window.DOUTRINAS.map(d => `<button class="card" data-go="doutrina-${d.id}"><div class="meta">${esc(d.termo)}</div><h3>${esc(d.nome)}</h3><p>${esc(d.def)}</p></button>`).join("")}</div>`);
+};
+function renderDoutrina(id){
+  const d = window.DOUTRINAS.find(x => x.id === id);
+  if(!d){ location.hash = "doutrinas"; return; }
+  paint(`<div class="narrow" style="display:flex;flex-direction:column;gap:24px;width:100%">
+    <div class="pagehead"><div class="eyebrow">${esc(d.termo)}</div><h1>${esc(d.nome)}</h1><p class="lead">${T(d.def)}</p></div>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Textos principais</h2></div><div class="chips">${d.textos.map(t => `<span class="chip">${T(t)}</span>`).join("")}</div></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Como a doutrina se formou</h2></div><p class="lead">${T(d.historia)}</p></section>
+    <section style="display:flex;flex-direction:column;gap:14px"><div class="section-title"><h2>Posições</h2></div><div class="voices">${d.visoes.map(([n,t]) => `<div class="voice"><b>${esc(n)}</b><p>${T(t)}</p></div>`).join("")}</div></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="section-title"><h2>Vozes</h2></div><p class="lead">${T(d.teologos)}</p></section>
+    <div class="notice">${ico("compass")}<div class="grow"><b>Na prática:</b> ${T(d.pratica)}</div></div>
+    <button class="btn ghost" data-go="doutrinas" style="align-self:flex-start">${ico("left")} Todas as doutrinas</button>
+  </div>`);
+}
+
+/* ======================= HISTÓRIA ======================= */
+let histTab = "tempo";
+ROUTES.historia = () => {
+  const tabs = [["tempo","Linha do tempo"],["imperios","Impérios"],["grupos","Grupos no tempo de Jesus"],["texto","Como a Bíblia chegou até nós"]];
+  paint(`<div class="pagehead"><div class="eyebrow">Contexto histórico</div><h1>A história por trás do texto</h1>
+    <p>A Bíblia aconteceu em lugares e épocas reais. Saber quem governava, quais grupos existiam e como o texto foi preservado ilumina cada página.</p></div>
+    <div class="tabs" role="tablist">${tabs.map(([k,t]) => `<button role="tab" data-tab="${k}" aria-selected="${histTab===k}">${t}</button>`).join("")}</div>
+    <div id="hbody"></div>`);
+  const draw = () => {
+    let h = "";
+    if(histTab === "tempo"){
+      let per = "";
+      h = `<p class="muted small">Datas anteriores a Davi são aproximadas e debatidas. Marcadores azuis: Antigo Testamento; vermelhos: era cristã.</p><div class="timeline">` + window.LINHA_TEMPO.map(e => {
+        const nt = /d\.C\./.test(e.d);
+        const head = e.per !== per ? `<div class="eyebrow" style="margin:10px 0 10px">${esc(e.per)}</div>` : ""; per = e.per;
+        return head + `<div class="tl ${nt?"nt":""}"><div class="d">${esc(e.d)}</div><div class="dot"></div><div class="body"><b>${esc(e.t)}</b><p>${T(e.x)}</p><p class="small">${T(e.ref)}</p></div></div>`;
+      }).join("") + `</div>`;
+    } else if(histTab === "imperios"){
+      h = `<div class="grid">${window.IMPERIOS.map(i => `<div class="card"><div class="meta">${esc(i.per)}</div><h3>${esc(i.nome)}</h3><p>${T(i.x)}</p><p class="small">${T(i.ref)}</p></div>`).join("")}</div>`;
+    } else if(histTab === "grupos"){
+      h = `<div class="grid">${window.GRUPOS.map(g => `<div class="card"><h3>${esc(g.nome)}</h3><p>${T(g.x)}</p></div>`).join("")}</div>`;
+    } else {
+      h = `<div class="narrow" style="display:flex;flex-direction:column;gap:18px">${window.TEXTO_BIBLICO.map(t => `<section style="display:flex;flex-direction:column;gap:6px"><h2 style="font-size:1.4rem">${esc(t.t)}</h2><p class="lead">${T(t.x)}</p></section>`).join("")}</div>`;
+    }
+    $("#hbody").innerHTML = h;
+  };
+  draw();
+  $$("[data-tab]").forEach(b => b.onclick = () => { histTab = b.dataset.tab; $$("[data-tab]").forEach(x => x.setAttribute("aria-selected", x === b)); draw(); });
+};
+
+/* ======================= COMO ESTUDAR ======================= */
+ROUTES.metodo = () => {
+  paint(`<div class="pagehead"><div class="eyebrow">Hermenêutica</div><h1>Como estudar a Bíblia</h1>
+    <p>Um método testado por séculos: observar o que o texto diz, entender o que significava, ver como aponta para Cristo e aplicar à vida.</p></div>
+    <div class="section-title"><h2>O método em nove passos</h2></div>
+    <div class="notes">${window.METODO.map((m,i) => `<div class="note"><div class="vref">PASSO ${i+1}</div><h3 style="font-size:1.3rem;margin:2px 0 6px">${esc(m.passo)}</h3><p>${T(m.x)}</p><ul class="qs small" style="margin-top:6px;color:var(--ink-2)">${m.perg.map(q => `<li>${esc(q)}</li>`).join("")}</ul></div>`).join("")}</div>
+    <div class="section-title"><h2>Gêneros literários</h2></div>
+    <div class="grid">${window.GENEROS.map(g => `<div class="card"><div class="meta">${esc(g.livros)}</div><h3>${esc(g.g)}</h3><p>${T(g.dica)}</p></div>`).join("")}</div>
+    <div class="section-title"><h2>Erros comuns de interpretação</h2></div>
+    <div class="grid">${window.ERROS.map(e => `<div class="card"><h3>${esc(e.e)}</h3><p>${T(e.x)}</p></div>`).join("")}</div>
+    <div class="section-title"><h2>Escolas de interpretação na história</h2></div>
+    <div class="timeline">${window.ESCOLAS.map(s => `<div class="tl"><div class="d">${esc(s.p)}</div><div class="dot"></div><div class="body"><b>${esc(s.n)}</b><p>${T(s.x)}</p></div></div>`).join("")}</div>`);
+};
+
+/* ======================= PLANOS ======================= */
+function seqChapters(from, to){ const out = []; for(let b=from; b<=to; b++) for(let c=1; c<=CAPS[b]; c++) out.push([b,c]); return out; }
+function chunk(list, days){ const out = []; const per = list.length / days; for(let d=0; d<days; d++) out.push(list.slice(Math.round(d*per), Math.round((d+1)*per))); return out.filter(x=>x.length); }
+const PANORAMA = ["Gn 1","Gn 3","Gn 12","Gn 15","Gn 22","Gn 50","Êx 3","Êx 12","Êx 20","Lv 16","Dt 6","Js 1","Jz 2","Rt 1","1Sm 16","2Sm 7","1Rs 8","1Rs 18","2Rs 25","Ed 1","Ne 8","Jó 38","Sl 23","Pv 1","Is 6","Is 53","Jr 31","Ez 37","Dn 7","Ml 3","Mt 5","Mc 15","Lc 15","Jo 1","Jo 20","At 2","Rm 3","Rm 8","Ef 2","Ap 21"];
+const PLANS = {
+  panorama:{nome:"Panorama da Bíblia",dias:40,desc:"Os 40 capítulos que contam a grande história, da criação à nova criação.",gen:() => PANORAMA.map(r => { const p = parseRef(r); return [[p.b,p.c]]; })},
+  evangelhos:{nome:"Evangelhos em 30 dias",dias:30,desc:"Mateus, Marcos, Lucas e João: cerca de 3 capítulos por dia.",gen:() => chunk(seqChapters(39,42), 30)},
+  nt90:{nome:"Novo Testamento em 90 dias",dias:90,desc:"Os 260 capítulos do NT em três meses.",gen:() => chunk(seqChapters(39,65), 90)},
+  salmos:{nome:"Salmos em 30 dias",dias:30,desc:"Cinco salmos por dia, o hinário de Israel e da Igreja.",gen:() => chunk(seqChapters(18,18), 30)},
+  ano:{nome:"Bíblia em 1 ano",dias:365,desc:"Os 1.189 capítulos em ordem, cerca de 3 a 4 por dia.",gen:() => chunk(seqChapters(0,65), 365)}
+};
+const planCache = {};
+const planDays = p => planCache[p.nome] || (planCache[p.nome] = p.gen());
+function dayDone(id, i, d, done){ return done.has(i) || d.every(([b,c]) => S.read.has(`${b}-${c}`)); }
+ROUTES.planos = () => {
+  paint(`<div class="pagehead"><div class="eyebrow">Constância</div><h1>Planos de leitura</h1>
+    <p>Escolha um plano. Os dias são marcados como feitos quando você conclui o dia ou marca os capítulos como lidos no leitor.</p></div>
+    <div class="grid">${Object.entries(PLANS).map(([id,p]) => {
+      const days = planDays(p), st = S.plans[id], done = st ? new Set(st.done||[]) : new Set();
+      const n = st ? days.filter((d,i) => dayDone(id,i,d,done)).length : 0;
+      return `<button class="card" data-go="plano-${id}"><div class="meta">${p.dias} dias${st ? ` · em andamento` : ""}</div><h3>${esc(p.nome)}</h3><p>${esc(p.desc)}</p>${st ? `<div class="bar"><i style="width:${(n/days.length*100).toFixed(1)}%"></i></div><span class="small muted">${n} de ${days.length} dias</span>` : ""}</button>`;
+    }).join("")}</div>`);
+};
+function renderPlano(id){
+  const p = PLANS[id]; if(!p){ location.hash = "planos"; return; }
+  const days = planDays(p);
+  const st = S.plans[id];
+  const done = new Set(st ? st.done || [] : []);
+  const n = days.filter((d,i) => dayDone(id,i,d,done)).length;
+  paint(`<div class="narrow" style="display:flex;flex-direction:column;gap:18px;width:100%">
+    <div class="pagehead"><div class="eyebrow">Plano de leitura · ${p.dias} dias</div><h1>${esc(p.nome)}</h1><p>${esc(p.desc)}</p></div>
+    ${st ? `<div class="bar"><i style="width:${(n/days.length*100).toFixed(1)}%"></i></div><p class="small muted">${n} de ${days.length} dias concluídos · iniciado em ${esc(st.start)}</p>`
+         : `<button class="btn" id="startPlan" style="align-self:flex-start">Começar este plano</button>`}
+    <div style="display:flex;flex-direction:column;gap:6px">${days.map((d,i) => {
+      const ok = dayDone(id,i,d,done);
+      return `<div class="day ${ok?"done":""}"><span class="n">Dia ${i+1}</span><span class="refs">${d.map(([b,c]) => `<button class="ref" data-go="ler-${b}-${c}">${esc(L[b].abrev)} ${c}</button>`).join("")}</span>${st ? `<button class="check" data-day="${i}" aria-pressed="${ok}" aria-label="Concluir dia ${i+1}"></button>` : ""}</div>`;
+    }).join("")}</div>
+    ${st ? `<button class="btn ghost" id="stopPlan" style="align-self:flex-start">Encerrar plano</button>` : ""}
+  </div>`);
+  const sp = $("#startPlan"); if(sp) sp.onclick = () => { S.plans = {[id]: {start: new Date().toLocaleDateString("pt-BR"), done: []}, ...S.plans}; save("plans"); renderPlano(id); toast("Plano iniciado"); };
+  const xp = $("#stopPlan"); if(xp) xp.onclick = () => {
+    if(xp.dataset.confirm){ delete S.plans[id]; save("plans"); renderPlano(id); toast("Plano encerrado"); }
+    else { xp.dataset.confirm = "1"; xp.textContent = "Toque de novo para encerrar e apagar o progresso"; }
+  };
+  $$("[data-day]").forEach(b => b.onclick = () => {
+    const i = +b.dataset.day, s = new Set(S.plans[id].done || []);
+    if(s.has(i)) s.delete(i); else s.add(i);
+    S.plans[id].done = [...s]; save("plans");
+    b.setAttribute("aria-pressed", s.has(i) || days[i].every(([bb,cc]) => S.read.has(`${bb}-${cc}`)));
+    b.closest(".day").classList.toggle("done", b.getAttribute("aria-pressed") === "true");
+  });
+}
+
+/* ======================= MINHAS NOTAS ======================= */
+ROUTES.meus = () => {
+  const keys = new Set([...Object.keys(S.notes), ...Object.keys(S.hl)]);
+  const items = [...keys].map(k => k.split("-").map(Number)).sort((a,z) => a[0]-z[0] || a[1]-z[1] || a[2]-z[2]);
+  paint(`<div class="narrow" style="display:flex;flex-direction:column;gap:18px;width:100%">
+    <div class="pagehead"><div class="eyebrow">Seu caderno</div><h1>Minhas notas e destaques</h1>
+    <p>${items.length ? `${Object.keys(S.notes).length} anotações e ${Object.keys(S.hl).length} destaques, em ordem bíblica.` : "Ainda vazio. No leitor, toque num versículo para destacar com uma cor ou escrever uma anotação; tudo aparece aqui."} Ficam guardados neste navegador.</p></div>
+    ${items.length ? `<div class="row"><button class="btn ghost" id="expNotes">Exportar como texto</button></div>` : `<button class="btn" data-go="biblia" style="align-self:flex-start">${ico("book")} Ir para o leitor</button>`}
+    <div style="display:flex;flex-direction:column;gap:10px">${items.map(([b,c,v]) => {
+      const k = `${b}-${c}-${v}`, n = S.notes[k], h = S.hl[k];
+      return `<div class="card"><div class="row" style="justify-content:space-between"><button class="ref" data-ref="${b}|${c}|${v}|${v}" style="font-weight:600">${esc(refLabel(b,c,v))}</button>${h ? `<span class="swatch s${h}" style="width:16px;height:16px"></span>` : ""}</div>
+        <p class="lead" style="font-size:.98rem">${esc(B[b][c-1][v-1])}</p>
+        ${n ? `<p style="border-left:2px solid var(--gold);padding-left:10px;font-family:var(--f-read)">${esc(n.t)}</p><div class="row"><span class="small muted">${esc(n.d)}</span><button class="iconbtn" data-edit="${k}">${ico("pen")} Editar</button></div>` : `<div class="row"><button class="iconbtn" data-edit="${k}">${ico("pen")} Anotar</button></div>`}</div>`;
+    }).join("")}</div></div>`);
+  $$("[data-edit]").forEach(b => b.onclick = () => { const [bb,cc,vv] = b.dataset.edit.split("-").map(Number); noteEditor(bb,cc,vv); });
+  const ex = $("#expNotes");
+  if(ex) ex.onclick = async () => {
+    const txt = "Lâmpada Bíblica — minhas notas\n\n" + items.map(([b,c,v]) => {
+      const k = `${b}-${c}-${v}`, n = S.notes[k];
+      return `${refLabel(b,c,v)}\n${B[b][c-1][v-1]}${n ? `\nNota (${n.d}): ${n.t}` : ""}\n`;
+    }).join("\n");
+    let dl = null;
+    try{ dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; }catch(e){}
+    if(dl){
+      try{ await dl.save({filename:"minhas-notas-biblicas.txt", data: txt}); }
+      catch(e){ if(!e || e.code !== "cancelled") copyText(txt); }
+    } else copyText(txt);
+  };
+};
+
+/* ---------- início ---------- */
+route();
+})();
+</script>
