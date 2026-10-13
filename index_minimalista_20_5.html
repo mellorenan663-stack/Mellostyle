@@ -114,6 +114,18 @@ function __noCentavo(v){ const n=toNumber(v,0); return Math.round(n*100+(n>=0?1e
 function __semMenosZero(v,casas){ const f=Math.pow(10,casas); return Math.round(v*f)===0?0:v; }
 function fmtMoney(v){return __fmtBRL.format(__semMenosZero(toNumber(v,0),2));}
 function fmtNum(v){return __fmtNum.format(__semMenosZero(toNumber(v,0),3));}
+/* Preço por peça com as casas que ele tem: R$ 0,375 aparecia como R$ 0,38, e
+   quem conferia 333 × 0,38 não chegava no faturamento da OF. */
+const __fmtPreco=new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:2,maximumFractionDigits:4});
+function fmtPreco(v){return __fmtPreco.format(__semMenosZero(toNumber(v,0),4));}
+/* Número curto para os contadores do menu: 4.630.668 vira "4,6 mi" (antes
+   aparecia "4630,7k", sem o ponto do milhar). */
+function __numeroCurto(v){
+  const n=toNumber(v,0), a=Math.abs(n);
+  if(a>=999950) return (Math.round(n/1e5)/10).toLocaleString("pt-BR")+" mi";
+  if(a>=1000) return (Math.round(n/100)/10).toLocaleString("pt-BR")+" mil";
+  return n.toLocaleString("pt-BR");
+}
 /* Pela tela os minutos chegam sempre inteiros, mas um registro importado pode
    trazer meio minuto ("37,5") ou texto — e aí aparecia "0:37.5h". */
 function fmtHoras(min){min=Math.round(toNumber(min,0));const h=Math.floor(Math.abs(min)/60),m=Math.abs(min)%60;const s=(min<0?"-":"")+(h>0?h+"h ":"")+(m>0?m+"min":"");return s||"0min";}
@@ -649,6 +661,8 @@ window.setLoteCompetenciaRapida=function(inputId,offsetMes=0){
   el.value=monthKeyLocal(d);
 };
 
+/* Chave do cliente: sem diferenciar maiúscula, acento e espaço sobrando. */
+function __chaveCliente(v){ return normalize(v).replace(/\s+/g," "); }
 function getClientesResumo(mes="",lotesDoMesProntos=null){
   let baseLotes=[];
   /* O resumo do mês já filtrou estes lotes com a mesma regra: não refaz. */
@@ -659,25 +673,36 @@ function getClientesResumo(mes="",lotesDoMesProntos=null){
   }else{
     baseLotes=lotes.filter(l=>l?.status!=="Cancelado");
   }
-  const map={};
+  /* O mesmo cliente escrito de outro jeito ("malharia norte sul") virava
+     outro cliente: o faturamento dele ficava partido em duas linhas e a tela
+     de Clientes contava só uma delas. A chave agora ignora maiúscula, acento
+     e espaço; o nome que aparece é o do cadastro (ou a grafia mais usada). */
+  const cadastrados=new Map(clientes.map(c=>[__chaveCliente(c.nome),safeText(c.nome)]));
+  const map=new Map();
   baseLotes.forEach(l=>{
-    const nome=safeText(l.cliente)||"Sem cliente";
-    if(!map[nome]) map[nome]={cliente:nome,lotes:0,pecas:0,faturamento:0};
-    map[nome].lotes++;
-    map[nome].pecas+=toNumber(l.qtdTotal,0);
-    map[nome].faturamento+=calcFaturamentoLote(l);
+    const bruto=safeText(l.cliente);
+    const k=__chaveCliente(bruto)||"sem cliente";
+    let e=map.get(k);
+    if(!e){ e={k,grafias:new Map(),lotes:0,pecas:0,faturamento:0}; map.set(k,e); }
+    const g=bruto||"Sem cliente";
+    e.grafias.set(g,(e.grafias.get(g)||0)+1);
+    e.lotes++;
+    e.pecas+=toNumber(l.qtdTotal,0);
+    e.faturamento+=calcFaturamentoLote(l);
   });
-  return Object.values(map).sort((a,b)=>b.faturamento-a.faturamento||b.pecas-a.pecas);
+  return [...map.values()].map(e=>({chave:e.k,
+      cliente:cadastrados.get(e.k)||[...e.grafias.entries()].sort((a,b)=>b[1]-a[1])[0][0],
+      lotes:e.lotes,pecas:e.pecas,faturamento:e.faturamento}))
+    .sort((a,b)=>b.faturamento-a.faturamento||b.pecas-a.pecas);
 }
 
 function getFinanceiroCategorias(mes=""){
+  /* O mesmo agrupamento da tela de Gastos: "Manutenção" e "manutencao" são
+     uma categoria só, com a grafia que a tela de Gastos mostra. Antes o
+     Relatório separava as duas e o valor de cada uma não batia com os Gastos. */
   const gs=mes?gastos.filter(g=>(g.competencia||"")===mes):gastos;
-  const map={};
-  gs.forEach(g=>{
-    const nome=safeText(g.categoria)||"Sem categoria";
-    map[nome]=(map[nome]||0)+toNumber(g.valor,0);   /* "1.234,56" em texto era colado, não somado */
-  });
-  return Object.entries(map).map(([categoria,valor])=>({categoria,valor})).sort((a,b)=>b.valor-a.valor);
+  const rotulos=new Map(agruparGastosPorCategoria(gastos).map(c=>[c.chave,c.rotulo]));
+  return agruparGastosPorCategoria(gs).map(c=>({categoria:rotulos.get(c.chave)||c.rotulo,valor:c.total}));
 }
 function getSecurityRulesText(){
   // Modelo de acesso por empresa: o login é anônimo (um botão), então o
@@ -732,8 +757,8 @@ function __calcResumoMensal(mes){
   const totalPecas=lotesDoMes.reduce((s,l)=>s+toNumber(l.qtdTotal,0),0);
   const faturamento=lotesDoMes.reduce((s,l)=>s+calcFaturamentoLote(l),0);
   const gastosM=gastos.filter(g=>(g.competencia||"")===mes);
-  const fixo=gastosM.filter(g=>g.tipo==="fixo").reduce((s,g)=>s+toNumber(g.valor,0),0);
-  const variavel=gastosM.filter(g=>g.tipo==="variavel").reduce((s,g)=>s+toNumber(g.valor,0),0);
+  const fixo=gastosM.filter(gastoEhFixo).reduce((s,g)=>s+toNumber(g.valor,0),0);
+  const variavel=gastosM.filter(g=>!gastoEhFixo(g)).reduce((s,g)=>s+toNumber(g.valor,0),0);
   // Folha real: soma salário final do banco de horas, incluindo extras e descontos por falta.
   const funcAtivas=funcionarios.filter(f=>f.status!=="Inativo");
   /* A folha do custo tem de ser o que a Folha de Pagamento paga, nao o
@@ -1805,6 +1830,9 @@ async function _loadDataReal(){
         if(__retryTimer){ clearTimeout(__retryTimer); __retryTimer=null; }
         mostrarEstadoDados("ok"); }
       __dadosVersao++; try{ populateSelects(); }catch(_e){}
+      /* Os clientes chegam nesta segunda leva: sem isto o menu ficava em
+         "Clientes 0" até a próxima gravação. */
+      try{ atualizarContadoresMenu(); }catch(_e){}
       if(["controlehora","clientes","fat-cliente","relatorio","backup","bancohoras"].includes(currentPage)){
         try{ map[currentPage]?.(); }catch(e){ console.error('RENDER_PAGE_ERROR',currentPage,e); }
       }
@@ -2108,7 +2136,7 @@ function renderFuncionarios(){
     const escalaBadge=f.escalaPadrao==="ketelen_7h"
       ?'<span style="font-size:9px;background:rgba(143,148,156,.12);color:var(--t2);border:1px solid rgba(143,148,156,.2);border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700;">7h</span>'
       :'<span style="font-size:9px;background:rgba(191,195,202,.1);color:var(--accent-lt);border:1px solid rgba(191,195,202,.18);border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700;">9h30</span>';
-    const meta=f.metaDia||0;
+    const meta=toNumber(f.metaDia,0);
     /* A meta é POR DIA, então quem se compara com ela é a média por dia
        trabalhado — não o total de todos os tempos. */
     const diasLancados=dMap[f.id]?dMap[f.id].size:0;
@@ -2120,7 +2148,7 @@ function renderFuncionarios(){
       <td class="td-muted">${escapeHtml(f.cargo||"—")}${f.telefone?`<div class="td-mini">${escapeHtml(f.telefone)}</div>`:""}</td>
       <td class="td-muted">${escapeHtml(f.setor||"—")}${f.admissao?`<div class="td-mini">Adm: ${new Date(f.admissao+"T00:00:00").toLocaleDateString("pt-BR")}</div>`:""}</td>
       <td class="td-mono">${fmtMoney(f.salario||0)}</td>
-      <td class="td-mono ${(f.bonus||0)>0?"hi":""}">${(f.bonus||0)>0?fmtMoney(f.bonus):"—"}${meta?`<div class="td-mini">Meta: ${meta} pçs/dia</div>`:""}</td>
+      <td class="td-mono ${toNumber(f.bonus,0)>0?"hi":""}">${toNumber(f.bonus,0)>0?fmtMoney(f.bonus):"—"}${meta?`<div class="td-mini">Meta: ${meta} pçs/dia</div>`:""}</td>
       <td class="td-mono">${jornadaLabel}${escalaBadge}</td>
       <td class="td-mono hi">${prod.toLocaleString("pt-BR")} pçs${meta&&diasLancados>0?`<div class="td-mini">${Math.round(mediaDia).toLocaleString("pt-BR")} pçs/dia · ${metaPct}% da meta</div>`:""}</td>
       <td class="td-actions">
@@ -3022,7 +3050,7 @@ function atualizarContadoresMenu(){
     const mapa={
       lotes:{v:abertos, alerta:abertos>0, t:abertos+(abertos===1?" OF em aberto":" OFs em aberto")},
       funcionarios:{v:funcionarios.filter(f=>f.status!=="Inativo").length, t:"funcionários ativos"},
-      producao:{v:pecas>=1000?(pecas/1000).toFixed(1).replace(".",",")+"k":pecas, t:pecas.toLocaleString("pt-BR")+" peças lançadas"},
+      producao:{v:__numeroCurto(pecas), t:pecas.toLocaleString("pt-BR")+" peças lançadas"},
       gastos:{v:gastos.filter(g=>(g.competencia||"")===mes).length, t:"lançamentos em "+formatMonthLabel(mes)},
       clientes:{v:clientes.length, t:"clientes cadastrados"}
     };
@@ -3178,13 +3206,14 @@ function renderFatCliente(){
     /* Conta as OFs de todos os clientes numa passada só. */
     const ofsPorCliente=new Map();
     for(const l of lotes){
-      const k=normalize(l.cliente||"");
+      if(l.status==="Cancelado") continue;   // as mesmas OFs do cartão do cliente
+      const k=__chaveCliente(l.cliente||"");
       if(!k) continue;
       ofsPorCliente.set(k,(ofsPorCliente.get(k)||0)+1);
     }
     listaEl.innerHTML=`<div class="tbl-wrap"><table style="min-width:400px"><thead><tr><th>Nome</th><th>Contato</th><th>Obs</th><th>OFs</th><th></th></tr></thead><tbody>${
       clientes.map(c=>{
-        const nLotes=ofsPorCliente.get(normalize(c.nome))||0;
+        const nLotes=ofsPorCliente.get(__chaveCliente(c.nome))||0;
         return`<tr>
           <td style="font-weight:700;color:var(--t);">${escapeHtml(c.nome)}</td>
           <td class="td-muted">${escapeHtml(c.contato||"—")}</td>
@@ -3455,7 +3484,7 @@ window.salvarEdicaoLote=async()=>{
 window.abrirModalConcluir=function(loteId){
   const lote=lotes.find(l=>l.id===loteId);if(!lote)return;
   const{produzido}=calcProg(lote);
-  const meta=lote.qtdTotal||0;
+  const meta=toNumber(lote.qtdTotal,0);
   $("modal-lote-titulo").textContent=`${rotuloOf(lote.numeroOf)} — ${lote.produto}`;
   $("modal-lote-restante").textContent=`Meta: ${meta.toLocaleString("pt-BR")} pçs • Concluído no lote: ${produzido.toLocaleString("pt-BR")} • Faltando: ${Math.max(0,meta-produzido).toLocaleString("pt-BR")}`;
   $("modal-lote-id").value=loteId;
@@ -3513,8 +3542,8 @@ window.concluirLoteSemLancar=async()=>{
 
 // Conclui o lote preenchendo 100% em todas as etapas que ainda não atingiram a meta
 window.concluirLote100pct=async(loteId)=>{
-  const lote=lotes.find(l=>l.id===loteId);if(!lote||!lote.qtdTotal)return;
-  if(!confirm("Isso vai preencher todas as etapas faltantes com "+lote.qtdTotal.toLocaleString("pt-BR")+" peças e marcar o lote como Concluído. Confirma?"))return;
+  const lote=lotes.find(l=>l.id===loteId);if(!lote||!toNumber(lote.qtdTotal,0))return;
+  if(!confirm("Isso vai preencher todas as etapas faltantes com "+toNumber(lote.qtdTotal,0).toLocaleString("pt-BR")+" peças e marcar o lote como Concluído. Confirma?"))return;
   const btn=document.getElementById("btn-100pct-"+loteId);
   if(btn){btn.disabled=true;btn.textContent="Processando...";}
   try{
@@ -3705,7 +3734,9 @@ function renderLotes(){
   c.innerHTML=alertaHtml+lotesVisiveis.map(l=>{
    try{
     const progLote=calcProg(l),produzido=progLote.produzido,pct=progLote.pct,statusReal=statusDe(l),sm=statusMeta(statusReal);
-    const meta=l.qtdTotal||0,rest=Math.max(0,meta-produzido);
+    /* toNumber: com "2.400" em texto, "2.400"-0 dava 2,4 e o cartão dizia
+       "restam 2,4". */
+    const meta=toNumber(l.qtdTotal,0),rest=Math.max(0,meta-produzido);
     const competenciaLote=getLoteCompetenciaFinal(l);
     const custoProp=produzido>0?produzido*custoPorPecaDoMes(competenciaLote):0;
     const fat=calcFaturamentoLote(l),lucro=fat-custoProp;
@@ -3758,7 +3789,7 @@ function renderLotes(){
         <div class="of2-stat"><span class="of2-stat-l">Lucro est.</span>${temCusto
           ?`<span class="of2-stat-v ${lucro>=0?'pos':'neg'}">${fmtMoney(lucro)}</span>`
           :`<span class="of2-stat-v of2-stat-vazio" title="O lucro só aparece depois que houver produção lançada, para descontar o custo.">—</span>`}</div>
-        <div class="of2-stat"><span class="of2-stat-l">Valor / peça</span><span class="of2-stat-v">${fmtMoney(l.valorPeca)}</span></div>
+        <div class="of2-stat"><span class="of2-stat-l">Valor / peça</span><span class="of2-stat-v">${fmtPreco(l.valorPeca)}</span></div>
         <div class="of2-stat"><span class="of2-stat-l">Cai em</span><span class="of2-stat-v txt">${competenciaTxt}</span></div>
       </div>
       ${(l.tamanhos||l.observacoes)?`<div class="of2-hints">${l.tamanhos?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3H3v6h18z"/><path d="M7 9v3M12 9v3M17 9v3"/><path d="M3 15h18v6H3z"/></svg> ${escapeHtml(l.tamanhos)}</span>`:''}${l.observacoes?`<span><svg class="ico-min" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 17 0z"/></svg> ${escapeHtml(l.observacoes)}</span>`:''}</div>`:''}
@@ -3840,13 +3871,16 @@ window.salvarRegistro=async()=>{
     const func=funcionarios.find(f=>f.id===funcId),lote=lotes.find(l=>l.id===loteId);
     if(loteId && !lote){toast("Lote selecionado não foi encontrado","err");return;}
     if(lote?.status==="Cancelado"){toast("Não é possível lançar produção em lote cancelado","err");return;}
-    if(lote && lote.qtdTotal){
+    /* toNumber: com a meta da OF em texto ("2.400"), "2.400"-lançado dava
+       2,4 menos o lançado — e a OF recusava QUALQUER lançamento. */
+    const metaLote=toNumber(lote?.qtdTotal,0);
+    if(lote && metaLote>0){
       // Busca direto do Firestore — dado sempre atualizado, sem depender de cache
       const snapEtapa=await getDocs(query(collection(db,"registros"),where("loteId","==",loteId),where("etapa","==",etapa)));
       const jaLancadoEtapa=sumSnapshotQtdForCurrentOwner(snapEtapa);
-      const disponivelEtapa=lote.qtdTotal-jaLancadoEtapa;
-      if(disponivelEtapa<=0){toast(`Etapa "${etapa}" já tem ${lote.qtdTotal.toLocaleString("pt-BR")} peças (100%). Não é possível adicionar mais.`,"err");return;}
-      if(qtd>disponivelEtapa){toast(`Limite da etapa "${etapa}" ultrapassado! Disponível: ${disponivelEtapa.toLocaleString("pt-BR")} pç${disponivelEtapa!==1?"s":""}. Meta do lote: ${lote.qtdTotal.toLocaleString("pt-BR")} peças.`,"err");return;}
+      const disponivelEtapa=metaLote-jaLancadoEtapa;
+      if(disponivelEtapa<=0){toast(`Etapa "${etapa}" já tem ${metaLote.toLocaleString("pt-BR")} peças (100%). Não é possível adicionar mais.`,"err");return;}
+      if(qtd>disponivelEtapa){toast(`Limite da etapa "${etapa}" ultrapassado! Disponível: ${disponivelEtapa.toLocaleString("pt-BR")} pç${disponivelEtapa!==1?"s":""}. Meta do lote: ${metaLote.toLocaleString("pt-BR")} peças.`,"err");return;}
     }
     const dadosReg=withOwner({funcionarioId:funcId,funcionarioNome:func?.nome||"—",etapa,qtd,obs,loteId:loteId||null,loteNumeroOf:lote?.numeroOf||null,loteProduto:lote?.produto||null,criadoEm:Timestamp.now()});
     const refReg=await addDoc(collection(db,"registros"),dadosReg);
@@ -3913,12 +3947,13 @@ window.salvarEdicaoRegistro=async()=>{
     const lote=loteId?lotes.find(l=>l.id===loteId):null;
     if(loteId && !lote){toast("Lote selecionado não foi encontrado","err");return;}
     if(lote?.status==="Cancelado"){toast("Não é possível vincular a lote cancelado","err");return;}
-    if(lote && lote.qtdTotal){
+    const metaLoteEd=toNumber(lote?.qtdTotal,0);
+    if(lote && metaLoteEd>0){
       const snapEtapa=await getDocs(query(collection(db,"registros"),where("loteId","==",loteId),where("etapa","==",etapa)));
       const jaLancadoEtapa=snapshotDocsForCurrentOwner(snapEtapa).filter(d=>d.id!==id).reduce((s,d)=>s+toNumber(d.qtd,0),0);
-      const disponivelEtapa=lote.qtdTotal-jaLancadoEtapa;
-      if(disponivelEtapa<=0){toast(`Etapa "${etapa}" já tem ${lote.qtdTotal.toLocaleString("pt-BR")} peças (100%). Não é possível salvar.`,"err");return;}
-      if(qtd>disponivelEtapa){toast(`Limite da etapa "${etapa}" ultrapassado! Disponível: ${disponivelEtapa.toLocaleString("pt-BR")} pç${disponivelEtapa!==1?"s":""}. Meta: ${lote.qtdTotal.toLocaleString("pt-BR")} peças.`,"err");return;}
+      const disponivelEtapa=metaLoteEd-jaLancadoEtapa;
+      if(disponivelEtapa<=0){toast(`Etapa "${etapa}" já tem ${metaLoteEd.toLocaleString("pt-BR")} peças (100%). Não é possível salvar.`,"err");return;}
+      if(qtd>disponivelEtapa){toast(`Limite da etapa "${etapa}" ultrapassado! Disponível: ${disponivelEtapa.toLocaleString("pt-BR")} pç${disponivelEtapa!==1?"s":""}. Meta: ${metaLoteEd.toLocaleString("pt-BR")} peças.`,"err");return;}
     }
     const dadosEd=withOwner({funcionarioId,funcionarioNome:func?.nome||"—",etapa,qtd,obs,loteId:loteId||null,loteNumeroOf:lote?.numeroOf||null,loteProduto:lote?.produto||null});
     await updateDoc(doc(db,"registros",id),dadosEd);
@@ -4069,9 +4104,9 @@ function renderProducao(manterLimite){
       <td class="td-mono sm">${dateFmt(r.criadoEm,true)}</td>
       <td><span class="chip cn">${escapeHtml(r.funcionarioNome)}</span></td>
       <td><span class="chip ce">${escapeHtml(r.etapa)}</span></td>
-      <td class="td-mono" style="font-weight:700;">${(r.qtd||0).toLocaleString("pt-BR")}</td>
+      <td class="td-mono" style="font-weight:700;">${toNumber(r.qtd,0).toLocaleString("pt-BR")}</td>
       <td>${r.loteNumeroOf?`<span class="chip co">${escapeHtml(rotuloOf(r.loteNumeroOf))}</span>`:"—"}</td>
-      <td class="td-mono td-muted" style="font-size:11px;">${loteR&&loteR.qtdTotal?`${Math.min(100,Math.round((registrosDoLote(r.loteId).reduce((s,x)=>s+(x.etapa===r.etapa?toNumber(x.qtd,0):0),0)/loteR.qtdTotal)*100))}% desta etapa`:"—"}</td>
+      <td class="td-mono td-muted" style="font-size:11px;">${loteR&&toNumber(loteR.qtdTotal,0)>0?`${Math.min(100,Math.round((registrosDoLote(r.loteId).reduce((s,x)=>s+(x.etapa===r.etapa?toNumber(x.qtd,0):0),0)/toNumber(loteR.qtdTotal,0))*100))}% desta etapa`:"—"}</td>
       <td class="td-obs">${escapeHtml(r.obs||"—")}</td>
       <td><div class="td-actions"><button class="btn-edit" onclick="editarRegistro('${r.id}')" title="Editar">✎</button><button class="btn-x" onclick="deletarRegistro('${r.id}')">✕</button></div></td>
     </tr>`;
@@ -4112,8 +4147,12 @@ window.aplicarFiltros=function(manterLimite){
   const faturaDe=l=>{ let v=faturaCache.get(l.id);
     if(v===undefined){ v=calcFaturamentoLote(l); faturaCache.set(l.id,v); } return v; };
   const lotesNoFiltro=[...new Set(dados.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>idxLote.get(id)).filter(Boolean);
-  /* toNumber: com "1.200" em texto, 0+"1.200" dava o texto "01.200". */
-  const tQ=lotesNoFiltro.reduce((s,l)=>s+toNumber(l.qtdTotal,0),0);
+  /* Peças LANÇADAS nos registros do filtro (a mesma conta do ranking do
+     Relatório). Antes era a quantidade inteira das OFs tocadas: um dia com 10
+     peças lançadas numa OF de 1.000 mostrava "1.000". toNumber: "1.200" em
+     texto não é colado na soma. */
+  const tQ=dados.reduce((s,r)=>s+toNumber(r.qtd,0),0);
+  /* Valor das OFs que tiveram lançamento no filtro, cada uma uma vez só. */
   const tF=lotesNoFiltro.reduce((s,l)=>s+faturaDe(l),0);
   if($("hr-reg"))$("hr-reg").textContent=dados.length.toLocaleString("pt-BR");
   if($("hr-qtd"))$("hr-qtd").textContent=tQ.toLocaleString("pt-BR");
@@ -4125,19 +4164,21 @@ window.aplicarFiltros=function(manterLimite){
   const limite=Math.min(totalReg,Math.max(HIST_POR_VEZ,window.histLimite||HIST_POR_VEZ));
   const visiveis=dados.slice(0,limite);
   const grupos={};
-  visiveis.forEach(r=>{const d=r.criadoEm?.toDate?r.criadoEm.toDate():new Date(r.criadoEm);
-    const k=__rotuloDia(d); if(!grupos[k])grupos[k]=[]; grupos[k].push(r);});
+  const diaDe=r=>{ const d=r.criadoEm?.toDate?r.criadoEm.toDate():new Date(r.criadoEm); return __rotuloDia(d); };
+  visiveis.forEach(r=>{ const k=diaDe(r); if(!grupos[k])grupos[k]=[]; grupos[k].push(r);});
+  /* As peças de cada dia contam TODOS os registros do dia no filtro — também
+     os que ainda não apareceram na página —, para os dias somarem o total. */
+  const pecasDoDia=new Map();
+  dados.forEach(r=>{ const k=diaDe(r); pecasDoDia.set(k,(pecasDoDia.get(k)||0)+toNumber(r.qtd,0)); });
   cont.innerHTML=Object.entries(grupos).map(([dk,regs])=>{
-    const lotesGrupo=[...new Set(regs.filter(r=>r.loteId).map(r=>r.loteId))].map(id=>idxLote.get(id)).filter(Boolean);
-    const dQ=lotesGrupo.reduce((s,l)=>s+toNumber(l.qtdTotal,0),0);
-    const dF=lotesGrupo.reduce((s,l)=>s+faturaDe(l),0);
-    return`<div class="hg"><div class="hg-hd"><span class="hg-dia">${dk}</span><div class="hg-pills"><span class="hpill">${dQ.toLocaleString("pt-BR")} pçs</span><span class="hpill g">${fmtMoney(dF)}</span></div></div>
+    const dQ=pecasDoDia.get(dk)||0;
+    return`<div class="hg"><div class="hg-hd"><span class="hg-dia">${dk}</span><div class="hg-pills"><span class="hpill" title="peças lançadas neste dia">${dQ.toLocaleString("pt-BR")} pçs</span></div></div>
     <table class="htbl"><thead><tr><th>Hora</th><th>Funcionário</th><th>Etapa</th><th>Qtd</th><th>Lote</th><th>Obs</th></tr></thead>
     <tbody>${regs.map(r=>`<tr>
       <td class="td-mono sm">${(t=>t?__fmtHora.format(new Date(t)):"—")(tsDe(r))}</td>
       <td><span class="chip cn sm">${escapeHtml(r.funcionarioNome)}</span></td>
       <td><span class="chip ce sm">${escapeHtml(r.etapa)}</span></td>
-      <td class="td-mono">${(r.qtd||0).toLocaleString("pt-BR")}</td>
+      <td class="td-mono">${toNumber(r.qtd,0).toLocaleString("pt-BR")}</td>
       <td>${r.loteNumeroOf?`<span class="chip co sm">${escapeHtml(rotuloOf(r.loteNumeroOf))}</span>`:"—"}</td>
       <td class="td-obs">${escapeHtml(r.obs||"—")}</td>
     </tr>`).join("")}</tbody></table></div>`;
@@ -4996,7 +5037,13 @@ function lerValoresNota(txt){
    Categorias são texto livre (campo "Outros"), então "luz" e "Luz"
    viram lançamentos separados. Aqui elas são unificadas por chave
    normalizada, exibindo o rótulo mais usado. ── */
-function gastoEhFixo(g){ return (g&&g.tipo)==="fixo"; }
+/* Uma regra só para todas as telas: "fixo" (sem diferenciar maiúscula e
+   acento) é fixo; qualquer outro tipo é variável. Antes a tela de Gastos
+   contava como variável tudo que não fosse "fixo", mas o custo, o lucro e a
+   gaveta só contavam o tipo escrito exatamente "variavel" — um gasto sem tipo,
+   ou "Variável" com acento (dado antigo, backup), aparecia nos Gastos e SUMIA
+   do custo e do lucro. */
+function gastoEhFixo(g){ return normalize(g&&g.tipo)==="fixo"; }
 function somaGastos(lista){ return lista.reduce((s,g)=>s+toNumber(g.valor,0),0); }
 function capitalizar(s){ const t=safeText(s); return t?t.charAt(0).toUpperCase()+t.slice(1):t; }
 
@@ -5274,6 +5321,8 @@ function renderGastos(){
       const maior=linhas[0].total||1;
       catBox.innerHTML=linhas.map(c=>{
         const pct=total>0?(c.total/total*100):0;
+        /* "31,9%" e não "31.9%": a porcentagem em português, como o resto. */
+        const pctTxt=pct.toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1});
         const larg=Math.max(2,Math.round(c.total/maior*100));
         const ativo=catF===c.chave;
         const clicavel=c.chave!=="__outras";
@@ -5286,7 +5335,7 @@ function renderGastos(){
         const estourou=teto>0&&c.total>teto;
         const dif=Math.abs(c.total-teto);
         return `<div class="gx-cat ${ativo?"is-ativo":""} ${clicavel?"is-clicavel":""}"
-            title="${escapeHtml(c.rotulo)} · ${fmtMoney(c.total)} · ${c.n} lançamento(s) · ${pct.toFixed(1)}% do período${teto>0?" · teto "+fmtMoney(teto):""}">
+            title="${escapeHtml(c.rotulo)} · ${fmtMoney(c.total)} · ${c.n} lançamento(s) · ${pctTxt}% do período${teto>0?" · teto "+fmtMoney(teto):""}">
           <div class="gx-cat-top">
             <span class="gx-cat-nome" ${clicavel?`onclick="gastoFiltrarCategoria('${c.chave}')"`:""}>
               <i class="gx-cat-dot" style="background:${cor}"></i>${escapeHtml(c.rotulo)}</span>
@@ -5297,7 +5346,7 @@ function renderGastos(){
             ${teto>0?`<i class="gx-cat-teto" style="left:${Math.min(99,Math.round(teto/base*100))}%"></i>`:""}
           </div>
           <div class="gx-cat-meta">
-            <span>${pct.toFixed(1)}% do período · ${c.n} lançamento${c.n>1?"s":""}</span>
+            <span>${pctTxt}% do período · ${c.n} lançamento${c.n>1?"s":""}</span>
             ${clicavel?(teto>0
               ? `<button type="button" class="gx-teto-btn ${estourou?"is-ruim":"is-bom"}" onclick="event.stopPropagation();gastoDefinirTeto('${c.chave}',${JSON.stringify(c.rotulo).replace(/"/g,"&quot;")})">${estourou?"passou "+fmtMoney(dif)+" do teto":"folga de "+fmtMoney(dif)}</button>`
               : `<button type="button" class="gx-teto-btn is-vazio" onclick="event.stopPropagation();gastoDefinirTeto('${c.chave}',${JSON.stringify(c.rotulo).replace(/"/g,"&quot;")})">definir teto</button>`):""}
@@ -5758,7 +5807,7 @@ function mostrarResultadoOFObj(r){
     {k:"numeroOf", rot:"Nº da OF",    v:r.numeroOf, obrig:true},
     {k:"produto",  rot:"Produto",     v:r.produto,  obrig:true},
     {k:"qtdTotal", rot:"Quantidade",  v:toNumber(r.qtdTotal,0)?toNumber(r.qtdTotal,0).toLocaleString("pt-BR")+" pçs":"", obrig:true},
-    {k:"valorPeca",rot:"Valor/peça",  v:toNumber(r.valorPeca,0)?fmtMoney(r.valorPeca):""},
+    {k:"valorPeca",rot:"Valor/peça",  v:toNumber(r.valorPeca,0)?fmtPreco(r.valorPeca):""},
     {k:"cliente",  rot:"Cliente",     v:r.cliente},
     {k:"prazo",    rot:"Prazo",       v:r.prazo?r.prazo.split("-").reverse().join("/"):""},
     {k:"tamanhos", rot:"Tamanhos",    v:r.tamanhos}
@@ -6090,13 +6139,20 @@ const CAIXA_EXCLUIR=["renan","nicole","sabrina","junior","alessandra"];
 function mesesProvisaoFunc(f,cfg){
   // 1) ajuste manual salvo por funcionária tem prioridade
   const ov=(cfg.provisaoMeses||{})[f.id];
-  if(ov!==undefined && ov!==null && ov!=="") return Math.min(12,Math.max(0,Math.round(Number(ov)||0)));
+  if(ov!==undefined && ov!==null && ov!=="") return Math.min(12,Math.max(0,Math.round(toNumber(ov,0))));
   // 2) nomes que estão há 12 meses (ano cheio)
   const nn=normalize(f.nome||"");
   if(CAIXA_NOMES_12.some(x=>nn.includes(x))) return 12;
   // 3) data de admissão no sistema → avos até dezembro (fim do ano)
+  /* "Quem tem data de admissão conta a partir dela" — a partir da DATA, não
+     só do mês. O ano era ignorado: quem entrou em agosto de 2020 provisionava
+     5/12 do 13º todo ano, como se tivesse acabado de entrar; quem entrou em
+     novembro de 2022, 2/12. Admissão em ano anterior = o ano inteiro. */
   if(f.admissao && /^\d{4}-\d{2}-\d{2}$/.test(f.admissao)){
-    const m=Number(f.admissao.slice(5,7)); // mês de admissão (1-12)
+    const anoAdm=Number(f.admissao.slice(0,4)), m=Number(f.admissao.slice(5,7)); // mês de admissão (1-12)
+    const anoFim=new Date().getFullYear();
+    if(anoAdm<anoFim) return 12;
+    if(anoAdm>anoFim) return 0;
     return Math.min(12,Math.max(0,12-m+1));
   }
   // 4) padrão: as demais contam a partir de fevereiro (fev..dez = 11 avos)
@@ -6104,7 +6160,7 @@ function mesesProvisaoFunc(f,cfg){
 }
 function calcCaixaEmpresa(){
   const cfg=getConfig();
-  const caixa=Number(cfg.caixaEmpresa)||0;
+  const caixa=toNumber(cfg.caixaEmpresa,0);
   const ativos=funcionarios.filter(f=>{
     if(f.status==="Inativo") return false;
     const nn=normalize(f.nome||"");
@@ -6113,9 +6169,11 @@ function calcCaixaEmpresa(){
   const itens=ativos.map(f=>{
     const remun=toNumber(f.salario,0)+toNumber(f.bonus,0);
     const meses=mesesProvisaoFunc(f,cfg);
-    const decimo=remun*(meses/12);              // 13º proporcional (avos)
-    const ferias=remun*(1+1/3)*(20/30)*(meses/12); // férias (20 dias) + 1/3 proporcional
-    return {id:f.id,nome:f.nome||"—",remun,meses,decimo,ferias,total:decimo+ferias};
+    /* No centavo, como na folha: a coluna do 13º somada à mão dava
+       R$ 12.083,33 e o TOTAL mostrava R$ 12.083,32. */
+    const decimo=__noCentavo(remun*(meses/12));              // 13º proporcional (avos)
+    const ferias=__noCentavo(remun*(1+1/3)*(20/30)*(meses/12)); // férias (20 dias) + 1/3 proporcional
+    return {id:f.id,nome:f.nome||"—",remun,meses,decimo,ferias,total:__noCentavo(decimo+ferias)};
   }).sort((a,b)=>b.total-a.total);
   const totalDecimo=itens.reduce((s,x)=>s+x.decimo,0);
   const totalFerias=itens.reduce((s,x)=>s+x.ferias,0);
@@ -6677,13 +6735,15 @@ window.gerarPreviewRelatorio=function(){
   const difPct=(a,b)=>b?Math.round(((a-b)/b)*100):0;
   const metaStatus=(real,meta,inverso=false)=>{
     const p=pct(real,meta);
+    /* Os mesmos limites do painel: o mesmo número não pode estar "no
+       caminho" numa tela e "abaixo da meta" na outra. */
     if(inverso){
-      if(p<=80)return{cls:"green",txt:"Controlado",p};
-      if(p<=100)return{cls:"yellow",txt:"Atenção",p};
+      if(p<85)return{cls:"green",txt:"Controlado",p};
+      if(p<100)return{cls:"yellow",txt:"Atenção",p};
       return{cls:"red",txt:"Acima do teto",p};
     }
     if(p>=100)return{cls:"green",txt:"Meta batida",p};
-    if(p>=70)return{cls:"yellow",txt:"Em progresso",p};
+    if(p>=60)return{cls:"yellow",txt:"Em progresso",p};
     return{cls:"red",txt:"Abaixo da meta",p};
   };
   const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
@@ -6695,7 +6755,12 @@ window.gerarPreviewRelatorio=function(){
   regsM.forEach(r=>{if(etapaMap[r.etapa]!==undefined)etapaMap[r.etapa]+=toNumber(r.qtd,0);});
   const lotesM=(resumo.lotesDoMes||[]).filter(l=>statusOper(l)!=="Cancelado");
   const clientes=(resumo.clientes||[]).slice(0,6);
-  const categorias=(resumo.categorias||[]).slice(0,6);
+  /* Até seis linhas; com mais categorias, as menores viram "Outras", para a
+     lista continuar somando o total de gastos do mês. */
+  const todasCats=resumo.categorias||[];
+  const categorias=todasCats.length>6
+    ? todasCats.slice(0,5).concat([{categoria:"Outras categorias",valor:todasCats.slice(5).reduce((s,c)=>s+c.valor,0)}])
+    : todasCats;
   const ticket=resumo.ticketMedioPeca||0;
   const custoPeca=resumo.custoPorPeca||0;
   const mFat=metaStatus(faturamento,metas.faturamento);
@@ -6744,7 +6809,7 @@ window.gerarPreviewRelatorio=function(){
     </div>
 
     <div class="rel-cards4 rel-kpi-pro rel-kpi-secondary">
-      ${card("Peças produzidas",totalPecas.toLocaleString("pt-BR"),`${difPct(totalPecas,anterior.totalPecas)}% vs mês anterior`,mPec.cls)}
+      ${card("Peças nas OFs do mês",totalPecas.toLocaleString("pt-BR"),`${difPct(totalPecas,anterior.totalPecas)}% vs mês anterior`,mPec.cls)}
       ${card("Ticket por peça",fmtMoney(ticket),"faturamento / peças","silver")}
       ${card("Custo por peça",fmtMoney(custoPeca),"custo / peças",custoPeca<=ticket?"green":"red")}
       ${card("Lotes no mês",lotesM.length.toLocaleString("pt-BR"),`${lotesM.filter(l=>statusOper(l)==="Concluído").length} concluído(s)`,"silver")}
@@ -7195,8 +7260,8 @@ function renderGastosDrawer(){
   const gastosDoMes=gastos.filter(g=>(g.competencia||"")===mesAtualGD);
   /* toNumber: um valor "1.234,56" em texto era COLADO na soma, e o total da
      gaveta chegava a R$ 89.810.801.234,56. */
-  const tF=gastosDoMes.filter(g=>g.tipo==="fixo").reduce((s,g)=>s+toNumber(g.valor,0),0);
-  const tV=gastosDoMes.filter(g=>g.tipo==="variavel").reduce((s,g)=>s+toNumber(g.valor,0),0);
+  const tF=gastosDoMes.filter(gastoEhFixo).reduce((s,g)=>s+toNumber(g.valor,0),0);
+  const tV=gastosDoMes.filter(g=>!gastoEhFixo(g)).reduce((s,g)=>s+toNumber(g.valor,0),0);
   const tT=tF+tV;
   // Folha real do mês atual (inclui extras/descontos)
   const resumoGD=calcResumoMensal(mesAtualGD);
@@ -7211,12 +7276,12 @@ function renderGastosDrawer(){
   const recentes=gastos.slice(0,10);
   if(!recentes.length){lista.innerHTML='<div style="text-align:center;color:var(--t3);font-size:12px;padding:20px">Nenhum gasto registrado.</div>';return;}
   lista.innerHTML=recentes.map(g=>{
-    const ico=g.tipo==='fixo'?'📌':'💸';
+    const ico=gastoEhFixo(g)?'📌':'💸';
     return`<div class="gd-item">
       <div class="gd-item-ico">${ico}</div>
       <div class="gd-item-info">
         <div class="gd-item-desc">${escapeHtml(g.descricao)}</div>
-        <div class="gd-item-meta">${escapeHtml(g.categoria||'—')} • ${g.tipo==='fixo'?'Fixo':'Variável'}</div>
+        <div class="gd-item-meta">${escapeHtml(g.categoria||'—')} • ${gastoEhFixo(g)?'Fixo':'Variável'}</div>
       </div>
       <div class="gd-item-val">${fmtMoney(g.valor)}</div>
       <button class="gd-item-del" onclick="deletarGastoDrawer('${g.id}')">✕</button>
@@ -7350,8 +7415,9 @@ function renderClientes(){
   const lista=busca?clientes.filter(c=>buscaEm(c,CAMPOS_BUSCA_CLI).includes(busca)):clientes;
   if($('cliente-total')) $('cliente-total').textContent=String(clientes.length);
   if($('cliente-ativos')) $('cliente-ativos').textContent=String(clientes.filter(c=>String(c.status||'Ativo')==='Ativo').length);
-  const usados=new Set(lotes.map(l=>safeText(l.cliente)).filter(Boolean));
-  if($('cliente-com-of')) $('cliente-com-of').textContent=String(clientes.filter(c=>usados.has(safeText(c.nome))).length);
+  /* Mesma chave e mesmas OFs do cartão de cada cliente (sem as canceladas). */
+  const usados=new Set(lotes.filter(l=>l.status!=="Cancelado").map(l=>__chaveCliente(l.cliente)).filter(Boolean));
+  if($('cliente-com-of')) $('cliente-com-of').textContent=String(clientes.filter(c=>usados.has(__chaveCliente(c.nome))).length);
   if(!cont) return;
   /* Quem já tinha clientes salvos só no navegador não pode perdê-los: enquanto
      houver algum que não esteja no banco, aparece o convite para trazer. */
@@ -7370,9 +7436,9 @@ function renderClientes(){
     +'<svg class="ico-vazio" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>'
     +'</div><p>Nenhum cliente cadastrado.</p></div>'; return; }
   /* getClientesResumo varre lotes e registros; calcular uma vez só, não por cliente */
-  const resumoPorCliente=new Map((getClientesResumo()||[]).map(x=>[x.cliente,x]));
+  const resumoPorCliente=new Map((getClientesResumo()||[]).map(x=>[x.chave,x]));
   cont.innerHTML=avisoLocal+lista.map(c=>{
-    const stats=resumoPorCliente.get(c.nome)||{lotes:0,pecas:0,faturamento:0};
+    const stats=resumoPorCliente.get(__chaveCliente(c.nome))||{lotes:0,pecas:0,faturamento:0};
     return `<div class="client-card">
       <div class="client-top"><div><div class="client-name">${escapeHtml(c.nome)}</div><div class="client-sub">${escapeHtml(c.contato||'Sem contato')} • ${escapeHtml(c.telefone||'Sem telefone')}</div></div><span class="chip ${String(c.status||'Ativo')==='Ativo'?'gchip-fixo':'chip-cn'}">${escapeHtml(c.status||'Ativo')}</span></div>
       <div class="client-grid">
@@ -14352,11 +14418,11 @@ input,select,textarea,button{font-size:16px;}
           <div class="hrv" id="hr-reg">—</div>
         </div>
         <div class="hrc" style="border-left:3px solid var(--gold);padding-left:16px;">
-          <div class="hrl">Total de peças</div>
+          <div class="hrl">Peças lançadas</div>
           <div class="hrv" style="color:var(--gold);" id="hr-qtd">—</div>
         </div>
         <div class="hrc" style="border-left:3px solid var(--green);padding-left:16px;">
-          <div class="hrl">Faturamento do período</div>
+          <div class="hrl" title="Valor das OFs que tiveram lançamento no filtro — cada OF uma vez, inteira">Valor das OFs</div>
           <div class="hrv green" id="hr-fat">—</div>
         </div>
       </div>
