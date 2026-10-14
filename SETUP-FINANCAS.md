@@ -130,7 +130,15 @@ criar contas de verdade.
 - **Backup:** em **Ajustes & Backup** dá para baixar tudo (arquivo `.json`), restaurar
   em qualquer conta e baixar uma planilha (`.csv`, abre no Excel) com todos os lançamentos.
 - **Lixeira:** o que for excluído fica 30 dias na lixeira e pode ser restaurado.
-- **Sem internet:** com o Firebase ligado, o que for lançado sem conexão fica guardado no
-  aparelho e é enviado sozinho quando a internet voltar.
+- **Celular e computador juntos:** com o Firebase ligado, o que for lançado num aparelho
+  aparece no outro em segundos, sozinho, sem recarregar a página.
+- **Sem internet:** com o Firebase ligado, o app abre com os dados que já estavam no
+  aparelho; o que for lançado sem conexão fica guardado e é enviado sozinho quando a
+  internet voltar.
+- **Limite do plano gratuito do Firebase:** cada vez que alguém abre o app, o banco lê
+  todos os registros daquela pessoa (cerca de 1.500 por ano de uso). O plano gratuito
+  permite 50 mil leituras por dia no total — sobra para uso pessoal e de algumas pessoas.
+  Para muitos usuários, ative o plano **Blaze** (paga só o que usar; o custo das leituras
+  é de poucos centavos por dia).
 - **Cobrança/assinatura:** esta versão não cobra dos usuários. Para vender por assinatura,
   o próximo passo é ligar um meio de pagamento (ex.: Mercado Pago ou Stripe).

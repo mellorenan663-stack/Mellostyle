@@ -1096,7 +1096,7 @@ function msgErro(e){
    ═══════════════════════════════════════════════════════════════════ */
 const Banco=(()=>{
   const COLS=["contas","cartoes","categorias","lancamentos","recorrencias","metas","aportes"];
-  let fb=null, auth=null, db=null, uid=null, ouvinte=null;
+  let fb=null, auth=null, db=null, uid=null, ouvinte=null, desligar=[];
   const ls={
     ler(k,p){ try{ const s=localStorage.getItem(k); return s?JSON.parse(s):p; }catch(_e){ return p; } },
     gravar(k,v){ localStorage.setItem(k,JSON.stringify(v)); },
@@ -1186,6 +1186,7 @@ const Banco=(()=>{
     },
     async sair(){
       if(MODO_LOCAL){ ls.tirar("mf_local_sessao"); cache={uid:null,d:null}; avisar(null); return; }
+      this.parar();
       await fb.au.signOut(auth);
     },
     usar(u){ uid=u; },
@@ -1205,6 +1206,32 @@ const Banco=(()=>{
       COLS.forEach((c,i)=>{ out[c]=snaps[i].docs.map(d=>({...d.data(),id:d.id})); });
       return out;
     },
+    /* Firebase: dados AO VIVO. Fica escutando o banco: o que for lançado no
+       celular aparece no computador sozinho, sem recarregar. A primeira
+       resposta vem do próprio aparelho (abre rápido e até sem internet).
+       aoMudar(colecao, dados, inicial): inicial = lista completa;
+       depois, só o que mudou [{tipo:"added"|"modified"|"removed", id, d}]. */
+    ouvir(aoMudar,aoErro){
+      const {fs}=fb;
+      this.parar();
+      return new Promise((ok,falha)=>{
+        const faltam=new Set(["perfil",...COLS]); let pronto=false;
+        const respondeu=n=>{ if(faltam.delete(n)&&!faltam.size&&!pronto){ pronto=true; ok(); } };
+        /* falhou antes de abrir: desliga tudo (as outras escutas não ficam
+           tentando) e quem chamou mostra o aviso com "Tentar de novo" */
+        const erro=e=>{ if(!pronto){ pronto=true; this.parar(); falha(e); } else { this.parar(); aoErro(e); } };
+        desligar.push(fs.onSnapshot(fs.doc(db,"usuarios",uid),s=>{ aoMudar("perfil",s.exists()?(s.data()||{}):{},true); respondeu("perfil"); },erro));
+        for(const c of COLS){
+          let inicial=true;
+          desligar.push(fs.onSnapshot(fs.collection(db,"usuarios",uid,c),s=>{
+            if(inicial){ inicial=false; aoMudar(c,s.docs.map(d=>({...d.data(),id:d.id})),true); }
+            else aoMudar(c,s.docChanges().map(ch=>({tipo:ch.type,id:ch.doc.id,d:ch.type==="removed"?null:{...ch.doc.data(),id:ch.doc.id}})),false);
+            respondeu(c);
+          },erro));
+        }
+      });
+    },
+    parar(){ for(const f of desligar){ try{ f(); }catch(_e){} } desligar=[]; },
     /* ops: [{t:"set",c,id,d} | {t:"del",c,id} | {t:"perfil",d}] */
     async escrever(ops){
       if(!uid) throw new Error("sem usuário");
@@ -1297,6 +1324,17 @@ async function aplicar(ops,{silencioso=false}={}){
     return false;
   }finally{ __pendentes--; atualizarSync(); }
 }
+/* o mesmo objeto escrito sempre do mesmo jeito (chaves em ordem), para saber
+   se o que chegou do banco é igual ao que já está na tela */
+function estavel(v){
+  if(v===null||typeof v!=="object") return JSON.stringify(v)??"null";
+  if(Array.isArray(v)) return "["+v.map(estavel).join(",")+"]";
+  return "{"+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+estavel(v[k])).join(",")+"}";
+}
+/* cor guardada só vale se for "#RRGGBB" (um backup editado à mão não leva
+   texto estranho para dentro da tela) */
+const COR_OK=/^#[0-9a-fA-F]{3,8}$/;
+function corSegura(x){ if(x&&typeof x==="object"&&"cor" in x&&!COR_OK.test(String(x.cor||""))){ const n={...x}; delete n.cor; return n; } return x; }
 const opSet=(c,item)=>({t:"set",c,item});
 const opDel=(c,id)=>({t:"del",c,id});
 
@@ -1680,6 +1718,13 @@ function renderAgora(){
   atualizarSync(); renderFaixa();
   const p=PAGINAS[UI.pagina]||PAGINAS.painel, el=$("pg-"+UI.pagina);
   if(!el) return;
+  /* a pessoa está digitando num campo da tela (ex.: o nome em Ajustes) e chegou
+     uma mudança do outro aparelho: espera ela sair do campo para redesenhar */
+  const a=document.activeElement;
+  if(a&&el.contains(a)&&(a.tagName==="TEXTAREA"||(a.tagName==="INPUT"&&a.type!=="checkbox"&&a.id!=="lanc-busca"))){
+    if(!a.dataset.esperaRender){ a.dataset.esperaRender="1"; a.addEventListener("blur",()=>{ delete a.dataset.esperaRender; agendarRender(); },{once:true}); }
+    return;
+  }
   /* a rolagem fica onde estava sozinha; mexer nela aqui obrigava o navegador
      a calcular a tela inteira na hora (0,3 s no celular com muitos dados) */
   try{ p.fn(el); }
@@ -2393,6 +2438,14 @@ function materializado(m,extra={}){
     pago:m.tipo==="despesa"&&m.cartaoId?true:!!m.pago,recorrenciaId:m.recorrenciaId,recorrenciaMes:m.recorrenciaMes,obs:"",criadoEm:agoraISO()};
   return Object.assign(it,extra);
 }
+/* Congela as ocorrências de contas fixas que JÁ ACONTECERAM: viram lançamentos
+   de verdade, com os dados de hoje. Assim mudar ou excluir a conta fixa — ou o
+   dia de fechamento do cartão — não reescreve faturas e meses que já passaram. */
+function opsCongelar(teste){
+  const h=hoje(), ops=[];
+  for(const m of D().movs) if(m.virtual&&m.data<=h&&teste(m)) ops.push(opSet("lancamentos",limpo(materializado(m))));
+  return ops;
+}
 ACOES["pagar-mov"]=el=>{
   const m=acharMov(el.dataset.id); if(!m) return toast("Esse lançamento não existe mais.","aviso");
   if(m.virtual) aplicar([opSet("lancamentos",materializado(m,{pago:true}))]);
@@ -3003,6 +3056,9 @@ function formCartao(id){
     const f=+q("#fk-fech").value, v=+q("#fk-venc").value;
     if(f===v){ q("#fk-erro").textContent="O fechamento e o vencimento não podem ser no mesmo dia."; return; }
     const ops=[];
+    /* mudou o fechamento/vencimento: as cobranças de contas fixas que já
+       caíram neste cartão ficam nas faturas em que estavam */
+    if(c&&(clampDia(c.diaFechamento)!==f||clampDia(c.diaVencimento)!==v)) ops.push(...opsCongelar(m=>m.cartaoId===c.id));
     const item=c?{...c,nome,limite:lim,diaFechamento:f,diaVencimento:v,cor:cor(),arquivado:!!(q("#fk-arq")&&q("#fk-arq").checked),atualizadoEm:agoraISO()}
       :{id:novoId(),nome,limite:lim,diaFechamento:f,diaVencimento:v,cor:cor(),ordem:proximaOrdem(S.cartoes),criadoEm:agoraISO()};
     ops.push(opSet("cartoes",limpo(item)));
@@ -3389,7 +3445,7 @@ function formFixa(id){
     <div class="ff" id="ff-dest-w"><label for="ff-dest">Vai para</label><select id="ff-dest"></select></div>
     <div class="ff"><label for="ff-ini">Começa em</label><select id="ff-ini">${opcoesMeses(r?r.inicio:mA,{de:-24,ate:24})}</select></div>
     <div class="ff"><label for="ff-fim">Termina em</label><select id="ff-fim">${opcoesMeses(r?r.fim||"":"",{de:-24,ate:120,vazio:"Sem data para acabar"})}</select></div>
-    ${r?`<div class="ff full"><div class="ff-dica">Mudanças de descrição, categoria e conta valem para os meses que ainda <b>não foram pagos</b>. Os já pagos ficam como estão.</div></div>`:""}
+    ${r?`<div class="ff full"><div class="ff-dica">As mudanças valem <b>daqui para a frente</b>: os meses já pagos e as cobranças que já caíram no cartão ficam como estão.</div></div>`:""}
     <div class="ff full"><div class="ff-erro" id="ff-e"></div></div></div>`;
   const pe=`${r?`<button class="btn btn-perigo esq-pe" type="button" id="ff-x">${ico("lixo")}Excluir</button>`:""}<button class="btn" type="button" id="ff-c">Cancelar</button><button class="btn btn-pri" type="button" id="ff-s">${ico("check")}Salvar</button>`;
   const md=abrirModal({titulo:r?"Editar conta fixa":"Nova conta fixa",corpo,pe}), q=s=>md.el.querySelector(s);
@@ -3411,8 +3467,11 @@ function formFixa(id){
   sync();
   q("#ff-c").addEventListener("click",()=>fecharModal(md));
   if(q("#ff-x")) q("#ff-x").addEventListener("click",async()=>{ fecharModal(md);
-    if(!await confirmar("Excluir conta fixa",`Excluir <b>${esc(r.descricao||nomeCat(r.categoriaId))}</b>? Os meses já pagos continuam nos lançamentos; os previstos somem.`,"Excluir")) return;
-    aplicar([opSet("recorrencias",{...r,excluidoEm:agoraISO()})]).then(ok=>ok&&toast("Conta fixa excluída.","ok",{rotulo:"Desfazer",fn:()=>restaurarItem("recorrencias",r.id)})); });
+    if(!await confirmar("Excluir conta fixa",`Excluir <b>${esc(r.descricao||nomeCat(r.categoriaId))}</b>? Os meses já pagos — e as cobranças que já caíram no cartão — continuam; os próximos somem.`,"Excluir")) return;
+    /* no cartão, o que já foi cobrado é passado: continua nas faturas */
+    const ops=r.cartaoId?opsCongelar(m=>m.recorrenciaId===r.id):[];
+    ops.push(opSet("recorrencias",{...r,excluidoEm:agoraISO()}));
+    aplicar(ops).then(ok=>ok&&toast("Conta fixa excluída.","ok",{rotulo:"Desfazer",fn:()=>restaurarItem("recorrencias",r.id)})); });
   const salvar=()=>{
     const v=paraCentavos(q("#ff-v").value);
     if(!(v>0)){ q("#ff-e").textContent="Digite o valor por mês."; q("#ff-v").classList.add("campo-erro"); return; }
@@ -3441,8 +3500,17 @@ function formFixa(id){
     const item={...(r||{id:novoId(),criadoEm:agoraISO()}),tipo:st.tipo,descricao:q("#ff-desc").value.trim().slice(0,80),valores,dia:+q("#ff-dia").value,
       categoriaId:catId,contaId:cartao?null:onde.slice(2),cartaoId:cartao?onde.slice(2):null,contaDestinoId:dest,inicio:ini,fim,atualizadoEm:r?agoraISO():undefined};
     delete item.valor;
+    /* mudança vale daqui para a frente: o que já foi cobrado no cartão (ou
+       passa a ser cobrado nele) fica como estava. Se o VALOR mudou "a partir
+       de" um mês, os meses desse em diante pegam o valor novo. */
+    const ops=[];
+    if(r&&(r.cartaoId||cartao)){
+      const desde=v!==valorAtual?(q("#ff-desde").value||mA):"";
+      ops.push(...opsCongelar(m=>m.recorrenciaId===r.id&&m.recorrenciaMes>=ini&&(!fim||m.recorrenciaMes<=fim)&&(!desde||m.recorrenciaMes<desde)));
+    }
+    ops.push(opSet("recorrencias",limpo(item)));
     fecharModal(md);
-    aplicar([opSet("recorrencias",limpo(item))]).then(ok=>ok&&toast(r?"Conta fixa salva.":"Conta fixa criada: aparece todo mês."));
+    aplicar(ops).then(ok=>ok&&toast(r?"Conta fixa salva.":"Conta fixa criada: aparece todo mês."));
   };
   q("#ff-s").addEventListener("click",salvar);
   q("#ff-v").addEventListener("input",()=>{ if(r) q("#ff-desde-w").hidden=paraCentavos(q("#ff-v").value)===valorAtual; });
@@ -3615,7 +3683,7 @@ async function importarBackup(f){
     cont[c]=0;
     for(const it of lista){
       if(!it||typeof it!=="object"||Array.isArray(it)||!ID_OK(it.id)) continue;
-      ops.push(opSet(c,limpo(it))); cont[c]++;
+      ops.push(opSet(c,limpo(corSegura(it)))); cont[c]++;
     }
   }
   const total=ops.length;
@@ -3817,6 +3885,7 @@ function zerarEstado(){
   UI.mesPainel=""; UI.lanc={mes:"",todos:false,tipo:"",onde:"",cat:"",status:"",busca:"",limite:120};
   UI.cart={id:"",mes:""}; UI.orc={mes:""}; UI.rel={mes:""};
   __mesMaxVisto=""; __D=null; VER++;
+  if(!MODO_LOCAL) Banco.parar();
   while(__modais.length) fecharModal();
 }
 function aoMudarUsuario(u){
@@ -3844,11 +3913,17 @@ async function carregarDados(){
   S.carregando=true; S.erroCarga=""; S.lento=false; agendarRender();
   const lento=setTimeout(()=>{ if(seq===__seqCarga&&S.carregando){ S.lento=true; renderFaixa(); } },8000);
   try{
-    const d=await Banco.carregar();
-    if(seq!==__seqCarga) return;
-    S.perfil=d.perfil&&typeof d.perfil==="object"?d.perfil:{};
-    for(const c of Banco.COLS) S[c]=(Array.isArray(d[c])?d[c]:[]).filter(x=>x&&typeof x==="object"&&ID_OK(x.id));
-    S.carregado=true; S.carregando=false; S.lento=false; S.horaCarga=horaAgora();
+    if(MODO_LOCAL){
+      const d=await Banco.carregar();
+      if(seq!==__seqCarga) return;
+      S.perfil=d.perfil&&typeof d.perfil==="object"?d.perfil:{};
+      for(const c of Banco.COLS) S[c]=(Array.isArray(d[c])?d[c]:[]).filter(x=>x&&typeof x==="object"&&ID_OK(x.id)).map(corSegura);
+    }else{
+      await Banco.ouvir((c,dados,inicial)=>{ if(seq===__seqCarga) receber(c,dados,inicial); },
+        e=>{ if(seq!==__seqCarga) return; console.error("OUVIR",e); S.erroCarga="A ligação com o banco caiu. "+msgErro(e); agendarRender(); });
+      if(seq!==__seqCarga) return;
+    }
+    S.carregado=true; S.carregando=false; S.lento=false; S.horaCarga=horaAgora(); S.erroCarga="";
     if(S.perfil.tema) aplicarTema(S.perfil.tema);
     mudou();
     await semearSePreciso();
@@ -3862,6 +3937,39 @@ async function carregarDados(){
     S.erroCarga=S.carregado?"Não consegui atualizar os dados agora — mostrando o que já estava na tela.":"Não consegui buscar os seus dados. "+msgErro(e);
     agendarRender();
   }finally{ clearTimeout(lento); }
+}
+/* Chegou algo do banco (do próprio aparelho ou de outro). Só redesenha se
+   mudou de verdade: o que este aparelho acabou de gravar volta igual e é
+   ignorado (o objeto continua o mesmo, as contas guardadas continuam valendo). */
+function receber(c,dados,inicial){
+  if(c==="perfil"){
+    const novo=dados&&typeof dados==="object"?dados:{};
+    if(estavel(novo)===estavel(S.perfil)) return;
+    S.perfil=novo;
+    if(S.carregado){ if(novo.tema) aplicarTema(novo.tema); mudou(); }
+    return;
+  }
+  if(!Banco.COLS.includes(c)) return;
+  if(inicial){
+    const velhos=new Map(S[c].map(x=>[x.id,x]));
+    S[c]=(Array.isArray(dados)?dados:[]).filter(x=>x&&typeof x==="object"&&ID_OK(x.id)).map(corSegura)
+      .map(x=>{ const v=velhos.get(x.id); return v&&estavel(v)===estavel(x)?v:x; });
+    if(S.carregado) mudou();
+    return;
+  }
+  const lista=S[c], idx=new Map(lista.map((x,i)=>[x.id,i])), tirar=new Set();
+  let mexeu=false;
+  for(const ch of dados){
+    if(!ch||!ID_OK(ch.id)) continue;
+    const i=idx.get(ch.id);
+    if(ch.tipo==="removed"){ if(i!==undefined){ tirar.add(ch.id); mexeu=true; } continue; }
+    if(!ch.d||typeof ch.d!=="object") continue;
+    const d=corSegura(ch.d);
+    if(i===undefined){ idx.set(ch.id,lista.length); lista.push(d); mexeu=true; }
+    else if(estavel(lista[i])!==estavel(d)){ lista[i]=d; mexeu=true; }
+  }
+  if(tirar.size) S[c]=lista.filter(x=>!tirar.has(x.id));
+  if(mexeu&&S.carregado) mudou();
 }
 ACOES.recarregar=()=>{
   if(__pendentes>0) return toast("Ainda salvando — tente de novo em instantes.","aviso");
