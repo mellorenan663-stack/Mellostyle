@@ -2143,7 +2143,7 @@ function renderFuncionarios(){
     const mediaDia=diasLancados>0?prod/diasLancados:0;
     const metaPct=(meta>0&&diasLancados>0)?Math.min(999,Math.round((mediaDia/meta)*100)):0;
     return`<tr>
-      <td><span class="medal">${i<3?`<span class="md ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`}</span></td>
+      <td><span class="medal">${i<3?`<span class="medalha ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`}</span></td>
       <td><div class="fn-cell"><div class="fn-nome">${escapeHtml(f.nome)} ${f.status==="Inativo"?"<span class='chip chip-cn sm'>Inativo</span>":""}</div><div class="fn-bar"><div style="width:${pct}%"></div></div></div></td>
       <td class="td-muted">${escapeHtml(f.cargo||"—")}${f.telefone?`<div class="td-mini">${escapeHtml(f.telefone)}</div>`:""}</td>
       <td class="td-muted">${escapeHtml(f.setor||"—")}${f.admissao?`<div class="td-mini">Adm: ${new Date(f.admissao+"T00:00:00").toLocaleDateString("pt-BR")}</div>`:""}</td>
@@ -3187,7 +3187,7 @@ function renderFatCliente(){
   list.innerHTML=filtrado.map((r,i)=>{
     const pct=totalFat>0?Math.round((r.faturamento/totalFat)*100):0;
     const barPct=Math.round((r.faturamento/maxFat)*100);
-    const badge=i<3?`<span class="md ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`;
+    const badge=i<3?`<span class="medalha ${medals[i]}">${i+1}</span>`:`<span class="rank-n">${i+1}</span>`;
     const ticketMedio=r.pecas>0?r.faturamento/r.pecas:0;
     return`<div class="fc-rank-item${i===0?' is-top':''}">
       <div class="fc-rank-badge">${badge}</div>
@@ -20575,8 +20575,10 @@ main,.main{ padding-bottom:96px!important; }
   stroke-linecap:round; stroke-linejoin:round; vertical-align:-3px; margin-right:6px; opacity:.85; }
 .ico-min{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.7;
   stroke-linecap:round; stroke-linejoin:round; vertical-align:-2px; margin-right:5px; opacity:.7; }
-/* Medalha das tres primeiras posicoes: circulo com o numero. */
-.md{ display:inline-grid; place-items:center; width:22px; height:22px; border-radius:99px;
+/* Medalha das tres primeiras posicoes: circulo com o numero. Chamava "md" —
+   o mesmo nome que as janelas de editar usam para a largura ("modal-box md") —
+   e espremia toda janela de editar numa faixa de 22px, sem campo nenhum. */
+.medalha{ display:inline-grid; place-items:center; width:22px; height:22px; border-radius:99px;
   font-family:var(--fm); font-size:11px; font-weight:800; letter-spacing:0; line-height:1;
   color:#2A1F04; box-shadow:inset 0 0 0 1px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.28); }
 .md-ouro  { background:linear-gradient(145deg,#FBD46B,#C9982A); }
