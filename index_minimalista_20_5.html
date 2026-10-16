@@ -417,6 +417,7 @@ function getConfig(){
     perfil:cfg.perfil||"admin",
     tema:normalizeThemeId(cfg.tema),
     caixaEmpresa:toNumber(cfg.caixaEmpresa,0),
+    investimento:toNumber(cfg.investimento,0),
     provisaoMeses:(cfg.provisaoMeses && typeof cfg.provisaoMeses==="object")?cfg.provisaoMeses:{},
     tetosCategoria:(cfg.tetosCategoria && typeof cfg.tetosCategoria==="object")?cfg.tetosCategoria:{}
   };
@@ -441,6 +442,8 @@ function sanitizeConfigPayload(raw={}){
   if(raw.metaMargem!==undefined) out.metaMargem=num(raw.metaMargem,atual.metaMargem||20);
   if(raw.metaCusto!==undefined) out.metaCusto=num(raw.metaCusto,atual.metaCusto||17000);
   if(raw.caixaEmpresa!==undefined) out.caixaEmpresa=num(raw.caixaEmpresa,atual.caixaEmpresa||0);
+  /* Sem esta linha o valor investido salvo num aparelho não chegava nos outros. */
+  if(raw.investimento!==undefined) out.investimento=Math.max(0,num(raw.investimento,atual.investimento||0));
   if(raw.provisaoMeses!==undefined && raw.provisaoMeses && typeof raw.provisaoMeses==="object") out.provisaoMeses=raw.provisaoMeses;
   return out;
 }
@@ -782,6 +785,49 @@ function __calcResumoMensal(mes){
   const topCliente=clientes[0]||null;
   const categorias=getFinanceiroCategorias(mes);
   return {mes,get regsM(){ return regsDoMes(); },lotesDoMes,totalPecas,faturamento,gastosM,fixo,variavel,folha,folhaBase,bonusTotal,extrasTotal,descontosTotal,custo,lucro,margem,custoPorPeca,ticketMedioPeca,clientes,topCliente,categorias};
+}
+/* ── EBITDA E ROI ──────────────────────────────────────────────────────
+   EBITDA (ou LAJIDA) é o lucro da operação da fábrica antes de juros,
+   empréstimos, impostos sobre o lucro e depreciação. O lucro do painel já
+   desconta todos os gastos do mês; aqui voltam para a conta os que não são da
+   operação — reconhecidos pela categoria ou pela descrição do gasto. Encargos
+   (INSS, FGTS) e o DAS continuam como custo: são da operação. */
+const __FORA_DA_OPERACAO=[
+  {re:/emprestimo|financiamento|\bjuros?\b|cheque especial/,rot:"empréstimos e juros"},
+  {re:/deprecia|amortiza/,rot:"depreciação"},
+  {re:/\birpj\b|\bcsll\b|imposto de renda/,rot:"IR e CSLL"}
+];
+function calcEbitdaMes(mes){
+  const r=calcResumoMensal(mes);
+  const grupos=[];
+  let foraOp=0;
+  for(const g of r.gastosM){
+    const txt=normalize((g.categoria||"")+" "+(g.descricao||""));
+    const grupo=__FORA_DA_OPERACAO.find(x=>x.re.test(txt));
+    if(!grupo) continue;
+    foraOp+=toNumber(g.valor,0);
+    if(!grupos.includes(grupo.rot)) grupos.push(grupo.rot);
+  }
+  const ebitda=__noCentavo(r.lucro+foraOp);
+  return {ebitda,lucro:r.lucro,foraOp:__noCentavo(foraOp),grupos,
+    margem:r.faturamento>0?ebitda/r.faturamento*100:null};
+}
+/* ROI: quanto o lucro devolve do valor investido na fábrica (máquinas,
+   reforma, estoque inicial). O investido fica na configuração da empresa —
+   sem ele não há ROI. "No ano" soma o lucro de janeiro até o mês do painel. */
+function calcRoi(mes){
+  const investido=toNumber(getConfig().investimento,0);
+  if(!(investido>0)) return {investido:0,lucroMes:0,lucroAno:0,roiMes:null,roiAno:null};
+  const [ano,m]=mes.split("-").map(Number);
+  let lucroAno=0;
+  for(let k=1;k<=m;k++) lucroAno+=calcResumoMensal(ano+"-"+String(k).padStart(2,"0")).lucro;
+  const lucroMes=calcResumoMensal(mes).lucro;
+  return {investido,lucroMes,lucroAno,roiMes:lucroMes/investido*100,roiAno:lucroAno/investido*100};
+}
+/* Porcentagem com uma casa ("4,2%"); sem sinal quando arredonda para zero. */
+function __fmtPct1(v){
+  const a=Math.round(Math.abs(toNumber(v,0))*10)/10;
+  return (v<0&&a>0?"−":"")+a.toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})+"%";
 }
 /* ── Excel de verdade (.xlsx), sem biblioteca externa ──────────
    Um .xlsx é um ZIP com XMLs dentro. Aqui o ZIP é gravado sem
@@ -6200,6 +6246,20 @@ window.setCaixaEmpresa=function(val){
   if(typeof renderCaixaEmpresa==="function") renderCaixaEmpresa();
   if(typeof renderFolhaPagamento==="function") renderFolhaPagamento();
 };
+/* Valor investido na fábrica, a base do ROI. Texto que não é número não
+   apaga o que já estava salvo: avisa e volta o valor anterior. */
+window.setInvestimento=function(val){
+  const bruto=String(val??"").replace(/[R$\s]/gi,"");
+  const n=bruto?toNumber(bruto,NaN):0;
+  if(!Number.isFinite(n)||n<0){
+    toast("Não entendi o valor investido. Escreva assim: 150.000,00","err");
+    renderMetas();
+    return;
+  }
+  setConfigField("investimento",n);
+  persistConfigParcial({investimento:n});
+  renderMetas();
+};
 window.setProvisaoMesesFunc=function(id,val){
   const cfg=getStoredConfig();
   const pm={...(cfg.provisaoMeses||{})};
@@ -6531,6 +6591,39 @@ function renderMetas(){
     </div>`;
   };
 
+  /* EBITDA e ROI, logo abaixo dos quatro de apoio. Sem meta: a cor só
+     aparece quando o número fica negativo. */
+  const blocoFinanceiro=()=>{
+    const e=calcEbitdaMes(mesAtual), r=calcRoi(mesAtual);
+    const dinheiro=v=>{ const t=fmtMoney(v); return /^R\$/.test(t)?`<small>R$</small>${t.replace(/^R\$\s*/,"")}`:t; };
+    const tagE=e.margem===null?"sem faturamento":`margem ${Math.round(e.margem)}%`.replace("-","−");
+    const subE=e.foraOp>0
+      ? `lucro de <b>${fmtMoney(e.lucro)}</b> + <b>${fmtMoney(e.foraOp)}</b> de ${e.grupos.join(", ")}`
+      : `igual ao lucro: o mês não tem gasto com juros, empréstimo, IR ou depreciação`;
+    const nomeMes=__fmtMesAno.format(new Date(mesAtual+"-02")).replace(/\s+de\s+\d{4}$/,"").toLowerCase();
+    const subR=r.roiMes===null
+      ? `informe abaixo quanto foi investido na fábrica`
+      : `no ano, até ${nomeMes}: <b>${__fmtPct1(r.roiAno)}</b> · lucro de <b>${fmtMoney(r.lucroMes)}</b> no mês`;
+    const investidoTxt=r.investido>0?fmtMoney(r.investido).replace(/^R\$\s*/,""):"";
+    return `<div class="dsh-apoio dsh-fin">
+      <div class="dsh-ap" data-sit="${e.ebitda<0?"atraso":"andando"}">
+        <div class="dsh-ap-l"><span class="dsh-ap-dot"></span><span class="dsh-ap-rot">EBITDA</span>
+          <span class="dsh-ap-tag">${tagE}</span></div>
+        <div class="dsh-ap-v">${dinheiro(e.ebitda)}</div>
+        <div class="dsh-ap-s">${subE}</div>
+      </div>
+      <div class="dsh-ap" data-sit="${r.roiMes!==null&&r.roiMes<0?"atraso":"andando"}">
+        <div class="dsh-ap-l"><span class="dsh-ap-dot"></span><span class="dsh-ap-rot">ROI</span>
+          <span class="dsh-ap-tag">no mês</span></div>
+        <div class="dsh-ap-v">${r.roiMes===null?"—":__fmtPct1(r.roiMes)}</div>
+        <div class="dsh-ap-s">${subR}</div>
+        <label class="dsh-inv"><span>Investido na fábrica</span>
+          <span class="dsh-inv-campo"><small>R$</small><input id="dash-investimento" type="text" inputmode="decimal"
+            placeholder="0,00" value="${investidoTxt}" onchange="setInvestimento(this.value)"/></span></label>
+      </div>
+    </div>`;
+  };
+
   /* faturamento acumulado dia a dia, com a linha da meta por cima */
   /* Antes isto varria TODAS as OFs uma vez para cada dia do mês — 31 × 1.842
      = 57 mil voltas, criando data e texto em cada uma. Agora é uma passada
@@ -6611,6 +6704,8 @@ function renderMetas(){
       ${apoio('Teto de custo',fmtMoney(custo),fmtMoney(mCusto),pC,true)}
       ${apoio('Produção',pecas.toLocaleString('pt-BR'),mPecas.toLocaleString('pt-BR')+' pçs',pP,false)}
     </div>
+
+    ${blocoFinanceiro()}
 
     ${blocoAtencao()}
   </div>`;
@@ -20559,6 +20654,22 @@ main,.main{ padding-bottom:96px!important; }
   .dsh-mes{ flex-wrap:wrap; }
   .dsh-pct{ flex-direction:column; align-items:flex-start; gap:4px; }
   .dsh-pct span{ text-align:left; }
+}
+/* EBITDA e ROI: dois cartões no mesmo desenho dos de apoio */
+.dsh-apoio.dsh-fin{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+.dsh-fin .dsh-ap-s{ line-height:1.5; }
+.dsh-inv{ display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap;
+  margin-top:13px; padding-top:12px; border-top:1px dashed var(--bd);
+  font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--t4); cursor:text; }
+.dsh-inv-campo{ display:inline-flex; align-items:center; gap:6px; background:var(--bg4);
+  border:1px solid var(--bd); border-radius:10px; padding:4px 10px; }
+.dsh-inv-campo:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.dsh-inv-campo small{ font-size:12px; font-weight:700; color:var(--t3); letter-spacing:0; }
+#dash-investimento{ width:132px; border:0!important; background:transparent!important; box-shadow:none!important;
+  padding:3px 0!important; font-family:var(--fm); font-size:16px!important; font-weight:700; color:var(--t)!important;
+  text-align:right; font-variant-numeric:tabular-nums; outline:none; }
+@media (max-width:640px){
+  .dsh-apoio.dsh-fin{ grid-template-columns:minmax(0,1fr); }
 }
 
 /* lucro sem produção lançada */
