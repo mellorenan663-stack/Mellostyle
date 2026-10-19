@@ -7223,13 +7223,14 @@ window.restaurarBackupJSON=async function(){
     const raw=await file.text();
     const data=JSON.parse(raw);
     if(!data||typeof data!=="object"){toast("Arquivo de backup inválido","err");return;}
-    const colMap={funcionarios:data.funcionarios||[],lotes:data.lotes||[],gastos:data.gastos||[],pontos:data.pontos||[],registros:data.registros||[]};
+    const colMap={funcionarios:data.funcionarios||[],lotes:data.lotes||[],gastos:data.gastos||[],pontos:data.pontos||[],registros:data.registros||[],
+      clientes:data.clientes||[],controleProducaoHora:data.controleProducaoHora||[]};
     const totalSolicitado=Object.values(colMap).reduce((s,arr)=>s+(Array.isArray(arr)?arr.length:0),0);
     if(!totalSolicitado){toast("Backup sem dados para importar","warn");return;}
     if(!confirm(`Importar ${totalSolicitado} item(ns) do backup? Itens aparentemente duplicados serão pulados.`)) return;
     if(data.config) saveStoredConfig({...getStoredConfig(),...data.config});
 
-    const existentes={funcionarios,lotes,gastos,pontos,registros};
+    const existentes={funcionarios,lotes,gastos,pontos,registros,clientes,controleProducaoHora};
     /* A mesma data chega de duas formas: Timestamp (do banco) e texto (do
        arquivo). Sem transformar as duas no mesmo número, nada batia e o
        backup entrava inteiro de novo. */
@@ -7250,8 +7251,30 @@ window.restaurarBackupJSON=async function(){
       if(col==="gastos") return normalize([item.descricao,centavos(item.valor),item.competencia,item.categoria].join("|"));
       if(col==="pontos") return normalize([item.funcionarioId||item.funcionarioNome,item.data,item.tipo,toNumber(item.minutos,0)].join("|"));
       if(col==="registros") return normalize([item.loteId||item.loteNumeroOf,item.funcionarioId||item.funcionarioNome,item.etapa,toNumber(item.qtd,0),selo(item.criadoEm)].join("|"));
+      if(col==="clientes") return normalize(item.nome||"");
+      if(col==="controleProducaoHora") return normalize([item.funcionarioId||item.funcionarioNome,item.data,item.etapa||item.etapaCustomizada,toNumber(item.qtdPecas,0),toNumber(item.tempoSegundos,0)].join("|"));
       return normalize(JSON.stringify(item));
     };
+    /* As datas chegam do arquivo como {seconds,nanoseconds} ou como texto
+       (lançamentos). Gravadas assim, o sistema não as lia: a OF sem mês
+       marcado caía no mês de hoje e o lançamento perdia o dia. Voltam a ser
+       data do banco. */
+    const CAMPOS_DATA=/^(criadoEm|createdAt|updatedAt|updatedEm|concluidoEm)$/;
+    const voltarDatas=obj=>{
+      for(const [k,v] of Object.entries(obj)){
+        let d=null;
+        if(v&&typeof v==="object"&&typeof v.seconds==="number") d=new Date(v.seconds*1000+Math.round((v.nanoseconds||0)/1e6));
+        else if(typeof v==="string"&&CAMPOS_DATA.test(k)&&/^\d{4}-\d{2}-\d{2}T/.test(v)) d=new Date(v);
+        if(d&&!Number.isNaN(d.getTime())) obj[k]=Timestamp.fromDate(d);
+      }
+      return obj;
+    };
+    /* Cada item volta com o MESMO código que tinha. Com código novo, os
+       lançamentos apontavam para OF e funcionária que não existiam mais: a
+       produção de cada uma e o andamento das OFs zeravam. Item cujo código já
+       está no sistema não entra de novo. */
+    const idsExistentes={};
+    Object.keys(colMap).forEach(col=>{idsExistentes[col]=new Set((existentes[col]||[]).map(x=>x.id).filter(Boolean));});
     const seen={};
     Object.keys(colMap).forEach(col=>{seen[col]=new Set((existentes[col]||[]).map(x=>identity(col,x)).filter(Boolean));});
     let total=0, pulados=0;
@@ -7269,10 +7292,17 @@ window.restaurarBackupJSON=async function(){
           if(btnImp&&feitos%25===0) btnImp.innerHTML=`Importando... ${feitos}/${totalSolicitado}`;
           const key=identity(col,item);
           if(key&&seen[col].has(key)){pulados++;continue;}
-          const clean={...item};
+          const idOriginal=typeof item.id==="string"&&item.id?item.id:"";
+          if(idOriginal&&idsExistentes[col].has(idOriginal)){pulados++;continue;}
+          const clean=voltarDatas({...item});
           delete clean.id;
-          await addDoc(collection(db,col),withOwner(clean));
-          if(key) seen[col].add(key);
+          if(idOriginal) await setDoc(doc(db,col,idOriginal),withOwner(clean));
+          else await addDoc(collection(db,col),withOwner(clean));
+          /* Com código, o repetido já é pego pelo código. Comparar pelo
+             conteúdo dentro do próprio arquivo jogava fora lançamentos
+             legítimos iguais (mesma OF, etapa, quantidade e segundo). */
+          if(idOriginal) idsExistentes[col].add(idOriginal);
+          else if(key) seen[col].add(key);
           total++;
         }
       }
@@ -7305,8 +7335,11 @@ function renderBackup(){
 }
 window.baixarBackupJSON=()=>{
   // fotos das batidas ficam fora do backup para o arquivo não ficar gigante
+  /* Clientes e as medições do Controle por Hora ficavam fora do arquivo: quem
+     restaurasse um backup perdia os dois. */
   const data={geradoEm:new Date().toISOString(),sistema:"Mello Style v91",config:getConfig(),funcionarios,lotes,gastos,pontos,
-    registros:registros.map(r=>({...r,criadoEm:r.criadoEm?.toDate?r.criadoEm.toDate().toISOString():r.criadoEm}))};
+    registros:registros.map(r=>({...r,criadoEm:r.criadoEm?.toDate?r.criadoEm.toDate().toISOString():r.criadoEm})),
+    clientes,controleProducaoHora};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob);const a=document.createElement("a");
   a.href=url;a.download=`mello-style-backup-${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.json`;
@@ -8253,9 +8286,21 @@ new MutationObserver(muts=>{
     const abriu=m.classList.contains('open');
     const estava=mu.oldValue&&mu.oldValue.includes('open');
     if(abriu&&!estava){
+      /* Janela aberta por cima de outra (o "+ Novo cliente" dentro de "Editar
+         OF"): com a mesma camada, ganhava a que vem depois no HTML, e a janela
+         nova abria POR TRÁS da primeira, com os campos cobertos. */
+      const outras=[...document.querySelectorAll('.modal-overlay.open')].filter(x=>x!==m);
+      if(outras.length){
+        const topo=Math.max(...outras.map(o=>parseInt(getComputedStyle(o).zIndex,10)||0));
+        m.style.setProperty('z-index',String(topo+1),'important');
+      }
       __focoAntes=document.activeElement;
       setTimeout(()=>{ const l=focaveisDe(m); if(l.length&&!m.contains(document.activeElement)) l[0].focus(); },60);
     }else if(!abriu&&estava){
+      m.style.removeProperty('z-index');
+      /* Fechou a de cima e a de baixo continua aberta: a página atrás não
+         pode voltar a rolar (cada "fechar" soltava a rolagem). */
+      if(document.querySelector('.modal-overlay.open')) document.body.style.overflow='hidden';
       const volta=__focoAntes; __focoAntes=null;
       if(volta&&document.contains(volta)) setTimeout(()=>{ try{ volta.focus(); }catch(_e){} },0);
     }
