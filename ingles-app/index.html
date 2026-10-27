@@ -71,6 +71,30 @@
   .avatar.happy svg, .avatar.angry svg { animation: bounce .4s; }
   @keyframes bounce { 40% { transform: translateY(-6px); } }
 
+  .avatar { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .avatar svg { overflow: visible; }
+  .avatar .tail { transform-box: fill-box; transform-origin: 0% 100%; animation: wag 1.6s ease-in-out infinite alternate; }
+  .avatar.happy .tail { animation-duration: .3s; }
+  .avatar.angry .tail { animation: none; transform: rotate(-14deg); }
+  @keyframes wag { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+  .avatar .ear { transform-box: fill-box; transform-origin: 50% 100%; }
+  .avatar .ear-l { animation: twitch 7s infinite; }
+  .avatar .ear-r { animation: twitch 9s 2s infinite; }
+  .avatar.angry .ear-l { animation: none; transform: rotate(-16deg); }
+  .avatar.angry .ear-r { animation: none; transform: rotate(16deg); }
+  @keyframes twitch { 0%, 92%, 100% { transform: rotate(0); } 95% { transform: rotate(-10deg); } }
+  .avatar .pupil { transition: transform .12s; }
+  .heart { position: absolute; pointer-events: none; font-size: 20px; animation: floaty 1.1s ease-out forwards; }
+  @keyframes floaty { from { opacity: 1; transform: translateY(0) scale(.8); } to { opacity: 0; transform: translateY(-60px) scale(1.3); } }
+  .you { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .talk-row { display: flex; gap: 8px; }
+  .talk-row input { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .talk-row input:focus { outline: none; border-color: var(--accent); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: 13px; }
+  .chip:hover { border-color: var(--accent); }
+  .speech .opts { margin-top: 10px; }
+  .speech .opt { padding: 8px 12px; }
   .teacher { display: flex; gap: 12px; align-items: flex-start; }
   .speech {
     position: relative; flex: 1; background: var(--panel); border: 1px solid var(--line);
@@ -225,6 +249,18 @@
       <div class="avatar" data-avatar></div>
       <div class="speech" id="homeSpeech"></div>
     </div>
+    <div class="talk-row">
+      <input id="talkInput" placeholder="Fala com a Brenda… ex: como se diz cerveja?" autocomplete="off">
+      <button class="btn primary" id="talkSend" title="Enviar">➤</button>
+    </div>
+    <div class="chips" id="talkChips">
+      <button class="chip" data-talk="me ensina uma palavra">📚 Palavra</button>
+      <button class="chip" data-talk="me testa">❓ Me testa</button>
+      <button class="chip" data-talk="conta uma piada">😂 Piada</button>
+      <button class="chip" data-talk="me dá uma dica">💡 Dica</button>
+      <button class="chip" data-talk="me ensina um palavrão">🤬 Palavrão</button>
+      <button class="chip" data-talk="carinho">🐾 Carinho</button>
+    </div>
     <div class="big-actions">
       <button class="btn primary" id="continueBtn"><b>▶ Continuar</b><span id="nextName"></span></button>
       <button class="btn" id="reviewBtn"><b>⚡ Treino rápido</b><span class="muted">10 exercícios misturados</span></button>
@@ -330,17 +366,16 @@
 <template id="avatarTpl">
   <svg viewBox="0 0 120 120" aria-label="Brenda, a gata professora">
     <circle cx="60" cy="60" r="58" fill="#2a1d2e"/>
+    <!-- rabo -->
+    <path class="tail" d="M86 114 Q110 104 104 82 Q101 72 108 64" stroke="#141418" stroke-width="7" fill="none" stroke-linecap="round"/>
     <!-- corpo: preto com peito branco -->
     <path d="M26 120 Q28 92 60 90 Q92 92 94 120 Z" fill="#141418"/>
     <path d="M46 120 Q48 98 60 96 Q72 98 74 120 Z" fill="#f4f4f6"/>
     <!-- orelhas -->
-    <path d="M24 60 L28 16 L56 40 Z" fill="#141418"/>
-    <path d="M96 60 L92 16 L64 40 Z" fill="#141418"/>
-    <path d="M30 48 L32 26 L48 40 Z" fill="#f29bb0"/>
-    <path d="M90 48 L88 26 L72 40 Z" fill="#f29bb0"/>
-    <!-- lacinho -->
-    <path d="M82 24 L74 18 L74 32 Z M82 24 L90 18 L90 32 Z" fill="#ff3d6e"/>
-    <circle cx="82" cy="25" r="3" fill="#ff3d6e"/>
+    <g class="ear ear-l"><path d="M24 60 L28 16 L56 40 Z" fill="#141418"/><path d="M30 48 L32 26 L48 40 Z" fill="#f29bb0"/></g>
+    <g class="ear ear-r"><path d="M96 60 L92 16 L64 40 Z" fill="#141418"/><path d="M90 48 L88 26 L72 40 Z" fill="#f29bb0"/>
+      <!-- lacinho -->
+      <path d="M82 24 L74 18 L74 32 Z M82 24 L90 18 L90 32 Z" fill="#ff3d6e"/><circle cx="82" cy="25" r="3" fill="#ff3d6e"/></g>
     <!-- cabeça preta com máscara branca -->
     <ellipse cx="60" cy="64" rx="38" ry="33" fill="#141418"/>
     <path d="M60 46 Q55 60 40 76 Q42 96 60 97 Q78 96 80 76 Q65 60 60 46 Z" fill="#f4f4f6"/>
@@ -348,8 +383,8 @@
     <path class="brow brow-l" d="M38 49 Q45 45 52 49" stroke="#9a9aa8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
     <path class="brow brow-r" d="M68 49 Q75 45 82 49" stroke="#9a9aa8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
     <!-- olhos verdes com pupila de gato -->
-    <g class="eye"><ellipse cx="45" cy="60" rx="7.5" ry="8" fill="#b9e04a"/><ellipse cx="45" cy="60" rx="2.2" ry="6.5" fill="#0b0b0d"/><circle cx="47.5" cy="57" r="1.6" fill="#fff"/></g>
-    <g class="eye"><ellipse cx="75" cy="60" rx="7.5" ry="8" fill="#b9e04a"/><ellipse cx="75" cy="60" rx="2.2" ry="6.5" fill="#0b0b0d"/><circle cx="77.5" cy="57" r="1.6" fill="#fff"/></g>
+    <g class="eye"><ellipse cx="45" cy="60" rx="7.5" ry="8" fill="#b9e04a"/><g class="pupil"><ellipse cx="45" cy="60" rx="2.2" ry="6.5" fill="#0b0b0d"/><circle cx="47.5" cy="57" r="1.6" fill="#fff"/></g></g>
+    <g class="eye"><ellipse cx="75" cy="60" rx="7.5" ry="8" fill="#b9e04a"/><g class="pupil"><ellipse cx="75" cy="60" rx="2.2" ry="6.5" fill="#0b0b0d"/><circle cx="77.5" cy="57" r="1.6" fill="#fff"/></g></g>
     <!-- bochechas, nariz e bigodes -->
     <circle cx="48" cy="80" r="4" fill="#ff7a8a" opacity=".35"/>
     <circle cx="72" cy="80" r="4" fill="#ff7a8a" opacity=".35"/>
@@ -1069,6 +1104,205 @@ function renderHome(talk) {
   if (talk) speak(text);
 }
 $("#continueBtn").addEventListener("click", () => { const n = nextLesson(); if (n) startLesson(n); });
+
+/* ================= Interação com a gata ================= */
+const CHAT = {
+  pet: [
+    "Purrr... 😻 Isso, coça atrás da orelha. Em inglês: [[scratch behind my ears]]",
+    "[[Meow!]] É \"miau\" em inglês, caso você não saiba, {porra}.",
+    "Carinho é bom, mas não te deixa fluente, {nome}. [[Go study!]]",
+    "Gato: [[cat]]. Filhote: [[kitten]]. Eu: [[a badass cat]]. 😼",
+    "Ronronar em inglês é [[purr]]. Purrr... 😻",
+    "[[I'm the boss here]]. Eu mando aqui, {nome}. 😼",
+  ],
+  annoyed: ["Para de me apertar, {porra}! [[Stop it!]] 😾", "Chega! [[That's enough!]] Vou te arranhar, hein! 😾"],
+  idle: [
+    "Ei, {nome}, vai ficar só olhando pra minha cara? Bora estudar, {porra}!",
+    "[[Hello? Anybody there?]] Toca em ▶ Continuar, vai.",
+    "Tô entediada {pqp}. Me pergunta alguma coisa: \"como se diz amor?\"",
+  ],
+  hi: ["E aí, {nome}! [[What's up?]] Me pergunta como se diz alguma coisa, ou pede uma palavra, piada ou teste.", "[[Hey there!]] Que bom te ver, {nome}. 😺"],
+  thanks: ["[[You're welcome!]] De nada, {nome}. 😺", "[[No problem!]] Tamo junto."],
+  unknown: [
+    "Essa eu não sei, {porra}. 😿 Tenta: \"como se diz cerveja\", \"o que é chill\", \"me testa\" ou \"piada\".",
+    "[[I have no idea]], {nome}. Sou gata, não dicionário. Tenta outra palavra ou pede uma dica.",
+  ],
+  jokes: [
+    ["Why did the cat sit on the computer? [[To keep an eye on the mouse.]]", "**mouse** é rato e também o mouse do computador. 😹"],
+    ["What's a cat's favorite color? [[Purple!]]", "Porque soa como **purr**, o ronronar. Piada de gato, {porra}."],
+    ["Why don't skeletons fight each other? [[They don't have the guts.]]", "**guts** = tripas, e também coragem."],
+    ["I'm reading a book about anti-gravity. [[It's impossible to put down.]]", "**put down** = largar. O livro é tão bom que não dá pra largar... e é antigravidade. Sacou?"],
+    ["I used to be a banker, [[but I lost interest.]]", "**interest** = interesse e também juros. 🏦"],
+    ["What do you call a fake noodle? [[An impasta.]]", "**impostor** + **pasta** (macarrão). 🍝"],
+  ],
+  tips: [
+    "Quando alguém espirra, diz [[Bless you!]] É o nosso \"saúde!\".",
+    "[[Eventually]] não é \"eventualmente\": é \"no fim das contas\". Falso cognato traiçoeiro {pqp}.",
+    "Gringo pergunta [[How are you?]] só por educação. Responde [[Good, you?]] e segue a vida.",
+    "[[Pretty]] também quer dizer \"bem\": [[pretty good]] = bem bom.",
+    "[[Literally]] virou exagero: [[I literally died]] = morri de rir.",
+    "Dia da semana e mês têm letra maiúscula em inglês: [[Monday]], [[January]].",
+    "[[Cheers]] serve pra brindar e, no Reino Unido, pra agradecer.",
+    "Assiste série com legenda em inglês, não em português. Dói no começo, mas funciona {pqp}.",
+  ],
+  swears: [
+    ["Holy shit!", "Puta merda!"], ["What the fuck?", "Que porra é essa?"], ["Bullshit", "Papo furado"],
+    ["I'm pissed off", "Tô puto"], ["Damn it!", "Droga! / Merda!"], ["Asshole", "Babaca, cuzão"],
+    ["Fuck off!", "Vai se foder!"], ["Son of a bitch!", "Filho da puta!"], ["Screw you!", "Vai se ferrar!"],
+    ["Shut the hell up!", "Cala a boca, porra!"], ["Dumbass", "Burro, idiota"], ["Piece of shit", "Pedaço de merda"],
+  ],
+};
+
+// Mini dicionário para "como se diz..."
+const DICT = ("cerveja:beer|agua:water|cafe:coffee|comida:food|cachorro:dog|gato:cat|casa:house|amor:love|amigo:friend|amiga:friend|" +
+  "namorado:boyfriend|namorada:girlfriend|trabalho:work|dinheiro:money|carro:car|rua:street|cidade:city|praia:beach|festa:party|" +
+  "bebado:drunk|ressaca:hangover|fome:hunger|sede:thirst|sono:sleep|cansado:tired|feliz:happy|triste:sad|bravo:angry|bonito:beautiful|" +
+  "bonita:beautiful|feio:ugly|grande:big|pequeno:small|rapido:fast|devagar:slow|hoje:today|amanha:tomorrow|ontem:yesterday|agora:now|" +
+  "sempre:always|nunca:never|talvez:maybe|sim:yes|nao:no|obrigado:thank you|obrigada:thank you|por favor:please|desculpa:sorry|" +
+  "bom dia:good morning|boa tarde:good afternoon|boa noite:good night|tchau:bye|escola:school|livro:book|celular:cell phone|" +
+  "computador:computer|janela:window|porta:door|cama:bed|banheiro:bathroom|cozinha:kitchen|mesa:table|cadeira:chair|roupa:clothes|" +
+  "sapato:shoe|chuva:rain|sol:sun|frio:cold|quente:hot|mae:mother|pai:father|irmao:brother|irma:sister|filho:son|filha:daughter|" +
+  "saudade:I miss you|chato:boring|legal:cool|engracado:funny|caro:expensive|barato:cheap|aeroporto:airport|passagem:ticket|" +
+  "mala:suitcase|loja:store|mercado:supermarket|pao:bread|carne:meat|frango:chicken|queijo:cheese|ovo:egg|arroz:rice|feijao:beans|" +
+  "suco:juice|vinho:wine|gelo:ice|vida:life|morte:death|medo:fear|sorte:luck|azar:bad luck|preguica:laziness|fofoca:gossip|" +
+  "paquera:flirt|beijo:kiss|abraco:hug|segredo:secret|mentira:lie|verdade:truth|jogo:game|futebol:soccer|musica:music|filme:movie")
+  .split("|").map((x) => x.split(":")).map(([pt, en]) => ({ pt, en }));
+
+const plain = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+let PAIRS = null;
+function pairs() {
+  if (PAIRS) return PAIRS;
+  PAIRS = [...DICT];
+  for (const c of allCards()) PAIRS.push({ en: c.en, pt: c.pt });
+  for (const list of Object.values(PHRASES)) for (const [en, pt] of list) PAIRS.push({ en, pt });
+  for (const [en, pt] of CHAT.swears) PAIRS.push({ en, pt });
+  for (const l of LESSONS) for (const st of l.steps) {
+    if (st.t === "speak" || st.t === "order") PAIRS.push({ en: st.en, pt: st.pt });
+    if (st.t === "say") for (const m of st.text.matchAll(/\[\[([^\]]+)\]\]\s*\(([^)]+)\)/g)) PAIRS.push({ en: m[1], pt: m[2] });
+  }
+  return PAIRS;
+}
+function similarity(q, side) {
+  if (!side) return 0;
+  if (q === side) return 1;
+  const parts = side.split(/ \/ | ou /);
+  if (parts.includes(q)) return 0.95;
+  const a = q.split(" "), b = new Set(side.split(" "));
+  const hit = a.filter((w) => b.has(w)).length;
+  return hit / Math.max(a.length, b.size);
+}
+function translate(q) {
+  q = plain(q);
+  if (!q) return null;
+  let best = null;
+  for (const p of pairs()) {
+    const sp = similarity(q, plain(p.pt)), se = similarity(q, plain(p.en));
+    if (!best || sp > best.score) best = { score: sp, dir: "pt", p };
+    if (se > best.score) best = { score: se, dir: "en", p };
+  }
+  return best && best.score >= 0.5 ? best : null;
+}
+
+function chatSay(text, { you = "", extra = "", talk = true } = {}) {
+  const t = fill(text);
+  $("#homeSpeech").innerHTML = `<button class="replay" title="Ouvir de novo">🔊</button><div class="name">Brenda 🐈‍⬛</div>` +
+    (you ? `<div class="you">Você: ${esc(you)}</div>` : "") + md(t) + extra;
+  $("#homeSpeech .replay").onclick = () => speak(t);
+  if (talk) speak(t);
+}
+
+function quizMe(you) {
+  const pool = LESSONS.filter((l) => state.done.includes(l.id) || l.lvl === state.level).flatMap((l) => l.steps.filter((s) => s.t === "mc"));
+  const q = pick(pool);
+  chatSay(`Valendo! ${q.q}`, { you, extra: `<div class="opts">${q.opts.map((o, i) => `<button class="opt" data-qi="${i}">${esc(o)}</button>`).join("")}</div>` });
+  $("#homeSpeech").querySelectorAll("[data-qi]").forEach((b) => b.onclick = () => {
+    const ok = Number(b.dataset.qi) === q.a;
+    mood(ok ? "happy" : "angry");
+    if (ok) addXP(2);
+    chatSay(`${pick(VIBE[state.vibe][ok ? "right" : "wrong"])} ${ok ? "" : `O certo é: **${q.opts[q.a]}**.`} ${q.why}`,
+      { extra: `<div class="row"><button class="chip" data-talk="me testa">Outra! ❓</button></div>` });
+  });
+}
+
+let pets = [];
+function petCat(av) {
+  const r = av.getBoundingClientRect();
+  const h = document.createElement("span");
+  h.className = "heart"; h.textContent = pick(["❤️", "💕", "😻", "✨"]);
+  h.style.left = 20 + Math.random() * (r.width - 40) + "px"; h.style.top = r.height * 0.2 + "px";
+  av.appendChild(h); setTimeout(() => h.remove(), 1100);
+  const now = Date.now();
+  pets = pets.filter((t) => now - t < 3000).concat(now);
+  const annoyed = pets.length >= 5;
+  if (annoyed) pets = [];
+  mood(annoyed ? "angry" : "happy");
+  if ($("#lesson").hidden) chatSay(pick(annoyed ? CHAT.annoyed : CHAT.pet));
+  else sayEn(annoyed ? "Stop it!" : "Purr... meow!");
+}
+
+function talkTo(raw) {
+  const you = raw.trim();
+  if (!you) return;
+  const t = plain(you);
+  mood(null);
+  if (/^(oi|ola|e ai|eai|hey|hi|hello|fala|salve|bom dia|boa tarde|boa noite)\b/.test(t)) return chatSay(pick(CHAT.hi), { you });
+  if (/\b(obrigad|valeu|vlw|thanks|thank you)/.test(t)) return chatSay(pick(CHAT.thanks), { you });
+  if (/\b(carinho|cafune|coca|fofa)\b/.test(t)) return petCat(document.querySelector("#view-home [data-avatar]"));
+  if (/\b(testa|teste|quiz|pergunta pra mim|desafio)\b/.test(t)) return quizMe(you);
+  if (/\b(piada|zoeira|engracad)/.test(t)) {
+    const [joke, why] = pick(CHAT.jokes);
+    return chatSay(`${joke}\n${why}`, { you });
+  }
+  if (/\b(dica|curiosidade|conselho)\b/.test(t)) return chatSay(pick(CHAT.tips), { you });
+  if (/\b(palavrao|palavroes|xinga|xingamento|xingar)\b/.test(t)) {
+    const [en, pt] = pick(CHAT.swears);
+    return chatSay(`Anota aí: [[${en}]] = **${pt}**. Só com os amigos, hein? Na entrevista {sefode}.`, { you });
+  }
+  if (/\b(palavra|vocabulario|frase)\b/.test(t) && !/como|diz|significa/.test(t)) {
+    const c = pick(allCards().filter((c) => c.lvl === state.level)) || pick(allCards());
+    return chatSay(`Palavra do momento: [[${c.en}]] = **${c.pt}**.${c.ex ? ` Exemplo: [[${c.ex}]]` : ""}`, { you });
+  }
+  const q = t.replace(/\b(como (e que )?(se )?(diz|fala|falo|escreve|escrevo|pronuncia)|em ingles|traduz(ir|a)?|traducao de|o que (e|significa)|que significa|significa|brenda|pra mim|por favor)\b/g, " ");
+  const r = translate(q);
+  if (!r) return chatSay(pick(CHAT.unknown), { you });
+  return r.dir === "pt"
+    ? chatSay(`Em inglês: [[${r.p.en}]] (**${r.p.pt}**)`, { you })
+    : chatSay(`[[${r.p.en}]] quer dizer: **${r.p.pt}**`, { you });
+}
+
+$("#talkSend").addEventListener("click", () => { talkTo($("#talkInput").value); $("#talkInput").value = ""; });
+$("#talkInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { talkTo(e.target.value); e.target.value = ""; } });
+document.addEventListener("click", (e) => {
+  const c = e.target.closest("[data-talk]");
+  if (c) talkTo(c.dataset.talk);
+});
+document.querySelectorAll("[data-avatar]").forEach((av) => av.addEventListener("click", () => petCat(av)));
+
+// Os olhos seguem o mouse/dedo
+let eyeFrame = 0;
+document.addEventListener("pointermove", (e) => {
+  if (eyeFrame) return;
+  eyeFrame = requestAnimationFrame(() => {
+    eyeFrame = 0;
+    document.querySelectorAll("[data-avatar]").forEach((av) => {
+      if (!av.offsetParent) return;
+      const r = av.getBoundingClientRect();
+      const dx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / 300));
+      const dy = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / 300));
+      av.querySelectorAll(".pupil").forEach((p) => p.setAttribute("transform", `translate(${(dx * 3.5).toFixed(2)} ${(dy * 2).toFixed(2)})`));
+    });
+  });
+});
+
+// Se você ficar parado na tela inicial, ela te chama
+let lastActive = Date.now(), nudged = false;
+["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => { lastActive = Date.now(); nudged = false; }));
+setInterval(() => {
+  const home = $("#view-home").classList.contains("active") && $("#lesson").hidden && !$("#settings").open;
+  if (home && !nudged && Date.now() - lastActive > 45000 && !document.hidden) {
+    nudged = true; mood("angry"); chatSay(pick(CHAT.idle));
+  }
+}, 5000);
 $("#reviewBtn").addEventListener("click", startReview);
 
 /* ================= Trilha ================= */
