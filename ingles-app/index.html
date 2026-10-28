@@ -209,6 +209,27 @@
   .phrase:hover { border-color: var(--accent); }
   .phrase .pt { color: var(--muted); font-size: 13px; }
 
+  /* Dicionário */
+  .dcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-top: 12px; overflow-wrap: anywhere; }
+  .dhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .big { font-size: 22px; font-weight: 700; }
+  .en.big { font-size: 20px; padding: 2px 10px; }
+  .ipa { color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+  .tag { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  .dmain { margin-top: 8px; font-size: 17px; font-weight: 600; color: var(--accent-2); line-height: 1.9; }
+  .dsenses { margin: 10px 0 0; padding-left: 22px; }
+  .dsenses li { margin-bottom: 10px; line-height: 1.8; }
+  .pos { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .def { color: var(--muted); font-size: 14px; line-height: 1.45; }
+  .ex { display: block; background: none; border: 0; padding: 2px 0; color: #ffd0dc; font-style: italic; text-align: left; font-size: 14px; }
+  .syn { font-size: 13px; color: var(--muted); }
+  .lnk { background: none; border: 0; padding: 0; color: var(--accent-2); text-decoration: underline; font-size: inherit; }
+  .dcard .phrase { margin-top: 6px; }
+  code { background: var(--panel-2); padding: 1px 5px; border-radius: 5px; }
+  details.creditos { margin: 12px 0; font-size: 13px; }
+  details.creditos summary { cursor: pointer; color: var(--muted); }
+  details.creditos li { margin-bottom: 6px; }
+
   dialog {
     background: var(--panel); color: var(--text); border: 1px solid var(--line);
     border-radius: 18px; padding: 20px; width: min(460px, calc(100% - 32px));
@@ -238,6 +259,7 @@
 
 <nav class="tabs">
   <button data-view="home" class="active">🏠 Início</button>
+  <button data-view="dic">📕 Dicionário</button>
   <button data-view="trilha">🗺️ Trilha</button>
   <button data-view="cards">🃏 Cartões</button>
   <button data-view="frases">📖 Frases</button>
@@ -271,6 +293,15 @@
     </div>
   </div></section>
 
+  <section class="view" id="view-dic"><div class="wrap">
+    <div class="talk-row">
+      <input id="dicInput" type="search" placeholder="Busque em inglês ou português… ex: dog, saudade, give up" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="btn primary" id="dicGo" title="Buscar">🔎</button>
+    </div>
+    <div class="chips" id="dicSug" style="margin-top:8px"></div>
+    <div id="dicOut"></div>
+  </div></section>
+
   <section class="view" id="view-trilha"><div class="wrap" id="trilha"></div></section>
 
   <section class="view" id="view-cards"><div class="wrap">
@@ -297,7 +328,13 @@
   </div></section>
 
   <section class="view" id="view-frases"><div class="wrap">
-    <p class="muted" style="margin-top:0">Frases prontas pra usar na vida real. Toca pra ouvir.</p>
+    <div class="talk-row">
+      <input id="fraseBusca" type="search" placeholder="Busque em 23 mil frases reais… ex: hungry, saudade" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="btn primary" id="fraseGo" title="Buscar">🔎</button>
+    </div>
+    <div id="fraseRes"></div>
+    <h2>Frases prontas por situação</h2>
+    <p class="muted" style="margin-top:0">Pra usar na vida real. Toca pra ouvir.</p>
     <div class="row" id="phraseTabs" style="margin:0 0 14px"></div>
     <div id="phraseList"></div>
   </div></section>
@@ -357,6 +394,17 @@
     </select>
   </div>
   <div class="warn">⚠️ No modo "sem filtro" a Brenda fala palavrão (sem ofensa preconceituosa). Conteúdo para maiores de idade.</div>
+  <details class="creditos">
+    <summary>📜 Créditos e licenças do dicionário</summary>
+    <ul>
+      <li><b>WordNet 3.0</b>: © 2006 Princeton University (licença WordNet).</li>
+      <li><b>OpenWN-PT</b>, o WordNet em português, de Alexandre Rademaker e Valeria de Paiva: CC BY-SA 3.0, via Open Multilingual Wordnet.</li>
+      <li><b>FreeDict</b> inglês↔português: GNU GPL 2.0 ou posterior.</li>
+      <li>Frases do <b>Tatoeba</b> (tatoeba.org): CC BY 2.0 FR, via Tatoeba Challenge (Helsinki-NLP).</li>
+      <li><b>FrequencyWords</b>, de Hermit Dave (legendas do OpenSubtitles 2018): CC BY-SA 4.0.</li>
+    </ul>
+    <p class="muted">Detalhes em dados/LICENCAS.txt.</p>
+  </details>
   <div class="row" style="justify-content:space-between">
     <button class="btn" id="resetAll">🗑️ Zerar progresso</button>
     <button class="btn primary" id="saveSettings">Salvar</button>
@@ -1105,6 +1153,212 @@ function renderHome(talk) {
 }
 $("#continueBtn").addEventListener("click", () => { const n = nextLesson(); if (n) startLesson(n); });
 
+/* ================= Dicionário completo (pasta dados/, carregada sob demanda) ================= */
+window.SFE_DATA = window.SFE_DATA || {};
+const carregando = {};
+// Carrega dados/<nome>.js com <script>: funciona abrindo o index.html direto e no Netlify
+function carregarDados(nome) {
+  if (SFE_DATA[nome]) return Promise.resolve(SFE_DATA[nome]);
+  if (!carregando[nome]) carregando[nome] = new Promise((ok, falha) => {
+    const s = document.createElement("script");
+    s.src = `dados/${nome}.js`;
+    s.onload = () => (SFE_DATA[nome] ? ok(SFE_DATA[nome]) : falha(new Error(nome)));
+    s.onerror = () => { delete carregando[nome]; s.remove(); falha(new Error(nome)); };
+    document.head.appendChild(s);
+  });
+  return carregando[nome];
+}
+const limparBusca = (s) => String(s).replace(/[’‘`´]/g, "'").replace(/^[\s?!.,;:"“”()¿¡]+|[\s?!.,;:"“”()¿¡]+$/g, "").replace(/\s+/g, " ");
+const chaveEn = (s) => limparBusca(s).toLowerCase();
+const chavePt = (s) => limparBusca(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const soLetras = (s) => " " + s.replace(/[^a-z0-9']+/g, " ").trim() + " ";
+
+let BASE = null;
+async function dadosBase() { return BASE || (BASE = await carregarDados("base")); }
+async function pedacoDe(lingua, chave) {
+  const ini = (await dadosBase()).pedacos[lingua];
+  let lo = 0, hi = ini.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (ini[m] <= chave) lo = m; else hi = m - 1; }
+  return carregarDados(`${lingua}-${String(lo).padStart(3, "0")}`);
+}
+async function acharEn(k) { if (!k) return null; const p = await pedacoDe("en", k); return Object.hasOwn(p, k) ? p[k] : null; }
+async function acharPt(k) { if (!k) return null; const p = await pedacoDe("pt", k); return Object.hasOwn(p, k) ? p[k] : null; }
+
+// Formas-base em inglês: dogs -> dog, went -> go, running -> run
+const REGRAS_EN = [["s", ""], ["ses", "s"], ["xes", "x"], ["zes", "z"], ["ches", "ch"], ["shes", "sh"], ["men", "man"], ["ies", "y"],
+  ["es", "e"], ["es", ""], ["ed", "e"], ["ed", ""], ["ing", "e"], ["ing", ""], ["er", ""], ["est", ""], ["er", "e"], ["est", "e"]];
+function basesEn(w, exc, soIrregulares = false) {
+  const c = exc[w] ? exc[w].split("|") : [];
+  if (!soIrregulares) {
+    for (const [suf, troca] of REGRAS_EN) if (w.length > suf.length + 1 && w.endsWith(suf)) c.push(w.slice(0, -suf.length) + troca);
+    const dobro = w.match(/^(.+?)([bdgklmnprtvz])\2(ed|ing|er|est)$/);
+    if (dobro) c.push(dobro[1] + dobro[2]);
+    if (w.endsWith("'s")) c.push(w.slice(0, -2));
+  }
+  return [...new Set(c)].filter((x) => x && x !== w);
+}
+
+// Formas-base em português: falou -> falar, casas -> casa, bonita -> bonito, fui -> ser/ir
+const IRREG_PT = {};
+("ser:sou,somos,sao,era,eras,eramos,eram,fui,foste,foi,fomos,foram,seja,sejas,sejamos,sejam,fosse,fosses,fossemos,fossem,for,fores,formos,forem,serei,seras,sera,seremos,serao,seria,serias,seriamos,seriam,sido,sendo" +
+ "|estar:estou,estas,esta,estamos,estao,estive,estiveste,esteve,estivemos,estiveram,estava,estavas,estavamos,estavam,esteja,estejas,estejamos,estejam,estivesse,estivessem,estiver,estiverem,estarei,estara,estaremos,estarao,estaria,estariam,estado,estando" +
+ "|ter:tenho,tens,tem,temos,teem,tive,tiveste,teve,tivemos,tiveram,tinha,tinhas,tinhamos,tinham,tenha,tenhas,tenhamos,tenham,tivesse,tivessem,tiver,tiverem,terei,teras,tera,teremos,terao,teria,teriam,tido,tendo" +
+ "|ir:vou,vais,vai,vamos,vao,ia,ias,iamos,iam,va,vas,irei,iras,ira,iremos,irao,iria,iriam,ido,indo,fui,foste,foi,fomos,foram,fosse,fossem,for,forem" +
+ "|fazer:faco,fazes,faz,fazemos,fazem,fiz,fizeste,fez,fizemos,fizeram,fazia,fazias,faziamos,faziam,faca,facas,facamos,facam,fizesse,fizessem,fizer,fizerem,farei,faras,fara,faremos,farao,faria,farias,fariamos,fariam,feito,feita,feitos,feitas,fazendo" +
+ "|poder:posso,podes,pode,podemos,podem,pude,pudeste,pudemos,puderam,podia,podias,podiamos,podiam,possa,possas,possamos,possam,pudesse,pudessem,puder,puderem,poderei,podera,poderemos,poderao,poderia,poderiam,podendo" +
+ "|dizer:digo,dizes,diz,dizemos,dizem,disse,disseste,dissemos,disseram,dizia,diziam,diga,digas,digamos,digam,dissesse,dissessem,disser,disserem,direi,diras,dira,diremos,dirao,diria,diriam,dito,dita,ditos,ditas,dizendo" +
+ "|ver:vejo,ves,ve,vemos,veem,vi,viste,viu,vimos,viram,via,vias,viamos,viam,veja,vejas,vejamos,vejam,visse,vissem,verei,veras,vera,veremos,verao,veria,veriam,visto,vista,vistos,vendo" +
+ "|vir:venho,vens,vem,vimos,vim,vieste,veio,viemos,vieram,vinha,vinhas,vinhamos,vinham,venha,venhas,venhamos,venham,viesse,viessem,vier,vierem,virei,viras,vira,viremos,virao,viria,viriam,vindo" +
+ "|dar:dou,das,da,damos,dao,dei,deste,deu,demos,deram,dava,davas,davamos,davam,de,des,deem,desse,dessem,der,derem,darei,dara,daremos,darao,daria,dariam,dado,dada,dando" +
+ "|saber:sei,sabes,sabe,sabemos,sabem,soube,soubeste,soubemos,souberam,sabia,sabias,sabiamos,sabiam,saiba,saibas,saibamos,saibam,soubesse,soubessem,souber,souberem,saberei,sabera,saberemos,saberao,saberia,saberiam,sabendo" +
+ "|querer:quero,queres,quer,queremos,querem,quis,quiseste,quisemos,quiseram,queria,querias,queriamos,queriam,queira,queiras,queiramos,queiram,quisesse,quisessem,quiser,quiserem,quererei,querera,quereria,quereriam,querendo" +
+ "|trazer:trago,trazes,traz,trazemos,trazem,trouxe,trouxeste,trouxemos,trouxeram,trazia,traziam,traga,tragas,tragamos,tragam,trouxesse,trouxessem,trouxer,trouxerem,trarei,traras,trara,traremos,trarao,traria,trariam,trazido,trazendo" +
+ "|por:ponho,poes,poe,pomos,poem,pus,puseste,pos,pusemos,puseram,punha,punhas,punhamos,punham,ponha,ponhas,ponhamos,ponham,pusesse,pusessem,puser,puserem,porei,poras,pora,poremos,porao,poria,poriam,posto,posta,postos,postas,pondo" +
+ "|haver:hei,ha,havemos,hao,houve,houvemos,houveram,havia,haviam,haja,hajam,houvesse,houvessem,houver,houverem,haverei,havera,haveria,haveriam,havido,havendo" +
+ "|ler:leio,les,le,lemos,leem,li,leste,leu,leram,lia,lias,liamos,liam,leia,leias,leiamos,leiam,lesse,lessem,lerei,lera,lerao,leria,leriam,lido,lendo" +
+ "|crer:creio,cres,cre,cremos,creem,cri,creu,creram,creia,creiam|sair:saio,sais,sai,saimos,saem,saiu,sairam,saia,saiam,saisse,saissem,sairei,saira,sairia,saido,saindo" +
+ "|cair:caio,cais,cai,caimos,caem,caiu,cairam,caia,caiam,caisse,caido,caindo|ouvir:ouco,ouca,oucas,oucamos,oucam|pedir:peco,peca,pecas,pecamos,pecam|medir:meco,meca" +
+ "|dormir:durmo,durma,durmas,durmam,dorme,dormem|perder:perco,perca,percas,percamos,percam|valer:valho,valha,valham|subir:sobe,sobes,sobem|fugir:fujo,foges,foge,fogem,fuja,fujam" +
+ "|seguir:sigo,siga,sigas,sigam|servir:sirvo,sirva,sirvam|sentir:sinto,sinta,sintas,sintam|mentir:minto,minta,mintam|vestir:visto,vista,vistam|preferir:prefiro,prefira,prefiram" +
+ "|repetir:repito,repita|conseguir:consigo,consiga,consigas,consigam|cobrir:cubro,cubra,coberto,coberta|abrir:aberto,aberta|escrever:escrito,escrita|morrer:morto,morta" +
+ "|caber:caibo,coube,couberam,caiba|odiar:odeio,odeias,odeia,odeiam,odeie")
+  .split("|").forEach((bloco) => {
+    const [inf, formas] = bloco.split(":");
+    for (const f of formas.split(",")) { IRREG_PT[f] = IRREG_PT[f] || []; if (!IRREG_PT[f].includes(inf)) IRREG_PT[f].push(inf); }
+  });
+const FINS_PT = Object.fromEntries(Object.entries({
+  ar: "o,as,a,amos,ais,am,ei,aste,ou,astes,aram,ava,avas,avamos,aveis,avam,ara,aras,aramos,areis,arei,aremos,arao,aria,arias,ariamos,arieis,ariam,e,es,emos,eis,em,asse,asses,assemos,asseis,assem,ar,ares,armos,ardes,arem,ando,ado,ada,ados,adas",
+  er: "o,es,e,emos,eis,em,i,este,eu,estes,eram,ia,ias,iamos,ieis,iam,era,eras,eramos,ereis,erei,eremos,erao,eria,erias,eriamos,erieis,eriam,a,as,amos,ais,am,esse,esses,essemos,esseis,essem,er,eres,ermos,erdes,erem,endo,ido,ida,idos,idas",
+  ir: "o,es,e,imos,is,em,i,iste,iu,istes,iram,ia,ias,iamos,ieis,iam,ira,iras,iramos,ireis,irei,iremos,irao,iria,irias,iriamos,irieis,iriam,a,as,amos,ais,am,isse,isses,issemos,isseis,issem,ir,ires,irmos,irdes,irem,indo,ido,ida,idos,idas",
+}).map(([k, v]) => [k, [...new Set(v.split(","))].sort((a, b) => b.length - a.length)]));
+const REGRAS_PT = [["oes", "ao"], ["aes", "ao"], ["aos", "ao"], ["ns", "m"], ["is", "l"], ["es", ""], ["s", ""],
+  ["issimos", "o"], ["issimas", "o"], ["issimo", "o"], ["issima", "o"], ["zinhos", ""], ["zinhas", ""], ["zinho", ""], ["zinha", ""],
+  ["inhos", "o"], ["inhas", "a"], ["inho", "o"], ["inha", "a"], ["oras", "or"], ["ora", "or"], ["as", "o"], ["a", "o"]];
+function basesPt(w, soIrregulares = false) {
+  const c = [...(IRREG_PT[w] || [])];
+  if (soIrregulares) return c;
+  const sem = w.replace(/-(se|me|te|lo|la|los|las|lhe|lhes|nos|vos|o|a|os|as)$/, "");
+  if (sem !== w) { c.push(sem, ...(IRREG_PT[sem] || [])); if (/[aei]$/.test(sem)) c.push(sem + "r"); }
+  for (const [suf, troca] of REGRAS_PT) if (sem.length > suf.length + 1 && sem.endsWith(suf)) c.push(sem.slice(0, -suf.length) + troca);
+  if (sem.endsWith("mente")) { const a = sem.slice(0, -5); c.push(a, a.replace(/a$/, "o")); }
+  for (const [cls, fins] of Object.entries(FINS_PT)) for (const f of fins) {
+    if (!sem.endsWith(f) || sem.length - f.length < 2) continue;
+    const raiz = sem.slice(0, -f.length);
+    c.push(raiz + cls);
+    if (f[0] === "e" && raiz.endsWith("qu")) c.push(raiz.slice(0, -2) + "c" + cls);
+    if (f[0] === "e" && raiz.endsWith("gu")) c.push(raiz.slice(0, -2) + "g" + cls);
+    if ("oa".includes(f[0]) && raiz.endsWith("j") && cls !== "ar") c.push(raiz.slice(0, -1) + "g" + cls);
+  }
+  return [...new Set(c)].filter((x) => x && x !== w);
+}
+
+// Procura nos dois sentidos. Se a palavra não existir, tenta a forma-base (went -> go, falou -> falar)
+async function procurar(texto) {
+  const b = await dadosBase();
+  const ken = chaveEn(texto), kpt = chavePt(texto);
+  const r = { texto, en: null, pt: null, enOutras: [], ptOutras: [] };
+  const e = await acharEn(ken);
+  if (e) r.en = { chave: ken, e };
+  const irregulares = b.exc[ken] ? b.exc[ken].split("|") : [];
+  // classe que a forma-base precisa ter: running -> verbo, dogs -> substantivo/verbo, bigger -> adjetivo
+  const precisa = /(ing|ed)$/.test(ken) ? "v" : /s$/.test(ken) ? "nv" : /(er|est)$/.test(ken) ? "a" : "";
+  const classes = (x) => new Set([...x[3].map((s) => s[0]), ...x[4].map((s) => s[0])]);
+  for (const c of basesEn(ken, b.exc)) {
+    if (r.enOutras.length >= 3) break;
+    const x = await acharEn(c);
+    if (!x) continue;
+    if (e && !irregulares.includes(c) && ![...classes(x)].some((k) => precisa.includes(k === "s" ? "a" : k))) continue;
+    if (!r.en) r.en = { chave: c, e: x, de: limparBusca(texto) };
+    else if (c !== r.en.chave) r.enOutras.push(x[0]);
+  }
+  const p = await acharPt(kpt);
+  if (p) r.pt = { chave: kpt, lista: p };
+  for (const c of basesPt(kpt, !!p)) {
+    if (r.ptOutras.length >= 3) break;
+    const x = await acharPt(c);
+    if (!x) continue;
+    if (!r.pt) r.pt = { chave: c, lista: x, de: limparBusca(texto) };
+    else if (c !== r.pt.chave) r.ptOutras.push(x[0][0]);
+  }
+  return r;
+}
+async function expressoes(lingua, chave, max = 12) {
+  const p = await pedacoDe(lingua, chave + " ");
+  return Object.keys(p).filter((k) => k.startsWith(chave + " ")).slice(0, max).map((k) => (lingua === "en" ? p[k][0] : p[k][0][0]));
+}
+async function sugestoes(prefixo) {
+  const ke = chaveEn(prefixo), kp = chavePt(prefixo);
+  if (ke.length < 2) return [];
+  const [pe, pp] = await Promise.all([pedacoDe("en", ke), pedacoDe("pt", kp)]);
+  const lista = [
+    ...Object.keys(pe).filter((k) => k.startsWith(ke)).map((k) => [pe[k][0], pe[k][2] || 1e6]),
+    ...Object.keys(pp).filter((k) => k.startsWith(kp)).map((k) => [pp[k][0][0], pp[k][0][1] || 1e6]),
+  ];
+  return [...new Set(lista.sort((a, b) => a[1] - b[1] || a[0].length - b[0].length).map((x) => x[0]))].slice(0, 8);
+}
+
+// Frases reais (Tatoeba): já vêm da mais curta para a mais longa
+let FRASES = null;
+async function todasFrases() {
+  if (!FRASES) FRASES = (await carregarDados("frases")).split("\n").map((l) => {
+    const [en, pt] = l.split("\t");
+    return { en, pt, nen: soLetras(en.toLowerCase()), npt: soLetras(chavePt(pt)) };
+  });
+  return FRASES;
+}
+async function frasesCom(palavra, lingua, max = 6) {
+  const alvo = lingua === "en" ? soLetras(chaveEn(palavra)) : soLetras(chavePt(palavra));
+  if (alvo.trim() === "") return [];
+  const saida = [];
+  for (const f of await todasFrases()) {
+    if ((lingua === "en" ? f.nen : f.npt).includes(alvo)) { saida.push(f); if (saida.length >= max) break; }
+  }
+  return saida;
+}
+async function fraseExata(q) {
+  const kp = soLetras(chavePt(q)), ke = soLetras(chaveEn(q));
+  const lista = await todasFrases();
+  const pt = lista.find((f) => f.npt === kp);
+  if (pt) return { lingua: "pt", ...pt };
+  const en = lista.find((f) => f.nen === ke);
+  return en ? { lingua: "en", ...en } : null;
+}
+async function fraseParecida(q, lingua) {
+  const palavras = (lingua === "pt" ? soLetras(chavePt(q)) : soLetras(chaveEn(q))).trim().split(" ").filter(Boolean);
+  if (palavras.length < 2) return null;
+  // não troca "gosto" por "não gosto": a negação tem que bater
+  const negacao = lingua === "pt" ? / (nao|nunca|nem|ninguem|nada) / : / (not|never|no|nobody|nothing|[a-z]+n't) /;
+  const negada = negacao.test(" " + palavras.join(" ") + " ");
+  let melhor = null, nota = 0.5;
+  for (const f of await todasFrases()) {
+    const alvo = lingua === "pt" ? f.npt : f.nen;
+    if (negacao.test(alvo) !== negada) continue;
+    const acertos = palavras.filter((w) => alvo.includes(" " + w + " ")).length;
+    if (acertos / palavras.length < 0.6) continue;
+    const tamanho = alvo.trim().split(" ").length;
+    const n = acertos / (palavras.length + tamanho - acertos);
+    if (n > nota) { melhor = f; nota = n; }
+  }
+  return melhor;
+}
+
+// Traduções revisadas das 3.000 palavras mais usadas, nos dois sentidos
+let TOP_EN = null, TOP_PT = null;
+function mapasTop(b) {
+  if (!TOP_EN) {
+    TOP_EN = {}; TOP_PT = {};
+    b.top.forEach(([en, pt], i) => {
+      TOP_EN[en.toLowerCase()] = { pt, i };
+      for (const parte of pt.split(" / ")) {
+        if (/[?=]|^-/.test(parte)) continue;
+        const k = chavePt(parte.replace(/\(.*?\)/g, ""));
+        if (k && !TOP_PT[k]) TOP_PT[k] = en;
+      }
+    });
+  }
+  return { TOP_EN, TOP_PT };
+}
+
 /* ================= Interação com a gata ================= */
 const CHAT = {
   pet: [
@@ -1124,8 +1378,8 @@ const CHAT = {
   hi: ["E aí, {nome}! [[What's up?]] Me pergunta como se diz alguma coisa, ou pede uma palavra, piada ou teste.", "[[Hey there!]] Que bom te ver, {nome}. 😺"],
   thanks: ["[[You're welcome!]] De nada, {nome}. 😺", "[[No problem!]] Tamo junto."],
   unknown: [
-    "Essa eu não sei, {porra}. 😿 Tenta: \"como se diz cerveja\", \"o que é chill\", \"me testa\" ou \"piada\".",
-    "[[I have no idea]], {nome}. Sou gata, não dicionário. Tenta outra palavra ou pede uma dica.",
+    "Nem no meu dicionário de 60 mil palavras tem isso, {porra}. 😿 Confere a escrita ou tenta: \"como se diz cerveja\", \"o que é chill\".",
+    "[[I have no idea]], {nome}. Procurei no dicionário inteiro e nada. Tenta outra palavra ou pede uma dica.",
   ],
   jokes: [
     ["Why did the cat sit on the computer? [[To keep an eye on the mouse.]]", "**mouse** é rato e também o mouse do computador. 😹"],
@@ -1203,7 +1457,9 @@ function translate(q) {
   return best && best.score >= 0.5 ? best : null;
 }
 
+let falaId = 0; // muda a cada fala: respostas atrasadas do dicionário não atropelam uma conversa mais nova
 function chatSay(text, { you = "", extra = "", talk = true } = {}) {
+  falaId++;
   const t = fill(text);
   $("#homeSpeech").innerHTML = `<button class="replay" title="Ouvir de novo">🔊</button><div class="name">Brenda 🐈‍⬛</div>` +
     (you ? `<div class="you">Você: ${esc(you)}</div>` : "") + md(t) + extra;
@@ -1258,16 +1514,103 @@ function talkTo(raw) {
     const [en, pt] = pick(CHAT.swears);
     return chatSay(`Anota aí: [[${en}]] = **${pt}**. Só com os amigos, hein? Na entrevista {sefode}.`, { you });
   }
-  if (/\b(palavra|vocabulario|frase)\b/.test(t) && !/como|diz|significa/.test(t)) {
-    const c = pick(allCards().filter((c) => c.lvl === state.level)) || pick(allCards());
-    return chatSay(`Palavra do momento: [[${c.en}]] = **${c.pt}**.${c.ex ? ` Exemplo: [[${c.ex}]]` : ""}`, { you });
-  }
-  const q = t.replace(/\b(como (e que )?(se )?(diz|fala|falo|escreve|escrevo|pronuncia)|em ingles|traduz(ir|a)?|traducao de|o que (e|significa)|que significa|significa|brenda|pra mim|por favor)\b/g, " ");
+  if (/\b(palavra|vocabulario|frase)\b/.test(t) && !/como|diz|significa/.test(t)) return palavraDoMomento(you);
+  const q = chavePt(you).replace(/[^a-z0-9' -]+/g, " ")
+    .replace(/\b(como (e que )?(se )?(diz|fala|falo|escreve|escrevo|pronuncia)|em ingles|em portugues|traduz(ir|a)?|traducao de|o que (e|eh|significa)|que significa|significa|quer dizer|brenda|pra mim|por favor)\b/g, " ")
+    .replace(/\s+/g, " ").trim();
+  if (!q) return chatSay(pick(CHAT.unknown), { you });
+  // 1º o conteúdo do app (gírias, palavrões, frases prontas); depois o dicionário completo
   const r = translate(q);
-  if (!r) return chatSay(pick(CHAT.unknown), { you });
+  if (r && r.score >= 0.95) return responderPar(r, you);
+  responderComDicionario(you, q, r);
+}
+
+function responderPar(r, you) {
   return r.dir === "pt"
     ? chatSay(`Em inglês: [[${r.p.en}]] (**${r.p.pt}**)`, { you })
     : chatSay(`[[${r.p.en}]] quer dizer: **${r.p.pt}**`, { you });
+}
+const botaoDic = (w) => `<div class="row"><button class="chip" data-dic="${esc(w)}">📕 Ver no dicionário</button></div>`;
+const FAIXA_NIVEL = { A1: [0, 300], A2: [300, 800], B1: [800, 1500], B2: [1500, 2200], C1: [2200, 2700], C2: [2600, 3000] };
+
+async function palavraDoMomento(you) {
+  const minha = falaId;
+  try {
+    const b = await dadosBase();
+    if (falaId !== minha) return;
+    const [a, z] = FAIXA_NIVEL[state.level] || [0, 3000];
+    const [en, pt, exEn, exPt] = pick(b.top.slice(a, z));
+    chatSay(`Palavra do momento: [[${en}]] = **${pt}**.${exEn ? `\nExemplo: [[${exEn}]] (${exPt})` : ""}`, { you, extra: botaoDic(en) });
+  } catch {
+    const c = pick(allCards().filter((c) => c.lvl === state.level)) || pick(allCards());
+    chatSay(`Palavra do momento: [[${c.en}]] = **${c.pt}**.${c.ex ? ` Exemplo: [[${c.ex}]]` : ""}`, { you });
+  }
+}
+
+async function responderComDicionario(you, q, parecido) {
+  const querSignificado = /\b(o que (e|eh|significa)|que significa|significa|quer dizer|what is|what does|meaning)\b/.test(plain(you));
+  const varias = q.includes(" ");
+  chatSay("Deixa eu ver no dicionário… 📖", { you, talk: false });
+  const minha = falaId;
+  const say = (...args) => { if (falaId === minha) chatSay(...args); };
+  try {
+    const b = await dadosBase();
+    const { TOP_EN, TOP_PT } = mapasTop(b);
+    if (varias) {
+      const f = await fraseExata(q);
+      if (f) return f.lingua === "pt" ? say(`Em inglês: [[${f.en}]]`, { you }) : say(`[[${f.en}]] quer dizer: **${f.pt}**`, { you });
+    }
+    const r = await procurar(q);
+    if (r.en && (querSignificado || !r.pt)) {
+      const [exib, ipa, , sentidos] = r.en.e;
+      const pts = traducoesEn(r.en.e, TOP_EN[exib.toLowerCase()]);
+      const s1 = sentidos[0];
+      const de = r.en.de ? `**${r.en.de}** vem de [[${exib}]]. ` : "";
+      return say(`${de}[[${exib}]]${ipa ? ` /${ipa}/` : ""} = **${pts.slice(0, 4).join(", ") || "?"}**` +
+        (s1 ? `\n${CLASSE[s1[0]] || ""}: ${s1[1]}` : ""), { you, extra: botaoDic(exib) });
+    }
+    if (r.pt) {
+      const item = r.pt.lista[0];
+      const ens = traducoesPt(item, TOP_PT[chavePt(item[0])]);
+      const de = r.pt.de ? `**${r.pt.de}** vem de **${item[0]}**. ` : "";
+      return say(`${de}Em inglês: ${ens.slice(0, 4).map((w) => `[[${w}]]`).join(", ")}`, { you, extra: botaoDic(item[0]) });
+    }
+    if (varias) {
+      const lingua = querSignificado ? "en" : "pt";
+      const f = (await fraseParecida(q, lingua)) || (await fraseParecida(q, lingua === "pt" ? "en" : "pt"));
+      if (f) return say(`Não achei essa frase exata, mas olha uma parecida:\n[[${f.en}]] = **${f.pt}**`, { you });
+      return palavraPorPalavra(you, q, lingua, b, say);
+    }
+    if (parecido && parecido.score >= 0.5) return falaId === minha && responderPar(parecido, you);
+    say(pick(CHAT.unknown), { you });
+  } catch {
+    if (parecido && parecido.score >= 0.5) return falaId === minha && responderPar(parecido, you);
+    say("Não consegui abrir o dicionário completo (a pasta **dados** precisa estar junto do app). Tenta outra palavra.", { you });
+  }
+}
+
+async function palavraPorPalavra(you, q, lingua, b, say) {
+  const { TOP_EN, TOP_PT } = mapasTop(b);
+  const originais = limparBusca(you).toLowerCase().split(" ");
+  const mostrar = (w) => originais.find((o) => chavePt(o).replace(/[^a-z0-9'-]/g, "") === w) || w;
+  const partes = [];
+  const palavras = q.split(" ").slice(0, 10);
+  for (const [i, w] of palavras.entries()) {
+    let t = null;
+    if (lingua === "pt") {
+      // depois de "eu", "ela"... a palavra provavelmente é verbo: "eu gosto" -> gostar (like), não gosto (taste)
+      const depoisDeSujeito = i > 0 && /^(eu|voce|ele|ela|nos|eles|elas|tu|voces|gente)$/.test(palavras[i - 1]);
+      t = (depoisDeSujeito ? [...basesPt(w), w] : [w, ...basesPt(w)]).map((c) => TOP_PT[c]).find(Boolean);
+      if (!t) { const r = await procurar(w); if (r.pt) t = traducoesPt(r.pt.lista[0], null)[0]; }
+      partes.push(t ? `${mostrar(w)} → [[${t}]]` : `${mostrar(w)} → ?`);
+    } else {
+      const top = [w, ...basesEn(w, b.exc)].map((c) => TOP_EN[c]).find(Boolean);
+      t = top ? top.pt.split(" / ")[0] : null;
+      if (!t) { const r = await procurar(w); if (r.en) t = traducoesEn(r.en.e, null)[0]; }
+      partes.push(t ? `[[${w}]] → ${t}` : `[[${w}]] → ?`);
+    }
+  }
+  say(`Essa frase inteira eu não tenho. Palavra por palavra fica assim (tradução literal, pode soar estranho, {porra}):\n${partes.join(" · ")}`, { you });
 }
 
 $("#talkSend").addEventListener("click", () => { talkTo($("#talkInput").value); $("#talkInput").value = ""; });
@@ -1515,9 +1858,22 @@ function finishLesson() {
 /* ================= Cartões (repetição espaçada simples) ================= */
 let deck = [], cardIdx = 0, flipped = false;
 const allCards = () => [...STARTER_CARDS, ...state.myCards];
-function buildDeck() {
+async function buildDeck() {
   const f = $("#deckFilter").value;
-  deck = allCards().filter((c) => f === "all" || (f === "mine" ? c.id.startsWith("m") : c.lvl === f));
+  if (f.startsWith("top:")) {
+    const [, a, z] = f.split(":").map(Number);
+    try {
+      const b = await dadosBase();
+      deck = b.top.slice(a, z).map(([en, pt, ex, exPt], i) => ({ id: "t" + (a + i), en, pt, ex, exPt }));
+    } catch {
+      deck = [];
+      $("#fFront").textContent = "Não achei os dados do dicionário (pasta dados)";
+      return;
+    }
+    if ($("#deckFilter").value !== f) return;
+  } else {
+    deck = allCards().filter((c) => f === "all" || (f === "mine" ? c.id.startsWith("m") : c.lvl === f));
+  }
   // As que você mais erra aparecem primeiro
   deck = shuffle(deck).sort((a, b) => (state.box[a.id] ?? 0) - (state.box[b.id] ?? 0));
   cardIdx = 0; showCard();
@@ -1528,7 +1884,7 @@ function showCard() {
   $("#deckCount").textContent = deck.length ? `${cardIdx + 1}/${deck.length}` : "";
   $("#fFront").textContent = c ? c.en : "Nenhum cartão aqui ainda";
   $("#fBack").textContent = c?.pt ?? "";
-  $("#fEx").textContent = c?.ex ? `“${c.ex}”` : "";
+  $("#fEx").textContent = c?.ex ? `“${c.ex}”${c.exPt ? ` (${c.exPt})` : ""}` : "";
   $("#fBack").hidden = $("#fEx").hidden = true;
   $("#fHint").hidden = !c;
 }
@@ -1567,8 +1923,11 @@ $("#addCard").addEventListener("click", () => {
   $("#newEn").value = $("#newPt").value = "";
   renderMyCards(); buildDeck();
 });
-$("#deckFilter").innerHTML = `<option value="all">Todos</option><option value="mine">Meus</option>` +
-  LEVELS.map(([l]) => `<option value="${l}">${l}</option>`).join("");
+const FAIXAS_TOP = [[0, 100], [100, 300], [300, 600], [600, 1000], [1000, 1500], [1500, 2000], [2000, 2500], [2500, 3000]];
+$("#deckFilter").innerHTML = `<optgroup label="Cartões do app"><option value="all">Todos</option><option value="mine">Meus</option>` +
+  LEVELS.map(([l]) => `<option value="${l}">${l}</option>`).join("") + `</optgroup>` +
+  `<optgroup label="As 3.000 palavras mais usadas do inglês">` +
+  FAIXAS_TOP.map(([a, z]) => `<option value="top:${a}:${z}">🔥 ${a + 1}–${z}</option>`).join("") + `</optgroup>`;
 $("#deckFilter").addEventListener("change", buildDeck);
 
 /* ================= Frases ================= */
@@ -1584,11 +1943,199 @@ $("#phraseTabs").addEventListener("click", (e) => {
   phraseCat = b.dataset.cat; renderPhrases();
 });
 
+/* ================= Aba Dicionário ================= */
+const CLASSE = { n: "substantivo", v: "verbo", a: "adjetivo", s: "adjetivo", r: "advérbio" };
+const numero = (n) => n.toLocaleString("pt-BR");
+const fama = (r) => (!r ? "" : r <= 1000 ? "🔥 muito comum" : r <= 5000 ? "⭐ comum" : r <= 20000 ? "conhecida" : "pouco usada");
+const btnEn = (w) => `<button class="en" data-say="${esc(w)}" data-busca="${esc(w)}">${esc(w)}</button>`;
+const lnk = (w) => `<button class="lnk" data-busca="${esc(w)}">${esc(w)}</button>`;
+const erroDados = () => `<div class="dcard"><b>Não consegui abrir os dados do dicionário.</b>
+  <p class="muted">Eles ficam na pasta <code>dados</code>, junto do index.html. Se você baixou só o index.html, baixe o app completo (o ZIP) e abra de novo.</p></div>`;
+const itemFrase = (f) => `<button class="phrase" data-say="${esc(f.en)}"><span><b>${esc(f.en)}</b><br><span class="pt">${esc(f.pt)}</span></span><span>🔊</span></button>`;
+
+function traducoesEn(e, top) {
+  if (top) return [top.pt];
+  const pts = [];
+  const add = (w) => { if (w && !pts.some((x) => chavePt(x) === chavePt(w))) pts.push(w); };
+  e[4].forEach(([, t]) => t.forEach(add));
+  e[3].forEach((s) => s[4].slice(0, 2).forEach(add));
+  return pts;
+}
+function traducoesPt(item, topPt) {
+  const ens = [];
+  const add = (w) => { if (w && !ens.some((x) => x.toLowerCase() === w.toLowerCase())) ens.push(w); };
+  add(topPt);
+  item[3].forEach(add); item[4].forEach(add);
+  item[2].forEach((s) => s[1].slice(0, 2).forEach(add));
+  return ens;
+}
+
+function cartaoEn({ e, de }, outras, b) {
+  const [exib, ipa, r, sentidos, fd] = e;
+  const top = mapasTop(b).TOP_EN[exib.toLowerCase()];
+  const pts = traducoesEn(e, top);
+  const exemplo = sentidos.find((s) => s[2].length)?.[2][0] || "";
+  return `<div class="dcard">
+    <div class="dhead"><button class="en big" data-say="${esc(exib)}">${esc(exib)}</button>
+      ${ipa ? `<span class="ipa">/${esc(ipa)}/</span>` : ""}<span class="tag">🇺🇸 inglês</span>${r ? `<span class="tag">${fama(r)}</span>` : ""}</div>
+    ${de ? `<div class="muted">“${esc(de)}” é uma forma de <b>${esc(exib)}</b></div>` : ""}
+    ${outras.length ? `<div class="muted">Também pode ser forma de: ${outras.map(lnk).join(", ")}</div>` : ""}
+    ${pts.length ? `<div class="dmain">🇧🇷 ${esc(pts.slice(0, 6).join(", "))}</div>` : ""}
+    ${sentidos.length ? `<ol class="dsenses">${sentidos.map(([p, def, exs, syn, pt]) => `<li>
+      <span class="pos">${CLASSE[p] || ""}</span>${pt.length ? ` <b>${esc(pt.join(", "))}</b>` : ""}
+      <div class="def">${esc(def)}</div>
+      ${exs.map((x) => `<button class="ex" data-say="${esc(x)}">“${esc(x)}” 🔊</button>`).join("")}
+      ${syn.length ? `<div class="syn">Sinônimos: ${syn.map(lnk).join(", ")}</div>` : ""}</li>`).join("")}</ol>` : ""}
+    ${fd.length && !sentidos.some((s) => s[4].length) ? `<ol class="dsenses">${fd.map(([p, t]) =>
+      `<li><span class="pos">${CLASSE[p] || ""}</span> <b>${esc(t.join(", "))}</b></li>`).join("")}</ol>` : ""}
+    <div class="row"><button class="btn" data-salvar="${esc(JSON.stringify([exib, pts.slice(0, 3).join(", "), exemplo]))}">⭐ Salvar nos cartões</button></div>
+  </div>`;
+}
+
+function cartaoPt(item, de, outras, b) {
+  const [exib, r, sentidos] = item;
+  const ens = traducoesPt(item, mapasTop(b).TOP_PT[chavePt(exib)]);
+  return `<div class="dcard">
+    <div class="dhead"><span class="big">${esc(exib)}</span><span class="tag">🇧🇷 português</span>${r ? `<span class="tag">${fama(r)}</span>` : ""}</div>
+    ${de ? `<div class="muted">“${esc(de)}” é uma forma de <b>${esc(exib)}</b></div>` : ""}
+    ${outras.length ? `<div class="muted">Também pode ser forma de: ${outras.map(lnk).join(", ")}</div>` : ""}
+    ${ens.length ? `<div class="dmain">🇺🇸 ${ens.slice(0, 8).map(btnEn).join(" ")}</div>` : ""}
+    ${sentidos.length ? `<ol class="dsenses">${sentidos.map(([p, en, gl]) =>
+      `<li><span class="pos">${CLASSE[p] || ""}</span> ${en.map(btnEn).join(" ")}${gl ? `<div class="def">${esc(gl)}</div>` : ""}</li>`).join("")}</ol>` : ""}
+    <div class="row"><button class="btn" data-salvar="${esc(JSON.stringify([ens[0] || exib, exib, ""]))}">⭐ Salvar nos cartões</button></div>
+  </div>`;
+}
+
+let buscaId = 0;
+async function buscarNoDicionario(texto) {
+  texto = limparBusca(texto);
+  if (!texto) return inicioDicionario();
+  $("#dicInput").value = texto;
+  $("#dicSug").innerHTML = "";
+  const id = ++buscaId;
+  $("#dicOut").innerHTML = `<p class="muted">Procurando “${esc(texto)}”… 🔎</p>`;
+  try {
+    const b = await dadosBase();
+    const r = await procurar(texto);
+    if (id !== buscaId) return;
+    const rankEn = r.en ? r.en.e[2] || 1e6 : Infinity, rankPt = r.pt ? r.pt.lista[0][1] || 1e6 : Infinity;
+    // primeiro o que bate exato; empatou, o mais comum
+    const ptPrimeiro = !!r.pt && (!r.en || (!r.pt.de && !!r.en.de) || (!!r.pt.de === !!r.en.de && rankPt < rankEn));
+    const htmlEn = r.en ? cartaoEn(r.en, r.enOutras, b) : "";
+    const htmlPt = r.pt ? r.pt.lista.map((item, i) => cartaoPt(item, i ? "" : r.pt.de, i ? [] : r.ptOutras, b)).join("") : "";
+    const blocos = ptPrimeiro ? [htmlPt, htmlEn] : [htmlEn, htmlPt];
+    if (!r.en && !r.pt) blocos.push(`<div class="dcard"><b>Não achei “${esc(texto)}”.</b>
+      <p class="muted">Confere a escrita ou tenta outra forma da palavra. Para frases inteiras, use a aba 📖 Frases ou pergunte para a Brenda.</p></div>`);
+    const [exEn, exPt] = await Promise.all([r.en ? expressoes("en", r.en.chave) : [], r.pt ? expressoes("pt", r.pt.chave) : []]);
+    const exprs = ptPrimeiro ? [...exPt, ...exEn] : [...exEn, ...exPt];
+    if (exprs.length) blocos.push(`<div class="dcard"><b>Expressões com essa palavra</b>
+      <div class="chips" style="margin-top:8px">${exprs.map((w) => `<button class="chip" data-busca="${esc(w)}">${esc(w)}</button>`).join("")}</div></div>`);
+    blocos.push(`<div class="dcard" id="dicFrases"><b>Frases reais</b><p class="muted">Carregando frases…</p></div>`);
+    if (id !== buscaId) return;
+    $("#dicOut").innerHTML = blocos.join("");
+    guardarHistorico(texto);
+
+    const lingua = ptPrimeiro || (!r.en && !r.pt && chavePt(texto) !== chaveEn(texto)) ? "pt" : "en";
+    let lista = await frasesCom(texto, lingua, 8);
+    if (!lista.length && lingua === "en" && r.en) lista = await frasesCom(r.en.e[0], "en", 8);
+    if (!lista.length && lingua === "pt" && r.pt) lista = await frasesCom(r.pt.lista[0][0], "pt", 8);
+    if (!lista.length) lista = await frasesCom(texto, lingua === "pt" ? "en" : "pt", 8);
+    if (id !== buscaId || !$("#dicFrases")) return;
+    $("#dicFrases").innerHTML = `<b>Frases reais</b>` + (lista.length ? lista.map(itemFrase).join("") : `<p class="muted">Nenhuma frase com essa palavra.</p>`);
+  } catch {
+    if (id === buscaId) $("#dicOut").innerHTML = erroDados();
+  }
+}
+
+function guardarHistorico(t) {
+  const h = store.get("dicHist", []).filter((x) => x.toLowerCase() !== t.toLowerCase());
+  h.unshift(t);
+  store.set("dicHist", h.slice(0, 12));
+}
+
+async function inicioDicionario() {
+  const hist = store.get("dicHist", []);
+  let html = `<div class="dcard"><span class="big">📕 Dicionário completo</span>
+    <p>Digite uma palavra ou expressão em <b>inglês</b> ou <b>português</b>. Ele entende até formas como <i>went</i>, <i>dogs</i>, <i>falou</i> e <i>comendo</i>.</p>`;
+  try {
+    const b = await dadosBase();
+    html += `<p class="muted">${numero(b.total.en)} palavras e expressões em inglês · ${numero(b.total.pt)} em português · ${numero(b.total.frases)} frases reais</p></div>`;
+    let i = (Math.floor(Date.now() / 864e5) * 37) % b.top.length;
+    while (!b.top[i][2]) i = (i + 1) % b.top.length;
+    const [en, pt, exEn, exPt] = b.top[i];
+    html += `<div class="dcard"><b>Palavra do dia</b>
+      <div class="dhead" style="margin-top:6px"><button class="en big" data-say="${esc(en)}">${esc(en)}</button></div>
+      <div class="dmain">🇧🇷 ${esc(pt)}</div>
+      ${exEn ? `<button class="ex" data-say="${esc(exEn)}">“${esc(exEn)}” 🔊</button><div class="muted">${esc(exPt)}</div>` : ""}
+      <div class="row"><button class="btn" data-busca="${esc(en)}">Ver no dicionário</button></div></div>`;
+  } catch {
+    html += `</div>` + erroDados();
+  }
+  if (hist.length) html += `<div class="dcard"><b>Buscas recentes</b>
+    <div class="chips" style="margin-top:8px">${hist.map((h) => `<button class="chip" data-busca="${esc(h)}">${esc(h)}</button>`).join("")}</div></div>`;
+  if (!$("#dicInput").value.trim()) $("#dicOut").innerHTML = html;
+}
+
+$("#dicGo").addEventListener("click", () => buscarNoDicionario($("#dicInput").value));
+$("#dicInput").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarNoDicionario(e.target.value); });
+let sugTimer = 0;
+$("#dicInput").addEventListener("input", (e) => {
+  clearTimeout(sugTimer);
+  const v = e.target.value;
+  if (!v.trim()) { $("#dicSug").innerHTML = ""; inicioDicionario(); return; }
+  sugTimer = setTimeout(async () => {
+    try {
+      const s = await sugestoes(v);
+      if ($("#dicInput").value === v) $("#dicSug").innerHTML = s.map((w) => `<button class="chip" data-busca="${esc(w)}">${esc(w)}</button>`).join("");
+    } catch { /* sem dados: a busca mostra o aviso */ }
+  }, 180);
+});
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-busca], [data-dic]");
+  if (b) {
+    if (!$("#view-dic").classList.contains("active")) switchView("dic");
+    buscarNoDicionario(b.dataset.busca ?? b.dataset.dic);
+    window.scrollTo(0, 0);
+    $("#view-dic").scrollTop = 0;
+  }
+  const s = e.target.closest("[data-salvar]");
+  if (s) {
+    const [en, pt, ex] = JSON.parse(s.dataset.salvar);
+    if (!state.myCards.some((c) => c.en.toLowerCase() === en.toLowerCase())) {
+      state.myCards.push({ id: "m" + Date.now(), lvl: state.level, en, pt, ex: ex || "" });
+      store.set("myCards", state.myCards);
+      renderMyCards(); buildDeck();
+    }
+    s.textContent = "✅ Salvo nos cartões";
+    s.disabled = true;
+  }
+});
+
+/* ================= Busca nas frases reais (aba Frases) ================= */
+async function buscarFrases(texto) {
+  texto = limparBusca(texto);
+  if (!texto) { $("#fraseRes").innerHTML = ""; return; }
+  $("#fraseRes").innerHTML = `<p class="muted">Procurando…</p>`;
+  try {
+    const [a, c] = await Promise.all([frasesCom(texto, "en", 40), frasesCom(texto, "pt", 40)]);
+    const vistos = new Set();
+    const lista = [...a, ...c].filter((f) => !vistos.has(f.en) && vistos.add(f.en)).slice(0, 40);
+    $("#fraseRes").innerHTML = lista.length
+      ? `<p class="muted">${lista.length} frase(s) com “${esc(texto)}”:</p>` + lista.map(itemFrase).join("")
+      : `<p class="muted">Nenhuma frase com “${esc(texto)}”. Tenta uma palavra só.</p>`;
+  } catch {
+    $("#fraseRes").innerHTML = erroDados();
+  }
+}
+$("#fraseGo").addEventListener("click", () => buscarFrases($("#fraseBusca").value));
+$("#fraseBusca").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarFrases(e.target.value); });
+
 /* ================= Navegação e configurações ================= */
 function switchView(v) {
   stopSpeaking();
   document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
   document.querySelectorAll(".view").forEach((s) => s.classList.toggle("active", s.id === "view-" + v));
+  if (v === "dic" && !$("#dicOut").innerHTML) inicioDicionario();
 }
 document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
 

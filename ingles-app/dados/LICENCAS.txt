@@ -1,0 +1,29 @@
+Dados do dicionário do app Sem Frescura English
+Gerados por ferramentas/gerar_dicionario.py a partir destas fontes abertas.
+Os arquivos desta pasta são obras derivadas e seguem as licenças abaixo.
+
+1. WordNet 3.0 (definições, exemplos e sinônimos em inglês)
+   WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved.
+   Licença WordNet: https://wordnet.princeton.edu/license-and-commercial-use
+   THIS SOFTWARE AND DATABASE IS PROVIDED "AS IS" AND PRINCETON UNIVERSITY MAKES NO
+   REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED.
+
+2. OpenWN-PT, o WordNet em português (traduções inglês <-> português)
+   de Paiva, Valeria e Rademaker, Alexandre. "Revisiting a Brazilian WordNet", GWC 2012.
+   Distribuído pela Open Multilingual Wordnet (https://github.com/omwn/omw-data).
+   Licença: Creative Commons Atribuição-CompartilhaIgual 3.0 (CC BY-SA 3.0).
+
+3. FreeDict English-Portuguese e Portuguese-English (traduções e pronúncia IPA)
+   https://freedict.org | https://github.com/freedict/fd-dictionaries
+   Licença: GNU General Public License versão 2 ou posterior.
+
+4. Tatoeba (frases reais com tradução)
+   https://tatoeba.org, via Tatoeba Challenge (https://github.com/Helsinki-NLP/Tatoeba-Challenge).
+   Licença: Creative Commons Atribuição 2.0 França (CC BY 2.0 FR).
+
+5. FrequencyWords, de Hermit Dave (frequência das palavras em legendas do OpenSubtitles 2018)
+   https://github.com/hermitdave/FrequencyWords
+   Licença do conteúdo: Creative Commons Atribuição-CompartilhaIgual 4.0 (CC BY-SA 4.0).
+
+As traduções das 3.000 palavras mais usadas (ferramentas/traducoes_manuais.tsv) foram
+revisadas à mão para este app.
