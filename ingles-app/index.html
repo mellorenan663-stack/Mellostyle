@@ -238,6 +238,67 @@
   dialog h3 { margin-top: 0; }
   .warn { background: rgba(255,176,32,.1); border: 1px solid rgba(255,176,32,.4); border-radius: 10px; padding: 10px; font-size: 13px; }
 
+  /* Conversa ao vivo */
+  .vivo-btn { grid-column: 1 / -1; background: linear-gradient(135deg, #ff3d6e, #ff7a45); border: 0; color: #fff; }
+  .vivo-btn .muted { color: rgba(255,255,255,.88); }
+  #vivo {
+    position: fixed; inset: 0; z-index: 12; display: flex; flex-direction: column;
+    background: radial-gradient(120% 70% at 50% 30%, #2a1d2e 0%, var(--bg) 70%);
+  }
+  .vivo-top { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+  .vivo-top b { flex: 1; }
+  .vivo-placar { font-size: 14px; color: var(--muted); white-space: pre; }
+  .vivo-modos { flex-wrap: nowrap; overflow-x: auto; width: max-content; max-width: 100%; margin: 0 auto; padding: 0 16px 4px; }
+  .vivo-modos .chip { white-space: nowrap; }
+  .vivo-modos .chip.ativo { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .vivo-palco { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 4px 16px 8px; }
+  .vivo-palco > * { flex: none; }
+  .avatar.gigante { width: min(54vw, 30vh, 240px); height: min(54vw, 30vh, 240px); }
+  .vivo-veredito { min-height: 34px; font-size: 24px; font-weight: 900; letter-spacing: .02em; }
+  .vivo-veredito.certo { color: var(--ok); animation: pop .45s; }
+  .vivo-veredito.quase { color: var(--accent-2); animation: pop .45s; }
+  .vivo-veredito.errado { color: var(--bad); animation: tremor .45s; }
+  .vivo-veredito.neutro { animation: pop .45s; }
+  @keyframes pop { 0% { transform: scale(.3); opacity: 0; } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+  @keyframes tremor { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+  .vivo-fala { width: 100%; max-width: 560px; min-height: 0; text-align: center; font-size: 16px; }
+  .vivo-fala::before { left: calc(50% - 7px); top: -8px; border-bottom: 0; border-top: 1px solid var(--line); }
+  .vivo-voce { min-height: 22px; max-width: 560px; text-align: center; overflow-wrap: anywhere; }
+  .vivo-voce.parcial { color: var(--muted); font-style: italic; }
+  .vivo-controles { display: flex; align-items: center; justify-content: center; gap: 22px; padding: 6px 16px 0; }
+  .redondo { width: 54px; height: 54px; border-radius: 50%; padding: 0; font-size: 20px; }
+  .mic-grande {
+    width: 84px; height: 84px; border-radius: 50%; border: 0; font-size: 34px;
+    background: var(--accent); color: #fff; box-shadow: 0 8px 24px rgba(255,61,110,.35); transition: background .2s;
+  }
+  .mic-grande.ouvindo { background: var(--ok); animation: ouvindo 1.2s infinite; }
+  .mic-grande.falando { opacity: .75; }
+  .mic-grande.pausado { background: var(--panel-2); box-shadow: none; border: 2px solid var(--line); }
+  @keyframes ouvindo { from { box-shadow: 0 0 0 0 rgba(46,204,143,.6); } to { box-shadow: 0 0 0 22px rgba(46,204,143,0); } }
+  .vivo-dica { text-align: center; margin: 8px 16px 0; min-height: 20px; }
+  .vivo-digitar { width: 100%; max-width: 760px; margin: 0 auto; padding: 8px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .avatar.ouvindo svg { animation: escuta 1.4s ease-in-out infinite alternate; }
+  .avatar.ouvindo .ear { animation: none; transform: scaleY(1.15); }
+  @keyframes escuta { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+
+  /* Brenda flutuando nas outras telas */
+  .view { padding-bottom: 104px; }
+  .mascote {
+    position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 9;
+    width: 78px; height: 78px; padding: 0; border: 0; background: none;
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,.55)); animation: flutua 3s ease-in-out infinite;
+  }
+  .mascote .avatar { display: block; width: 78px; height: 78px; }
+  .mascote-mic {
+    position: absolute; right: -4px; bottom: -2px; width: 30px; height: 30px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 15px; background: var(--accent); box-shadow: 0 0 0 3px var(--bg);
+  }
+  .mascote-balao {
+    position: absolute; right: 88px; bottom: 24px; white-space: nowrap; font-size: 13px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; animation: pop .4s;
+  }
+  @keyframes flutua { 50% { transform: translateY(-6px); } }
+
   @media (max-width: 560px) {
     .stats .hide-sm { display: none; }
     .avatar { width: 92px; height: 92px; }
@@ -284,6 +345,7 @@
       <button class="chip" data-talk="carinho">🐾 Carinho</button>
     </div>
     <div class="big-actions">
+      <button class="btn vivo-btn" id="vivoBtn"><b>🎙️ Conversa ao vivo</b><span class="muted">Fala com a Brenda: ela te escuta e diz na hora se tá certo ou errado</span></button>
       <button class="btn primary" id="continueBtn"><b>▶ Continuar</b><span id="nextName"></span></button>
       <button class="btn" id="reviewBtn"><b>⚡ Treino rápido</b><span class="muted">10 exercícios misturados</span></button>
     </div>
@@ -355,6 +417,42 @@
   <div class="lesson-foot"><div class="wrap"><button class="btn primary" id="lessonNext">Continuar</button></div></div>
 </section>
 
+<section id="vivo" hidden>
+  <div class="vivo-top">
+    <button class="icon-btn" id="vivoFechar" title="Sair">✕</button>
+    <b>🎙️ Conversa ao vivo</b>
+    <span class="vivo-placar" id="vivoPlacar"></span>
+  </div>
+  <div class="chips vivo-modos" id="vivoModos">
+    <button class="chip" data-modo="papo" title="Ela pergunta, você responde">💬 Papo</button>
+    <button class="chip" data-modo="repete" title="Ela fala uma frase e você repete">🔁 Repete</button>
+    <button class="chip" data-modo="traduz" title="Ela fala em português e você diz em inglês">🔄 Traduz</button>
+    <button class="chip" data-modo="imita" title="Igual ao Talking Tom: ela imita o que você fala">😹 Imita</button>
+  </div>
+  <div class="vivo-palco">
+    <div class="vivo-veredito" id="vivoVeredito" aria-live="polite"></div>
+    <div class="avatar gigante" id="vivoGata" data-avatar></div>
+    <div class="speech vivo-fala" id="vivoBrenda" aria-live="polite"></div>
+    <div class="vivo-voce" id="vivoVoce"></div>
+  </div>
+  <div class="vivo-controles">
+    <button class="btn redondo" id="vivoRepetir" title="Ouvir de novo">🔊</button>
+    <button class="mic-grande" id="vivoMic" title="Falar agora">🎤</button>
+    <button class="btn redondo" id="vivoPular" title="Próxima">⏭️</button>
+  </div>
+  <p class="muted vivo-dica" id="vivoDica"></p>
+  <div class="talk-row vivo-digitar">
+    <input id="vivoTexto" placeholder="Ou digite sua resposta em inglês…" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="btn primary" id="vivoEnviar" title="Enviar">➤</button>
+  </div>
+</section>
+
+<button id="mascote" class="mascote" hidden title="Conversar com a Brenda" aria-label="Conversar com a Brenda">
+  <span class="mascote-balao" id="mascoteBalao" hidden>Bora conversar? 🎙️</span>
+  <span class="avatar" data-avatar></span>
+  <span class="mascote-mic">🎙️</span>
+</button>
+
 <dialog id="settings">
   <h3>⚙️ Configurações</h3>
   <div class="field"><label>Seu nome</label><input id="sName" placeholder="Como a Brenda vai te chamar"></div>
@@ -393,6 +491,24 @@
       <option value="1.05">🐇 Rápido (nativo)</option>
     </select>
   </div>
+  <div class="field">
+    <label>Voz em português</label>
+    <select id="sVozPt"></select>
+  </div>
+  <div class="field">
+    <label>Voz em inglês</label>
+    <select id="sVozEn"></select>
+  </div>
+  <div class="field">
+    <label>Jeito da voz</label>
+    <select id="sTom">
+      <option value="1">Natural</option>
+      <option value="1.12">Fofa (um pouco mais aguda)</option>
+      <option value="1.3">Gatinha (bem aguda)</option>
+    </select>
+  </div>
+  <div class="row" style="margin:0 0 12px"><button class="btn" id="testarVoz" type="button">🔊 Testar voz</button></div>
+  <p class="muted" id="dicaVoz" style="margin-top:0"></p>
   <div class="warn">⚠️ No modo "sem filtro" a Brenda fala palavrão (sem ofensa preconceituosa). Conteúdo para maiores de idade.</div>
   <details class="creditos">
     <summary>📜 Créditos e licenças do dicionário</summary>
@@ -1030,6 +1146,9 @@ const state = {
   vibe: store.get("vibe", "sem-filtro"),
   voice: store.get("voice", "tudo"),
   rate: store.get("rate", "0.9"),
+  vozPt: store.get("vozPt", ""),
+  vozEn: store.get("vozEn", ""),
+  tom: store.get("tom", "1"),
   xp: store.get("xp", 0),
   streak: store.get("streak", { days: 0, last: null }),
   done: store.get("done", []),
@@ -1068,39 +1187,96 @@ function norm(s) {
 
 /* ================= Voz ================= */
 let speakGen = 0;
+let fimDaFala = null; // encerra a fala anterior quando outra começa ou quando manda parar
+const falasVivas = []; // guarda as falas em andamento: o Chrome perde o "terminou" se o objeto some da memória
+
+// Nota da voz: vozes neurais/naturais primeiro, robóticas por último
+function notaVoz(v, lang) {
+  const code = v.lang.replace("_", "-").toLowerCase(), nome = v.name.toLowerCase();
+  let n;
+  if (lang === "en") n = code === "en-us" ? 30 : code.startsWith("en") ? 18 : -999;
+  else n = code === "pt-br" ? 30 : code.startsWith("pt") ? 12 : -999;
+  if (/natural|neural|online|network/.test(nome)) n += 60;               // Edge e Android: vozes neurais
+  if (/premium|enhanced|aprimorad|melhorad|siri/.test(nome)) n += 50;    // iPhone/Mac com voz baixada
+  if (/google/.test(nome)) n += 35;                                       // Chrome
+  if (/espeak|robot|desktop|compact|novelty|zarvox|albert|bells|boing|bubbles|cellos|trinoids|organ|whisper|hysterical|bahh|jester|superstar|wobble|good news|bad news/.test(nome)) n -= 80;
+  if (/francisca|thalita|luciana|fernanda|vit[oó]ria|camila|helena|joana|leila|aria|jenny|ava|samantha|allison|susan|zira|emma|michelle|female|feminin/.test(nome)) n += 8;
+  return n;
+}
+function vozesDe(lang) {
+  if (!("speechSynthesis" in window)) return [];
+  return speechSynthesis.getVoices().map((v) => [notaVoz(v, lang), v]).filter(([n]) => n > -500)
+    .sort((a, b) => b[0] - a[0]).map(([, v]) => v);
+}
 function voiceFor(lang) {
-  const vs = speechSynthesis.getVoices();
-  const pref = lang === "en" ? /Google US|Samantha|Natural|Aria|Jenny/i : /Google|Luciana|Natural|Francisca/i;
-  const code = lang === "en" ? "en-US" : "pt-BR";
-  return vs.find((v) => v.lang.replace("_", "-") === code && pref.test(v.name))
-    || vs.find((v) => v.lang.replace("_", "-") === code)
-    || vs.find((v) => v.lang.startsWith(lang));
+  const escolhida = lang === "en" ? state.vozEn : state.vozPt;
+  const lista = vozesDe(lang);
+  return (escolhida && lista.find((v) => v.voiceURI === escolhida)) || lista[0] || null;
 }
 function setTalking(on) { document.querySelectorAll("[data-avatar]").forEach((a) => a.classList.toggle("talking", on)); }
 
-// Fala um texto com [[inglês]] misturado: PT com voz brasileira, EN com voz americana
-function speak(text, mode = state.voice) {
-  if (!("speechSynthesis" in window) || mode === "off") return;
-  speechSynthesis.cancel();
+// Texto com cara de fala: sem emoji, setas e barras, que as vozes leem de jeito robótico
+function textoFalado(t, en) {
+  t = t.replace(/\*\*/g, "").replace(/\p{Extended_Pictographic}|\uFE0F/gu, "").replace(/[“”"]/g, "");
+  if (!en) t = t.replace(/\s*(→|->)\s*/g, ", ").replace(/\s*≈\s*/g, ", parecido com ").replace(/\s+\/\s+/g, " ou ").replace(/\s·\s/g, ", ");
+  return t.replace(/\s+/g, " ").trim();
+}
+
+// Fala um texto com [[inglês]] misturado: PT com voz brasileira, EN com voz americana.
+// Devolve uma Promise que termina quando ela para de falar.
+function speak(text, mode = state.voice, { tom = Number(state.tom) || 1, velocidade = null } = {}) {
   const gen = ++speakGen;
-  const clean = text.replace(/\*\*/g, "").replace(/\p{Extended_Pictographic}/gu, "");
-  const parts = clean.split(/\[\[(.+?)\]\]/).map((t, i) => ({ t: t.trim(), en: i % 2 === 1 }))
-    .filter((p) => p.t && /[\p{L}\d]/u.test(p.t) && (mode === "tudo" || p.en));
-  if (!parts.length) return;
-  parts.forEach((p, i) => {
-    const u = new SpeechSynthesisUtterance(p.t);
-    u.lang = p.en ? "en-US" : "pt-BR";
-    u.rate = p.en ? Number(state.rate) : 1.05;
-    const v = voiceFor(p.en ? "en" : "pt");
-    if (v) u.voice = v;
-    if (i === 0) u.onstart = () => gen === speakGen && setTalking(true);
-    if (i === parts.length - 1) u.onend = u.onerror = () => gen === speakGen && setTalking(false);
-    speechSynthesis.speak(u);
+  if (fimDaFala) fimDaFala();
+  const partes = [];
+  String(text).split(/\[\[(.+?)\]\]/).forEach((t, i) => {
+    const en = i % 2 === 1;
+    if (!en && mode !== "tudo") return;
+    // frase por frase soa mais natural (e o Chrome não corta falas longas no meio)
+    for (const pedaco of en ? [t] : t.replace(/([.!?…:;])\s+/g, "$1\n").split("\n")) {
+      const f = textoFalado(pedaco, en);
+      if (f && /[\p{L}\d]/u.test(f)) partes.push({ t: f, en });
+    }
+  });
+  if (!("speechSynthesis" in window) || mode === "off" || !partes.length) {
+    return new Promise((ok) => setTimeout(ok, mode === "off" && partes.length ? Math.min(2500, 300 + String(text).length * 25) : 0));
+  }
+  speechSynthesis.cancel();
+  falasVivas.length = 0;
+  return new Promise((ok) => {
+    let acabou = false;
+    const fim = () => {
+      if (acabou) return;
+      acabou = true;
+      clearTimeout(seguranca);
+      if (fimDaFala === fim) fimDaFala = null;
+      if (gen === speakGen) setTalking(false);
+      ok();
+    };
+    fimDaFala = fim;
+    const seguranca = setTimeout(fim, 4000 + partes.reduce((n, p) => n + p.t.length, 0) * 110);
+    partes.forEach((p, i) => {
+      const u = new SpeechSynthesisUtterance(p.t);
+      u.lang = p.en ? "en-US" : "pt-BR";
+      u.rate = velocidade ?? (p.en ? Number(state.rate) : 1);
+      u.pitch = tom;
+      const v = voiceFor(p.en ? "en" : "pt");
+      if (v) u.voice = v;
+      if (i === 0) u.onstart = () => gen === speakGen && setTalking(true);
+      if (i === partes.length - 1) u.onend = fim;
+      u.onerror = () => { if (i === partes.length - 1 || gen !== speakGen) fim(); };
+      falasVivas.push(u);
+      speechSynthesis.speak(u);
+    });
   });
 }
 const sayEn = (en) => speak(`[[${en}]]`, "ingles");
-function stopSpeaking() { speakGen++; if ("speechSynthesis" in window) speechSynthesis.cancel(); setTalking(false); }
-if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => {};
+function stopSpeaking() {
+  speakGen++;
+  if (fimDaFala) fimDaFala();
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  setTalking(false);
+}
+if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => { if ($("#settings").open) preencherVozes(); };
 
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-say]");
@@ -1619,7 +1795,7 @@ document.addEventListener("click", (e) => {
   const c = e.target.closest("[data-talk]");
   if (c) talkTo(c.dataset.talk);
 });
-document.querySelectorAll("[data-avatar]").forEach((av) => av.addEventListener("click", () => petCat(av)));
+document.querySelectorAll("[data-avatar]").forEach((av) => { if (!av.closest("#mascote")) av.addEventListener("click", (ev) => tocarGata(av, ev)); });
 
 // Os olhos seguem o mouse/dedo
 let eyeFrame = 0;
@@ -1641,7 +1817,7 @@ document.addEventListener("pointermove", (e) => {
 let lastActive = Date.now(), nudged = false;
 ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => { lastActive = Date.now(); nudged = false; }));
 setInterval(() => {
-  const home = $("#view-home").classList.contains("active") && $("#lesson").hidden && !$("#settings").open;
+  const home = $("#view-home").classList.contains("active") && $("#lesson").hidden && $("#vivo").hidden && !$("#settings").open;
   if (home && !nudged && Date.now() - lastActive > 45000 && !document.hidden) {
     nudged = true; mood("angry"); chatSay(pick(CHAT.idle));
   }
@@ -1680,6 +1856,7 @@ function startReview() {
 function openLesson() {
   $("#lesson").hidden = false;
   document.body.style.overflow = "hidden";
+  atualizarMascote();
   renderStep();
 }
 function closeLesson() {
@@ -1688,6 +1865,7 @@ function closeLesson() {
   document.body.style.overflow = "";
   L = null;
   renderHome(false); renderTrilha();
+  atualizarMascote();
 }
 $("#lessonClose").addEventListener("click", () => {
   if (!L || L.finished || confirm("Sair da aula? O progresso dela não é salvo.")) closeLesson();
@@ -2130,25 +2308,794 @@ async function buscarFrases(texto) {
 $("#fraseGo").addEventListener("click", () => buscarFrases($("#fraseBusca").value));
 $("#fraseBusca").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarFrases(e.target.value); });
 
+/* ================= Conversa ao vivo (estilo Talking Tom) ================= */
+const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const nivelIdx = (l) => LEVELS.findIndex(([x]) => x === l);
+const pausa = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+// Ela diz na hora se tá certo ou errado
+const VEREDITO = {
+  "sem-filtro": {
+    certo: ["Correto, porra!", "Tá certo, caralho!", "Correto! Mandou bem pra caralho!", "Isso, porra! Correto!"],
+    agora: ["Agora sim, porra!", "Aí sim, caralho! Agora tá certo!"],
+    quase: ["Quase, porra!", "Quase lá, caralho!"],
+    errado: ["Errado, porra!", "Tá errado, caralho!", "Errado! Mas relaxa, acontece."],
+  },
+  debochada: {
+    certo: ["Correto!", "Tá certo! Olha só!", "Correto! Nem parece você. 😏"],
+    agora: ["Agora sim!", "Agora foi!"],
+    quase: ["Quase!", "Quase lá, hein?"],
+    errado: ["Errado!", "Errou feio, errou rude!", "Tá errado, hein?"],
+  },
+  educada: {
+    certo: ["Correto! 👏", "Está correto! Muito bem!", "Correto, {nome}!"],
+    agora: ["Agora sim! Muito bem!", "Agora está certo!"],
+    quase: ["Quase!", "Quase lá!"],
+    errado: ["Está errado.", "Errado, mas tudo bem!", "Não está certo. Vamos corrigir."],
+  },
+};
+
+// Perguntas do papo: [nível, pergunta, tradução, o que a resposta precisa ter, modelo (___ = o que a pessoa disse), exemplo]
+const PAPO = [
+  ["A1", "What's your name?", "Qual é o seu nome?", "nome", "My name is ___.", "My name is Ana."],
+  ["A1", "How old are you?", "Quantos anos você tem?", "num", "I'm ___ years old.", "I'm 25 years old."],
+  ["A1", "Where are you from?", "De onde você é?", "from", "I'm from ___.", "I'm from Brazil."],
+  ["A1", "Where do you live?", "Onde você mora?", "live", "I live in ___.", "I live in São Paulo."],
+  ["A1", "How are you today?", "Como você está hoje?", "estado", "I'm ___, thanks!", "I'm good, thanks!"],
+  ["A1", "What's your favorite color?", "Qual é a sua cor favorita?", "livre", "My favorite color is ___.", "My favorite color is blue."],
+  ["A1", "What's your favorite food?", "Qual é a sua comida favorita?", "livre", "My favorite food is ___.", "My favorite food is pizza."],
+  ["A1", "Do you have any brothers or sisters?", "Você tem irmãos ou irmãs?", "sim-nao", "", "Yes, I have one brother."],
+  ["A1", "Do you like pizza?", "Você gosta de pizza?", "sim-nao", "", "Yes, I do. I love pizza!"],
+  ["A1", "Do you have a pet?", "Você tem um bicho de estimação?", "sim-nao", "", "Yes, I have a dog."],
+  ["A1", "What do you do?", "O que você faz? (profissão)", "trabalho", "I'm a ___.", "I'm a student."],
+  ["A1", "Can you cook?", "Você sabe cozinhar?", "sim-nao", "", "Yes, I can."],
+  ["A1", "Are you hungry?", "Você está com fome?", "sim-nao", "", "Yes, I am. I'm starving!"],
+  ["A1", "What time do you wake up?", "Que horas você acorda?", "hora", "I wake up at ___.", "I wake up at seven."],
+  ["A1", "What's the weather like today?", "Como está o tempo hoje?", "tempo", "It's ___ today.", "It's sunny today."],
+  ["A1", "What's your favorite day of the week?", "Qual é o seu dia favorito da semana?", "livre", "My favorite day is ___.", "My favorite day is Friday."],
+  ["A1", "Do you speak Spanish?", "Você fala espanhol?", "sim-nao", "", "Just a little."],
+  ["A1", "Are you a student?", "Você é estudante?", "sim-nao", "", "Yes, I am."],
+  ["A2", "What did you do yesterday?", "O que você fez ontem?", "passado", "", "I worked and watched TV."],
+  ["A2", "What did you eat for breakfast?", "O que você comeu no café da manhã?", "passado", "I ate ___.", "I ate bread and drank coffee."],
+  ["A2", "Where did you go last weekend?", "Aonde você foi no último fim de semana?", "passado", "I went to ___.", "I went to the beach."],
+  ["A2", "What are you doing right now?", "O que você está fazendo agora?", "ing", "", "I'm studying English."],
+  ["A2", "What are you going to do tomorrow?", "O que você vai fazer amanhã?", "futuro", "", "I'm going to work."],
+  ["A2", "What do you usually do on weekends?", "O que você costuma fazer nos fins de semana?", "frase", "", "I usually relax and watch movies."],
+  ["A2", "How often do you exercise?", "Com que frequência você faz exercício?", "frequencia", "", "I exercise three times a week."],
+  ["A2", "What's your favorite movie?", "Qual é o seu filme favorito?", "livre", "My favorite movie is ___.", "My favorite movie is Titanic."],
+  ["A2", "Why are you learning English?", "Por que você está aprendendo inglês?", "porque", "", "Because I want to travel."],
+  ["A2", "What kind of music do you like?", "Que tipo de música você curte?", "livre", "I like ___.", "I like rock and funk."],
+  ["A2", "How do you go to work or school?", "Como você vai pro trabalho ou pra escola?", "transporte", "I go by ___.", "I go by bus."],
+  ["A2", "What did you do last night?", "O que você fez ontem à noite?", "passado", "", "I watched a series and went to bed."],
+  ["A2", "Who is your best friend?", "Quem é seu melhor amigo?", "livre", "My best friend is ___.", "My best friend is Ana."],
+  ["A2", "What's the best food in Brazil?", "Qual é a melhor comida do Brasil?", "livre", "The best food is ___.", "Feijoada is the best!"],
+  ["B1", "Have you ever been to another country?", "Você já foi pra outro país?", "perfect", "", "Yes, I have. I've been to Argentina."],
+  ["B1", "What would you do if you won the lottery?", "O que você faria se ganhasse na loteria?", "would", "", "I would travel around the world."],
+  ["B1", "How long have you lived in your city?", "Há quanto tempo você mora na sua cidade?", "duracao", "", "I've lived here for ten years."],
+  ["B1", "What will you do next year?", "O que você vai fazer ano que vem?", "futuro", "", "I'll travel to Europe."],
+  ["B1", "What were you doing yesterday at eight pm?", "O que você estava fazendo ontem às oito da noite?", "passado-cont", "", "I was watching TV."],
+  ["B1", "What's something you've never done?", "O que é algo que você nunca fez?", "nunca", "", "I've never been to Japan."],
+  ["B1", "Tell me about your best friend.", "Me fala do seu melhor amigo.", "frase", "", "My best friend is funny and loyal."],
+  ["B1", "What's your dream job?", "Qual é o emprego dos seus sonhos?", "livre", "My dream job is ___.", "My dream job is to be a pilot."],
+  ["B1", "What do you think about social media?", "O que você acha das redes sociais?", "opiniao", "", "I think it's useful, but addictive."],
+  ["B1", "If you could live anywhere, where would you live?", "Se pudesse morar em qualquer lugar, onde moraria?", "would", "I would live in ___.", "I would live in Canada."],
+  ["B1", "Have you ever eaten sushi?", "Você já comeu sushi?", "perfect", "", "Yes, I have. I love it!"],
+  ["B1", "How long have you been studying English?", "Há quanto tempo você estuda inglês?", "duracao", "", "I've been studying English for two years."],
+  ["B2", "If you could change one thing about the world, what would it be?", "Se pudesse mudar uma coisa no mundo, o que seria?", "would", "", "I would end hunger."],
+  ["B2", "What should you have done differently last year?", "O que você deveria ter feito diferente ano passado?", "should-have", "", "I should have saved more money."],
+  ["B2", "Describe your perfect day.", "Descreva seu dia perfeito.", "longa", "", "My perfect day starts with a long breakfast at the beach."],
+  ["B2", "Do you think money can buy happiness?", "Você acha que dinheiro compra felicidade?", "opiniao", "", "I don't think so, but it helps."],
+  ["B2", "What's the most embarrassing thing that ever happened to you?", "Qual foi a coisa mais vergonhosa que já te aconteceu?", "passado", "", "I fell in front of my whole class."],
+  ["B2", "What's the worst job you've ever had?", "Qual foi o pior emprego que você já teve?", "frase", "", "The worst job I've ever had was in a call center."],
+  ["C1", "What would you have done if you had been born in another country?", "O que você teria feito se tivesse nascido em outro país?", "would-have", "", "I would have learned English much earlier."],
+  ["C1", "Tell me about something you're proud of.", "Me fala de algo de que você se orgulha.", "longa", "", "I'm proud of finishing college while working."],
+  ["C1", "What's a bad habit you'd like to break?", "Qual mau hábito você gostaria de largar?", "frase", "", "I'd like to stop checking my phone all the time."],
+  ["C1", "Convince me to visit Brazil.", "Me convença a visitar o Brasil.", "longa", "", "You should visit Brazil because the beaches are amazing and the people are super friendly."],
+  ["C2", "What's the biggest lie you've ever told?", "Qual foi a maior mentira que você já contou?", "longa", "", "I once told my boss I was sick to go to a concert."],
+  ["C2", "If you were the president for one day, what would you do?", "Se você fosse presidente por um dia, o que faria?", "would", "", "I would invest everything in education."],
+].map(([lvl, q, pt, tipo, modelo, exemplo]) => ({ lvl, q, pt, tipo, modelo, exemplo }));
+
+/* ----- Texto falado: limpeza e verbos ----- */
+const CONTRACAO_SEM_APOSTROFO = { im: "I'm", dont: "don't", doesnt: "doesn't", didnt: "didn't", isnt: "isn't", arent: "aren't", wasnt: "wasn't",
+  werent: "weren't", cant: "can't", wont: "won't", ive: "I've", youre: "you're", theyre: "they're", thats: "that's", whats: "what's" };
+// Limpa o que a pessoa falou ou digitou sem perder maiúsculas e acentos: "im   from São Paulo!!" -> "I'm from São Paulo"
+const limparFala = (s) => String(s).replace(/[’‘`´]/g, "'").replace(/[^\p{L}\d' -]/gu, " ").replace(/\s+/g, " ").trim()
+  .replace(/\b(im|dont|doesnt|didnt|isnt|arent|wasnt|werent|cant|wont|ive|youre|theyre|thats|whats)\b/gi, (w) => CONTRACAO_SEM_APOSTROFO[w.toLowerCase()]);
+const chaveFala = (s) => ` ${limparFala(s).toLowerCase()} `;
+const capitalizar = (s) => { s = s.replace(/\bi\b/g, "I"); return s && s[0].toUpperCase() + s.slice(1); };
+// Vira frase: maiúscula no começo e ponto (ou interrogação) no fim
+function frase(t) {
+  t = capitalizar(String(t).replace(/[’‘`´]/g, "'").replace(/[^\p{L}\d',.?! -]/gu, " ").replace(/\s+/g, " ").trim().replace(/[\s,]+$/, ""));
+  if (!t || /[.!?]$/.test(t)) return t;
+  return t + (/^(where|what|why|when|how|who|which|do|does|did|are|is|am|was|were|can|could|would|will|have|has|should)\b/i.test(t) ? "?" : ".");
+}
+
+const NUM_EN = "(?:\\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
+const PASSADO_DE = { go: "went", eat: "ate", have: "had", see: "saw", do: "did", make: "made", take: "took", get: "got", come: "came", give: "gave",
+  say: "said", tell: "told", buy: "bought", think: "thought", know: "knew", leave: "left", find: "found", sleep: "slept", drink: "drank", drive: "drove",
+  run: "ran", write: "wrote", meet: "met", feel: "felt", keep: "kept", pay: "paid", send: "sent", spend: "spent", win: "won", lose: "lost",
+  hear: "heard", fall: "fell", sit: "sat", stand: "stood", wake: "woke", wear: "wore", sing: "sang", swim: "swam", fly: "flew", forget: "forgot",
+  break: "broke", choose: "chose", catch: "caught", teach: "taught", bring: "brought", fight: "fought", sell: "sold", understand: "understood",
+  become: "became", begin: "began", build: "built", throw: "threw", grow: "grew", ride: "rode", speak: "spoke", steal: "stole", hide: "hid" };
+const BASE_DE = Object.fromEntries(Object.entries(PASSADO_DE).map(([b, p]) => [p, b]));
+const PARTICIPIO = { ate: "eaten", went: "been", saw: "seen", did: "done", wrote: "written", took: "taken", gave: "given", drank: "drunk", ran: "run",
+  spoke: "spoken", broke: "broken", chose: "chosen", forgot: "forgotten", drove: "driven", rode: "ridden", swam: "swum", sang: "sung", began: "begun",
+  flew: "flown", grew: "grown", knew: "known", fell: "fallen", stole: "stolen", woke: "woken", wore: "worn", threw: "thrown", hid: "hidden", came: "come", became: "become" };
+const TERMINA_EM_E = new Set(("like love use live hate dance close move change smile arrive decide hope believe practice prepare share care save invite " +
+  "die lie agree bake create date describe escape face force hire joke judge manage notice place produce promise receive refuse remove replace " +
+  "retire serve solve suppose taste type vote wave").split(" "));
+const VERBOS_COMUNS = "like|love|want|need|go|live|work|study|think|know|eat|drink|play|watch|say|make|come|speak|talk|feel|look|run|read|write|drive|sleep|cook|teach|use|get|take|give|have|do|hate|buy|see";
+const VERBOS_CONHECIDOS = new Set([...Object.keys(PASSADO_DE), ...VERBOS_COMUNS.split("|"), ...TERMINA_EM_E,
+  ..."work play watch study visit stay walk talk cook clean call help start finish open travel wait want need ask answer listen relax rest learn try cry enjoy read cut put".split(" ")]);
+function passadoDe(v) {
+  if (PASSADO_DE[v]) return PASSADO_DE[v];
+  if (BASE_DE[v] || /ed$/.test(v)) return v;
+  if (/e$/.test(v)) return v + "d";
+  if (/[^aeiou]y$/.test(v)) return v.slice(0, -1) + "ied";
+  if (/^(stop|plan|shop|drop|hug|chat|prefer|travel)$/.test(v)) return v + v.slice(-1) + "ed";
+  return v + "ed";
+}
+function baseDoPassado(v) {
+  if (BASE_DE[v]) return BASE_DE[v];
+  if (/ied$/.test(v)) return v.slice(0, -3) + "y";
+  if (TERMINA_EM_E.has(v.slice(0, -1))) return v.slice(0, -1);
+  if (/([bdgklmnprt])\1ed$/.test(v)) return v.slice(0, -3);
+  return v.replace(/ed$/, "");
+}
+function gerundio(v) {
+  if (/ing$/.test(v)) return v;
+  if (/ie$/.test(v)) return v.slice(0, -2) + "ying";
+  if (/[^e]e$/.test(v) && v !== "be") return v.slice(0, -1) + "ing";
+  if (/^(run|swim|sit|get|stop|put|shop|plan|cut|begin|forget|hit|win|chat|drop)$/.test(v)) return v + v.slice(-1) + "ing";
+  return v + "ing";
+}
+function terceiraPessoa(v) {
+  if (v === "have") return "has";
+  if (v === "do" || v === "go") return v + "es";
+  if (/(s|sh|ch|x|z)$/.test(v)) return v + "es";
+  if (/[^aeiou]y$/.test(v)) return v.slice(0, -1) + "ies";
+  return v + "s";
+}
+const semS = (v) => ({ has: "have", does: "do", goes: "go", is: "be" })[v] || v.replace(/ies$/, "y").replace(/(ch|sh|x)es$/, "$1").replace(/s$/, "");
+const OBJETO = { i: "me", he: "him", she: "her", we: "us", they: "them" };
+const INCONTAVEIS = { informations: "information", advices: "advice", furnitures: "furniture", homeworks: "homework", equipments: "equipment",
+  luggages: "luggage", baggages: "baggage", knowledges: "knowledge", softwares: "software", feedbacks: "feedback", researches: "research", evidences: "evidence" };
+const PROFISSOES = "student|teacher|doctor|engineer|nurse|lawyer|programmer|developer|designer|driver|waiter|waitress|cook|chef|manager|salesman|seller|" +
+  "artist|musician|singer|writer|policeman|firefighter|mechanic|electrician|accountant|architect|pilot|dentist|farmer|journalist|photographer|cashier|" +
+  "secretary|soldier|actor|actress|model|barber|plumber|carpenter|scientist|psychologist|vet|veterinarian|influencer|youtuber|baker|hairdresser|" +
+  "receptionist|translator|pharmacist|economist|biologist";
+const SUJEITO_3A = "he|she|my (?:mom|mother|dad|father|brother|sister|friend|wife|husband|boss|son|daughter|dog|cat|girlfriend|boyfriend)";
+const NAO_DEPOIS = /\b(?:does|did|do|can|could|will|would|should|must|might|may|shall|to|let|make|made|makes|help|helps|see|saw|watch|hear|heard|doesn't|didn't|don't|can't|won't|and|or|that|if) $/i;
+const ADJ_ED = "tired|bored|interested|excited|married|worried|scared|surprised|confused|embarrassed|stressed|relaxed|annoyed|disappointed|satisfied|pleased|" +
+  "amazed|frightened|exhausted|shocked|need|feed|speed|bleed|breed|exceed|proceed|succeed|seed|shred|wed|bed|red|hundred|naked|sacred";
+const PASSADOS = Object.keys(BASE_DE).join("|");
+const COM_S = [...new Set([...VERBOS_COMUNS.split("|"), ..."swim sing dance drive cook read write help call travel sell pay fly walk listen open close start stop try cry".split(" ")])]
+  .map(terceiraPessoa).join("|"); // likes, goes, watches...
+const IDADE = `(\\d+|${NUM_EN}(?:[ -]${NUM_EN})?)`;
+
+// Erros comuns de brasileiro falando inglês: [regra, explicação ({trecho} = como fica certo), conserto, palavra que não pode vir antes]
+const REGRAS_INGLES = [
+  [new RegExp(`\\bi (?:have|has|got) ${IDADE} years?(?: old)?\\b`), "Idade em inglês é com **to be**, não com have: [[{trecho}]].", "i'm $1 years old"],
+  [/\bi (?:have|has) (hungry|hunger|thirst|thirsty|cold|sleep|sleepy|fear|afraid)\b/, "Fome, sede, frio, sono e medo são com **to be** em inglês: [[{trecho}]].",
+    (m, x) => `i'm ${({ hunger: "hungry", thirst: "thirsty", sleep: "sleepy", fear: "afraid" })[x.toLowerCase()] || x}`],
+  [/\bmy name (?!(?:is|was|means|in|on|comes|sounds)\b)((?:\w+ ?){1,3})$/, "Faltou o **is**: [[{trecho}]].", "my name is $1"],
+  [new RegExp(`\\bi (from|happy|tired|fine|good|hungry|sad|sick|busy|ready|sorry|single|married|here|\\d+ years)\\b`), "Faltou o verbo **to be**: [[{trecho}]].", "i'm $1",
+    /\b(?:am|was|were|are) $/i],
+  [/\bi(?: am|'m) (agree|disagree)\b/, "Agree já é verbo, não leva am: [[{trecho}]].", "i $1"],
+  [/\bi(?: am|'m) (have|love|want|need|work|study|think|know|eat|drink|play|watch|feel|hate|speak|prefer|believe)\b/, "Não junta **am** com outro verbo: é só [[{trecho}]].", "i $1"],
+  [/\bi(?: am|'m) born\b/, "Nascer em inglês é no passado: [[{trecho}]].", "i was born"],
+  [/\bi(?: am|'m) of (?!(?:the|a|an|age|course)\b)(\w+)/, "De onde você é = **from**: [[{trecho}]].", "i'm from $1"],
+  [new RegExp(`\\bi(?: am|'m) (${PROFISSOES})\\b`), "Profissão em inglês leva artigo: [[{trecho}]].", (m, x) => `i'm ${/^[aeiou]/i.test(x) ? "an" : "a"} ${x}`],
+  [/\bi(?: am|'m) (?:so |very |really |a little |kind of |too )?(boring|exciting|interesting)(?=(?: (?:in|about|with|for|to|now|today|right now))?$| (?:in|about|with)\b)/,
+    "Pra dizer como você se sente é com **-ed**: [[{trecho}]]. Com -ing quer dizer que VOCÊ é chato ou empolgante!",
+    (m, x) => m.replace(/\w+$/, { boring: "bored", exciting: "excited", interesting: "interested" }[x.toLowerCase()])],
+  [/^how old (you|he|she|they) (are|is)\b/, "Na pergunta o verbo vem antes: [[{trecho}]]?", "how old $2 $1"],
+  [/^(where|what|why|when|how) (you|they|we) (live|like|want|work|do|go|have|think|need|study|play|eat|watch)\b/, "Na pergunta falta o auxiliar **do**: [[{trecho}]]?", "$1 do $2 $3"],
+  [/^how do you call\b/, "Em inglês se pergunta com **what**: [[{trecho}]]?", "what do you call"],
+  [/^(do|does|did) (you|he|she|it|we|they|i) (tired|bored|interested|excited|married|worried|scared|surprised|confused|stressed|hungry|thirsty|happy|sad|ready|sure|busy|sick|afraid|angry|late)\b/,
+    "Com adjetivo a pergunta é com **to be**: [[{trecho}]]?", (m, aux, suj, adj) => {
+      const s = suj.toLowerCase(), um = /^(i|he|she|it)$/.test(s);
+      return `${/^did$/i.test(aux) ? (um ? "was" : "were") : s === "i" ? "am" : um ? "is" : "are"} ${suj} ${adj}`;
+    }],
+  [/^(is|was) (raining|sunny|cold|hot|late|early|true|possible|important|necessary|difficult|easy|good|bad|nice|beautiful|expensive|cheap|far|near)\b/,
+    "Em inglês a frase não fica sem sujeito, tem que ter o **it**: [[{trecho}]].", "it $1 $2"],
+  [/\b(he|she|it) (?:don't|do not)\b/, "Com he, she e it é **doesn't**: [[{trecho}]].", "$1 doesn't"],
+  [new RegExp(`\\b(${SUJEITO_3A}) (${VERBOS_COMUNS})\\b`), "Com he, she e it o verbo ganha **-s**: [[{trecho}]].",
+    (m, suj, v) => `${suj} ${terceiraPessoa(v.toLowerCase())}`, NAO_DEPOIS],
+  [/\bit (work|need|cost|take|seem|mean|depend|happen|look|sound|taste|smell)\b/, "Com it o verbo ganha **-s**: [[{trecho}]].",
+    (m, v) => `it ${terceiraPessoa(v.toLowerCase())}`, NAO_DEPOIS],
+  [/\b(you|we|they) was\b/, "Com you, we e they é **were**: [[{trecho}]].", "$1 were"],
+  [/\b(he|she|it|i) were\b/, "Com I, he, she e it é **was**: [[{trecho}]].", "$1 was", /\b(?:if|wish|though|as) $/i],
+  [/\bi (?:is|are)\b/, "Com I é **am**: [[{trecho}]].", "i am"],
+  [/\b(you|we|they) is\b/, "Com you, we e they é **are**: [[{trecho}]].", "$1 are"],
+  [/\b(he|she|it) are\b/, "Com he, she e it é **is**: [[{trecho}]].", "$1 is"],
+  [/\bpeople is\b/, "People é plural: [[{trecho}]].", "people are"],
+  [/\b(everybody|everyone|somebody|someone|nobody|anybody) are\b/, "Everybody, everyone e nobody são singular em inglês: [[{trecho}]].", "$1 is"],
+  [/\bmore (better|worse|bigger|smaller|faster|easier|older|younger|happier|taller|cheaper|nicer|richer|stronger|harder|prettier)\b/, "Comparativo não leva more: [[{trecho}]].", "$1"],
+  [new RegExp(`^(did|does|do) (you|he|she|it|we|they|i) (${PASSADOS}|(?!(?:${ADJ_ED})\\b)\\w+ed)\\b`),
+    "Depois de do, does e did o verbo fica no infinitivo: [[{trecho}]]?", (m, aux, suj, v) => `${aux} ${suj} ${baseDoPassado(v.toLowerCase())}`],
+  [new RegExp(`\\b(did|didn't|did not|does|doesn't|does not|do|don't|do not) (${PASSADOS}|(?!(?:${ADJ_ED})\\b)\\w+ed)\\b`),
+    "Depois de do, does e did o verbo fica no infinitivo: [[{trecho}]].", (m, aux, v) => `${aux} ${baseDoPassado(v.toLowerCase())}`],
+  [new RegExp(`\\b(doesn't|does not|didn't|did not) (${COM_S})\\b`),
+    "Depois de doesn't e didn't o verbo fica sem -s: [[{trecho}]].", (m, aux, v) => `${aux} ${semS(v.toLowerCase())}`],
+  [/\b(can|could|must|should|will|would|might) to (\w+)/, "Depois de can, must e should não vai **to**: [[{trecho}]].", "$1 $2"],
+  [new RegExp(`\\b(can|could|must|should|will|would|might|can't|won't|couldn't|shouldn't|wouldn't) (is|${COM_S}|${PASSADOS})\\b`),
+    "Depois de can, will e should o verbo fica no infinitivo: [[{trecho}]].", (m, mod, v) => `${mod} ${BASE_DE[v.toLowerCase()] || semS(v.toLowerCase())}`],
+  [/\ba (apple|orange|hour|honest|egg|idea|elephant|umbrella|engineer|actor|actress|artist|old|interesting|example|answer|uncle|island|animal|english|american|email|ice|office|eye|opinion|airport|important|amazing|easy|ugly|awesome|accident|angry)\b/,
+    "Antes de som de vogal é **an**: [[{trecho}]].", "an $1"],
+  [/\ban (car|dog|house|book|friend|good|big|beautiful|university|uniform|cat|man|woman|job|teacher|student|doctor|new|great|nice|small|lot|year|european|useful)\b/,
+    "Antes de som de consoante é **a**: [[{trecho}]].", "a $1"],
+  [/\bexplain me\b/, "Explain pede **to**: [[{trecho}]].", "explain to me"],
+  [/\blisten(s|ed|ing)? (music|the radio|the music|songs|me|him|her|them|us|this|that|it)\b/, "Listen pede **to**: [[{trecho}]].", "listen$1 to $2"],
+  [/\bsince (\d+|one|two|three|four|five|six|seven|eight|nine|ten|a few|many|several) (years?|months?|weeks?|days?|hours?)\b/,
+    "Pra duração é **for** (since é pra data de início): [[{trecho}]].", "for $1 $2"],
+  [/\b(he|she|you|they|i|we) said me\b/, "Say não leva a pessoa direto: [[{trecho}]].", "$1 told me"],
+  [/\b(depends?) of\b/, "Em inglês é **depend on**: [[{trecho}]].", "$1 on"],
+  [/\bmarried with\b/, "Em inglês é **married to**: [[{trecho}]].", "married to"],
+  [/\bmake (?:a|the|one|this) question\b/, "Pergunta é com **ask**: [[{trecho}]].", "ask a question"],
+  [/\b(don't|do not|didn't|did not|can't|cannot|won't|doesn't|never) ((?:\w+ ){0,2}?)(nothing|nobody|nowhere)\b/, "Inglês não usa negação dupla: [[{trecho}]].",
+    (m, neg, meio, x) => `${neg} ${meio}${({ nothing: "anything", nobody: "anybody", nowhere: "anywhere" })[x.toLowerCase()]}`],
+  [/\bmuch (people|friends|things|cars|books|times|problems|questions|places|countries|days|years|hours|kids|children)\b/,
+    "Com coisas que dá pra contar é **many**: [[{trecho}]].", "many $1"],
+  [new RegExp(`\\b(${Object.keys(INCONTAVEIS).join("|")})\\b`), "Essa palavra não tem plural em inglês: [[{trecho}]].", (m, w) => INCONTAVEIS[w.toLowerCase()]],
+  [/\bi like very much (\w+)/, "A ordem certa é: [[{trecho}]].", "i really like $1"],
+  [/\b(go|goes|went|come|comes|came|going|coming|get|got) to home\b/, "Home não leva **to**: [[{trecho}]].", "$1 home"],
+  [/\bin (monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b/, "Dia da semana é com **on**: [[{trecho}]].", (m, d) => `on ${d[0].toUpperCase()}${d.slice(1)}`],
+  [/\bon (january|february|march|april|june|july|august|september|october|november|december|\d{4})\b(?! \d)/, "Mês e ano são com **in**: [[{trecho}]].", "in $1"],
+  [/\b(want|wanted|wants|need|needs|needed) that (you|he|she|they|we|him|her|them|me) (\w+)/, "Em inglês não usa **that** aqui: [[{trecho}]].",
+    (m, v, p, verbo) => `${v} ${OBJETO[p.toLowerCase()] || p} to ${verbo}`],
+  [new RegExp(`\\b(have|has|i've|you've|we've|they've|haven't|hasn't) (${Object.keys(PARTICIPIO).join("|")})\\b`), "Depois de have e has vem o **particípio**: [[{trecho}]].",
+    (m, aux, v) => `${aux} ${PARTICIPIO[v.toLowerCase()]}`],
+  [/\bwhat means (\w+)/, "Pergunta com **does**: [[{trecho}]]?", "what does $1 mean"],
+  [/\bmake (?:a|the) party\b/, "Festa é com **have** ou **throw**: [[{trecho}]].", "have a party"],
+  [/\bassist(ed|ing|s)? (?:a |the |to )?(movie|film|tv|series|show|game|match|video)s?\b/, "Falso cognato! Assistir é **watch**: [[{trecho}]].",
+    (m, suf, x) => `watch${({ ed: "ed", ing: "ing", s: "es" })[(suf || "").toLowerCase()] || ""} ${/^tv$/i.test(x) ? "TV" : "the " + x}`],
+  [/\blost (the |my )?(bus|train|flight|plane)\b/, "Perder o ônibus é **miss**: [[{trecho}]].", (m, art, x) => `missed ${art || "the "}${x}`],
+  [/\b(make|makes|made|making) (?:a |some |one )?(photo|picture|pic|selfie)(s?)\b/, "Tirar foto é **take**: [[{trecho}]].",
+    (m, v, x, pl) => `${({ make: "take", makes: "takes", made: "took", making: "taking" })[v.toLowerCase()]} ${pl ? "" : "a "}${x}${pl}`],
+  [/\bthe (life|love|happiness|nature) is\b/, "Falando no geral, em inglês não usa **the**: [[{trecho}]].", "$1 is"],
+  [/\bi (like|love|hate)$/, "Like, love e hate precisam de complemento: [[{trecho}]]. Ou responde só [[Yes, I do.]]", "i $1 it"],
+].map(([re, msg, conserto, antes]) => [new RegExp(re.source, "gi"), msg, conserto, antes]);
+
+// Procura o primeiro erro e devolve a explicação e a frase consertada
+function checarIngles(texto) {
+  const t = limparFala(texto);
+  for (const [re, msg, conserto, antes] of REGRAS_INGLES) {
+    for (const m of t.matchAll(re)) {
+      if (antes && antes.test(t.slice(0, m.index))) continue;
+      const certo = m[0].replace(re, conserto), trecho = certo.trim();
+      return { msg: msg.replace("{trecho}", () => (m.index === 0 ? capitalizar(trecho) : trecho.replace(/\bi\b/g, "I"))),
+        certo: frase(t.slice(0, m.index) + certo + t.slice(m.index + m[0].length)) };
+    }
+  }
+  return null;
+}
+
+// O que cada tipo de pergunta precisa ter na resposta
+const ESPERA = {
+  num: new RegExp(`\\b${NUM_EN}\\b`),
+  from: /\b(from|brazil|brasil|brazilian)\b/,
+  live: /\b(live|in|at|near)\b/,
+  estado: /\b(fine|good|great|ok|okay|well|tired|bad|so so|so-so|not bad|happy|sad|awesome|amazing|terrible|hungry|sleepy|sick|busy|excited|stressed|alright|all right)\b/,
+  hora: new RegExp(`\\b(at|${NUM_EN}|o'clock|am|pm|morning|early|late|noon)\\b`),
+  tempo: /\b(sunny|rainy|raining|cold|hot|warm|cloudy|windy|nice|beautiful|cool|snowing|humid|it's|it is)\b/,
+  "sim-nao": /\b(yes|no|yeah|yep|nope|sure|of course|definitely|i do|i don't|i can|i can't|i am|i'm|i have|i like|i love|i hate|not really|a little|just a little|sometimes|never|kind of|maybe)\b/,
+  passado: new RegExp(`\\b(\\w+ed|was|were|read|cut|hit|put|quit|hurt|set|let|cost|${Object.keys(BASE_DE).join("|")})\\b`),
+  ing: /\b\w+ing\b/,
+  futuro: /\b(will|i'll|we'll|going to|gonna|i'm \w+ing|i am \w+ing|plan to|want to|hope to|might|probably)\b/,
+  frequencia: /\b(every|never|sometimes|often|always|once|twice|times|rarely|usually|day|week|daily|month)\b/,
+  porque: /\b(because|to|for|so|i want|i need|my job|travel|work)\b/,
+  transporte: /\b(by|walk|bus|car|train|subway|metro|bike|drive|uber|taxi|motorcycle|foot|home|online)\b/,
+  perfect: /\b(have|has|i've|haven't|hasn't|never|been|ever|yes|no|nope|yeah)\b/,
+  would: /\b(would|i'd|we'd|they'd)\b/,
+  duracao: /\b(for|since|whole life|all my life|years?|months?|weeks?|days?)\b/,
+  "passado-cont": /\b(was|were) \w+ing\b/,
+  nunca: /\b(never|haven't|hasn't)\b/,
+  opiniao: /\b(i think|i don't think|i believe|i feel|in my opinion|i guess|i'd say|i agree|i disagree|yes|no|maybe|it depends|depends)\b/,
+  "should-have": /\b(should have|should've|would have|would've|i'd have)\b/,
+  "would-have": /\b(would have|would've|i'd have)\b/,
+};
+const MIN_PALAVRAS = { frase: 3, longa: 6, passado: 2, would: 3, opiniao: 3, "should-have": 3, "would-have": 3 };
+const DICA_TIPO = {
+  num: "Fala a idade com número, {nome}!",
+  from: "Pra dizer de onde você é, usa **from**.",
+  live: "Usa **I live in** + o lugar.",
+  estado: "Fala como você está: good, tired, happy...",
+  hora: "Fala a hora com **at**: at seven.",
+  tempo: "Clima em inglês começa com **It's**: It's sunny.",
+  "sim-nao": "Responde com yes ou no, {nome}!",
+  passado: "A pergunta é no **passado**, então a resposta também!",
+  ing: "O que você tá fazendo **agora** = to be + verbo com **-ing**.",
+  futuro: "Pro futuro usa **will** ou **going to**.",
+  frequencia: "Fala a frequência: every day, twice a week, never...",
+  porque: "Explica o motivo com **because**.",
+  transporte: "Meio de transporte: **by** bus, **by** car... ou walk.",
+  perfect: "Have you ever...? responde com **Yes, I have** ou **No, I haven't**.",
+  would: "Pergunta hipotética pede **would**: I would...",
+  duracao: "Duração é com **for** (for ten years) ou **since** (since 2015).",
+  "passado-cont": "Estava fazendo = **was/were + -ing**.",
+  nunca: "Algo que você nunca fez: **I've never**...",
+  opiniao: "Começa com **I think**... ou **In my opinion**...",
+  "should-have": "Arrependimento é com **I should have** + particípio.",
+  "would-have": "Hipótese no passado é com **I would have** + particípio.",
+  frase: "Fala uma frase completa, {nome}! Uma palavra só não vale.",
+  longa: "Fala mais! Uma frase inteira, com detalhes.",
+};
+const AUX_CURTA = { do: ["do", "don't"], can: ["can", "can't"], are: ["am", "'m not"], have: ["have", "haven't"], did: ["did", "didn't"], will: ["will", "won't"] };
+function respostaCurta(q, nao) {
+  const [sim, neg] = AUX_CURTA[q.split(" ")[0].toLowerCase()] || AUX_CURTA.do;
+  return nao ? `No, I${neg.startsWith("'") ? "" : " "}${neg}.` : `Yes, I ${sim}.`;
+}
+// Resposta curta ("Ana", "25") vira a frase inteira do modelo: "My name is Ana."
+function preencher(item, alt) {
+  const fala = limparFala(alt);
+  if (!item.modelo.includes("___") || fala.split(" ").length > 4) return item.exemplo;
+  let resp = fala;
+  if (item.tipo === "num") { const n = chaveFala(alt).match(new RegExp(`\\b${NUM_EN}(?: ${NUM_EN})?\\b`)); resp = n ? n[0] : "25"; }
+  const antes = item.modelo.split("___")[0].trim().split(" ").pop().toLowerCase();
+  if (resp.toLowerCase().startsWith(antes + " ")) resp = resp.slice(antes.length + 1);
+  if (item.tipo === "trabalho") resp = resp.replace(/^(a|an) /i, "");
+  if (/^(nome|from|live)$/.test(item.tipo) && resp === resp.toLowerCase()) resp = resp.replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase());
+  let f = item.modelo.replace("___", resp);
+  if (item.tipo === "trabalho") f = f.replace(/\ba (?=[aeiou])/i, "an ");
+  return frase(f);
+}
+// "I go to the beach" numa pergunta no passado vira "I went to the beach"
+function ajustarTempo(tipo, alt) {
+  const m = limparFala(alt).match(/^(i|we|they) ([\w']+)(.*)$/i);
+  if (!m || !VERBOS_CONHECIDOS.has(m[2].toLowerCase())) return null;
+  const [, suj, v, resto] = m;
+  const verbo = v.toLowerCase(), ser = /^i$/i.test(suj) ? "I'm" : `${suj}'re`;
+  if (tipo === "passado") return frase(`${suj} ${passadoDe(verbo)}${resto}`);
+  if (tipo === "ing") return frase(`${ser} ${gerundio(verbo)}${resto}`);
+  if (tipo === "futuro") return frase(`${ser} going to ${verbo}${resto}`);
+  if (tipo === "would") return frase(`${suj} would ${verbo}${resto}`);
+  return null;
+}
+function checarEsperado(alt, item) {
+  const t = chaveFala(alt);
+  const palavras = t.trim().split(" ").filter(Boolean);
+  if (/^(sim-nao|perfect)$/.test(item.tipo) && /^ (yes|no|yeah|yep|nope|sure|of course)( please| thanks| sir)? $/.test(t))
+    return { quase: true, msg: "Entendi! Mas em inglês fica mais natural completar:", certo: respostaCurta(item.q, /^ (no|nope)/.test(t)) };
+  if (item.modelo.includes("___") && palavras.length <= 3 && !/^ (my|i|i'm|it's|it|the|we|he|she|they|you) /.test(t))
+    return { quase: true, msg: "Entendi! Agora fala a frase completa:", certo: preencher(item, alt) };
+  if ((MIN_PALAVRAS[item.tipo] || 0) > palavras.length)
+    return { quase: true, msg: DICA_TIPO[item.tipo] || DICA_TIPO.frase, certo: item.exemplo };
+  const espera = ESPERA[item.tipo];
+  if (espera && !espera.test(t))
+    return { msg: DICA_TIPO[item.tipo] || "Responde a pergunta, {nome}!", certo: ajustarTempo(item.tipo, alt) || preencher(item, alt) };
+  return null;
+}
+
+// Compara o que a pessoa falou com o que devia falar (twenty = 20, I'm = I am)
+const NUMEROS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
+  fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+function normFala(s) {
+  let t = " " + norm(String(s).replace(/\bgonna\b/gi, "going to").replace(/\bwanna\b/gi, "want to").replace(/\bgotta\b/gi, "got to").replace(/\bokay\b/gi, "ok")) + " ";
+  t = t.replace(/ (twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety) (one|two|three|four|five|six|seven|eight|nine) /g, (_, a, b) => ` ${NUMEROS[a] + NUMEROS[b]} `);
+  t = t.replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/g, (w) => String(NUMEROS[w]));
+  return t.trim();
+}
+
+/* ----- Avaliação: devolve a nota e o que ela fala depois do "Correto!" ou "Errado!" ----- */
+function avaliarPapo(alts, item) {
+  // gramática pela melhor transcrição; as outras só salvam quando o reconhecimento errou uma palavra
+  const erro = checarIngles(alts[0]);
+  if (erro) return { nota: "errado", fala: `${erro.msg}\nRepete comigo: [[${erro.certo}]]`, repetir: erro.certo };
+  let falta = null;
+  for (const [i, alt] of alts.entries()) {
+    if (i > 0 && checarIngles(alt)) continue;
+    const e = checarEsperado(alt, item);
+    if (!e) return { nota: "certo", fala: "" };
+    falta = falta || e;
+  }
+  if (falta.quase) return { nota: "quase", fala: `${falta.msg}\n[[${falta.certo}]]`, repetir: falta.certo };
+  return { nota: "errado", fala: `${falta.msg}\nRepete comigo: [[${falta.certo}]]`, repetir: falta.certo };
+}
+function avaliarRepeticao(alts, alvo, correcao = false) {
+  const a = normFala(alvo).split(" ").filter(Boolean);
+  let melhor = null;
+  for (const alt of alts) {
+    const b = new Set(normFala(alt).split(" "));
+    const faltam = a.filter((w) => !b.has(w));
+    const nota = a.length ? 1 - faltam.length / a.length : 0;
+    if (!melhor || nota > melhor.nota) melhor = { nota, faltam, alt: limparFala(alt) };
+  }
+  const deNovo = vivo.tentativa < 2;
+  if (melhor.nota >= 0.85) return { nota: "certo", fala: correcao ? "" : pick(["Pronúncia boa, {nome}!", "Falou igual gringo!", "Sotaque bom, hein?"]) };
+  const palavras = [...new Set(melhor.faltam)].slice(0, 4).map((w) => `[[${w}]]`).join(", ");
+  if (melhor.nota >= 0.5)
+    return { nota: "quase", fala: `Não entendi direito: ${palavras}. ${deNovo ? `Repete: [[${alvo}]]` : "Bora pra próxima."}`, repetir: deNovo ? alvo : null };
+  return { nota: "errado", fala: `Eu entendi [[${melhor.alt}]]. ${deNovo ? `Escuta e repete: [[${alvo}]]` : `O certo é [[${alvo}]]. Bora pra próxima.`}`, repetir: deNovo ? alvo : null };
+}
+function avaliarTraducao(alts, item) {
+  let melhor = { nota: -1 };
+  for (const alt of alts) for (const alvo of item.en) {
+    const a = new Set(normFala(alvo).split(" ")), b = new Set(normFala(alt).split(" "));
+    const juntas = [...b].filter((w) => a.has(w)).length;
+    const nota = juntas / (a.size + b.size - juntas);
+    if (nota > melhor.nota) melhor = { nota, alvo };
+  }
+  const erro = checarIngles(alts[0]), alvo = melhor.alvo.replace(/[.!]$/, "");
+  if (melhor.nota >= 0.75 && !erro) return { nota: "certo", fala: `[[${melhor.alvo}]]` };
+  if (erro && melhor.nota < 0.9) return { nota: "errado", fala: `${erro.msg}\nRepete comigo: [[${melhor.alvo}]]`, repetir: alvo };
+  if (melhor.nota >= 0.45) return { nota: "quase", fala: `O jeito mais comum é: [[${alvo}]]. Repete!`, repetir: alvo };
+  return { nota: "errado", fala: `Em inglês é: [[${alvo}]]. Repete comigo!`, repetir: alvo };
+}
+function avaliarImitacao(fala) {
+  const erro = checarIngles(fala);
+  if (erro) return { nota: "errado", fala: `${erro.msg}\nFala certo: [[${erro.certo}]]`, repetir: erro.certo };
+  if (fala.split(" ").length < 3) return { nota: "neutro", fala: pick(["Hihi! Fala uma frase maior que eu te digo se tá certa.", "Mais! Fala uma frase inteira, {nome}."]) };
+  return { nota: "certo", fala: pick(["Nenhum erro! 👏", "Inglês perfeito, {nome}!", "Falou bonito!"]) };
+}
+
+/* ----- Perguntas e frases de cada modo, sem repetir até acabar ----- */
+async function montarFila(modo) {
+  const n = nivelIdx(state.level);
+  if (modo === "papo") {
+    const perto = PAPO.filter((p) => nivelIdx(p.lvl) <= n && nivelIdx(p.lvl) >= n - 1);
+    return [...shuffle(perto), ...shuffle(PAPO.filter((p) => nivelIdx(p.lvl) < n - 1))];
+  }
+  const lista = [];
+  for (const l of LESSONS) if (nivelIdx(l.lvl) <= n) for (const st of l.steps) {
+    if (st.t === "speak" || (st.t === "order" && modo === "traduz")) lista.push({ en: st.en, pt: st.pt });
+  }
+  for (const [en, pt] of Object.values(PHRASES).flat()) lista.push({ en, pt });
+  try {
+    if (modo === "repete") {
+      const b = await dadosBase();
+      const [a, z] = FAIXA_NIVEL[state.level] || [0, 3000];
+      for (const [, , ex, exPt] of b.top.slice(a, z)) if (ex && ex.split(" ").length <= 9) lista.push({ en: ex, pt: exPt });
+    } else {
+      const max = { A1: 4, A2: 5, B1: 6, B2: 7, C1: 8, C2: 9 }[state.level] || 5;
+      const porPt = new Map();
+      for (const f of await todasFrases()) {
+        const tam = f.en.split(" ").length;
+        if (tam < 2 || tam > max || /\b(Tom|Mary|John)\b/.test(f.en)) continue;
+        if (!porPt.has(f.npt)) porPt.set(f.npt, { pt: f.pt, en: [] });
+        porPt.get(f.npt).en.push(f.en);
+      }
+      lista.push(...shuffle([...porPt.values()]).slice(0, 400));
+    }
+  } catch { /* sem a pasta dados: usa só o conteúdo das aulas */ }
+  return shuffle(lista.map((x) => (modo === "traduz" ? { pt: x.pt, en: [].concat(x.en) } : x)));
+}
+async function proximoItem(modo) {
+  if (!vivo.filas[modo] || !vivo.filas[modo].length) vivo.filas[modo] = await montarFila(modo);
+  return vivo.filas[modo].shift();
+}
+function promptDe(item, modo) {
+  if (modo === "papo") return [`[[${item.q}]]`, item.pt];
+  if (modo === "repete") return [`Repete comigo: [[${item.en}]]`, item.pt];
+  if (modo === "traduz") return [`Como se diz em inglês: **${item.pt}**`, ""];
+  return ["Fala qualquer coisa em inglês que eu repito, igual papagaio! 😹 Se tiver erro, eu te corrijo.", ""];
+}
+
+/* ----- Tela e fluxo ----- */
+const MODOS = ["papo", "repete", "traduz", "imita"];
+const vivo = { ativo: false, modo: MODOS.includes(store.get("vivoModo")) ? store.get("vivoModo") : "papo", item: null, fase: "pergunta", alvo: "",
+  tentativa: 0, acertos: 0, erros: 0, seguidas: 0, rec: null, falando: false, falaN: 0, silencios: 0, sessao: 0, filas: {}, jaAbriu: false };
+const INTRO_VIVO = "Bora conversar, {nome}! Eu falo, você responde em inglês e eu te digo na hora se tá certo ou errado, {porra}. 🎙️";
+
+function renderModos() { document.querySelectorAll("#vivoModos [data-modo]").forEach((b) => b.classList.toggle("ativo", b.dataset.modo === vivo.modo)); }
+function renderPlacar() { $("#vivoPlacar").textContent = `✅ ${vivo.acertos}  ❌ ${vivo.erros}${vivo.seguidas >= 3 ? `  🔥 ${vivo.seguidas}` : ""}`; }
+function mostrarVoce(texto, parcial) {
+  $("#vivoVoce").classList.toggle("parcial", parcial);
+  $("#vivoVoce").innerHTML = texto ? `🗣️ Você: <b>${esc(texto)}</b>` : "";
+}
+function atualizarMic() {
+  const b = $("#vivoMic"), ouvindo = !!vivo.rec;
+  b.classList.toggle("ouvindo", ouvindo);
+  b.classList.toggle("falando", vivo.ativo && vivo.falando && !ouvindo);
+  b.classList.toggle("pausado", !vivo.ativo);
+  b.title = ouvindo ? "Pausar" : "Falar agora";
+  $("#vivoGata").classList.toggle("ouvindo", ouvindo);
+  $("#vivoDica").textContent = !Rec ? "Este navegador não ouve voz (use Chrome, Edge ou Safari). Digite a resposta aqui embaixo." :
+    ouvindo ? "Pode falar, tô ouvindo… 👂 (toque no 🎤 pra pausar)" : !vivo.ativo ? "Pausado. Toque no 🎤 pra falar." :
+    vivo.falando ? "Toque no 🎤 pra responder sem esperar." : "";
+}
+function marcarPlacar(nota, repeticao) {
+  const v = $("#vivoVeredito");
+  v.className = "vivo-veredito";
+  void v.offsetWidth; // reinicia a animação
+  v.classList.add(nota);
+  v.textContent = { certo: repeticao ? "✅ AGORA SIM!" : "✅ CORRETO!", quase: "🟡 QUASE!", errado: "❌ ERRADO!", neutro: "😹" }[nota];
+  mood(nota === "errado" ? "angry" : "happy");
+  if (nota === "neutro") return;
+  if (repeticao) { if (nota === "certo") addXP(1); return; }
+  if (nota === "errado") { vivo.erros++; vivo.seguidas = 0; } else { vivo.acertos++; vivo.seguidas++; addXP(nota === "certo" ? 2 : 1); }
+  renderPlacar();
+}
+
+// Ela fala (e mostra no balão). Termina quando ela para de falar.
+async function brendaVivo(texto, { mostrar = texto, nota = "", tom, velocidade, bolha = true, modo = state.voice } = {}) {
+  pararOuvir();
+  if (bolha) $("#vivoBrenda").innerHTML = md(fill(mostrar)) + (nota ? `<p class="muted">${esc(nota)}</p>` : "");
+  const minha = ++vivo.falaN;
+  vivo.falando = true;
+  atualizarMic();
+  await speak(fill(texto), modo, { ...(tom ? { tom } : {}), ...(velocidade ? { velocidade } : {}) });
+  if (minha === vivo.falaN) { vivo.falando = false; atualizarMic(); }
+}
+
+function pararOuvir() {
+  if (vivo.rec) { const r = vivo.rec; vivo.rec = null; try { r.abort(); } catch { /* já tinha parado */ } }
+  atualizarMic();
+}
+function ouvir(agora = false, espera = 0) {
+  if (!Rec) { atualizarMic(); return; }
+  pararOuvir();
+  const sessao = vivo.sessao;
+  // não escuta a própria voz: espera ela terminar de falar
+  if (!agora && espera < 40 && "speechSynthesis" in window && speechSynthesis.speaking) {
+    setTimeout(() => { if (sessao === vivo.sessao && vivo.ativo && !vivo.rec) ouvir(false, espera + 1); }, 250);
+    return;
+  }
+  const rec = new Rec();
+  rec.lang = "en-US";
+  rec.interimResults = true;
+  rec.maxAlternatives = 5;
+  rec.continuous = false;
+  let alternativas = null, parcial = "", erro = null;
+  const limite = setTimeout(() => { if (vivo.rec === rec && !parcial) try { rec.stop(); } catch { /* já parou */ } }, 15000);
+  rec.onresult = (e) => {
+    let texto = "";
+    for (let i = 0; i < e.results.length; i++) texto += e.results[i][0].transcript;
+    const ultimo = e.results[e.results.length - 1];
+    parcial = texto.trim();
+    mostrarVoce(parcial, !ultimo.isFinal);
+    if (ultimo.isFinal) alternativas = e.results.length === 1 ? Array.from(ultimo, (a) => a.transcript.trim()).filter(Boolean) : [parcial];
+  };
+  rec.onerror = (e) => { erro = e.error; };
+  rec.onend = () => {
+    clearTimeout(limite);
+    if (vivo.rec !== rec) return;
+    vivo.rec = null;
+    atualizarMic();
+    if (sessao !== vivo.sessao || !vivo.ativo) return;
+    if (!alternativas && parcial) alternativas = [parcial];
+    if (alternativas && alternativas.length) { vivo.silencios = 0; vivoResposta(alternativas); return; }
+    if (/not-allowed|service-not-allowed|audio-capture/.test(erro || "")) return semMicrofone("Não consigo te ouvir: libera o microfone pra mim (no cadeado ao lado do endereço) e toca no 🎤. Ou digita a resposta aqui embaixo.");
+    if (erro === "network") return semMicrofone("Pra te ouvir eu preciso de internet. Digita a resposta aqui embaixo ou toca no 🎤 pra tentar de novo.");
+    if (++vivo.silencios <= 2) { ouvir(); return; }
+    pausarVivo("Tô te esperando, {nome}! Toca no 🎤 quando quiser responder.");
+  };
+  vivo.rec = rec;
+  atualizarMic();
+  try { rec.start(); } catch { clearTimeout(limite); vivo.rec = null; atualizarMic(); }
+}
+function semMicrofone(msg) {
+  vivo.ativo = false;
+  atualizarMic();
+  brendaVivo(msg);
+}
+
+async function vivoProxima(intro = false) {
+  const sessao = ++vivo.sessao;
+  pararOuvir();
+  Object.assign(vivo, { fase: "pergunta", tentativa: 0, alvo: "" });
+  $("#vivoVeredito").className = "vivo-veredito";
+  $("#vivoVeredito").textContent = "";
+  mostrarVoce("", false);
+  mood(null);
+  if (vivo.modo !== "imita" && !(vivo.filas[vivo.modo] || []).length) $("#vivoBrenda").innerHTML = `<p class="muted">Separando umas frases pra você… ⏳</p>`;
+  vivo.item = vivo.modo === "imita" ? { imita: true } : await proximoItem(vivo.modo);
+  if (sessao !== vivo.sessao) return;
+  const [falado, nota] = promptDe(vivo.item, vivo.modo);
+  await brendaVivo((intro ? INTRO_VIVO + "\n" : "") + falado, { nota });
+  if (sessao === vivo.sessao && vivo.ativo) ouvir();
+}
+async function vivoResposta(alternativas) {
+  const sessao = vivo.sessao;
+  pararOuvir();
+  const fala = limparFala(alternativas[0] || "");
+  if (!fala || !vivo.item) return;
+  mostrarVoce(fala, false);
+  const repeticao = vivo.fase === "repetir";
+  const r = repeticao ? avaliarRepeticao(alternativas, vivo.alvo, vivo.modo !== "repete")
+    : vivo.modo === "papo" ? avaliarPapo(alternativas, vivo.item)
+    : vivo.modo === "repete" ? avaliarRepeticao(alternativas, vivo.item.en)
+    : vivo.modo === "traduz" ? avaliarTraducao(alternativas, vivo.item)
+    : avaliarImitacao(fala);
+  marcarPlacar(r.nota, repeticao);
+  // igual ao Talking Tom: ela repete o que entendeu com voz de gatinha
+  if (state.voice !== "off" && fala.split(" ").length <= 12) {
+    await brendaVivo(`[[${fala}]]`, { mostrar: `😹 “${fala}”`, tom: 1.75, velocidade: 1.1 });
+    if (sessao !== vivo.sessao) return;
+  }
+  const veredito = r.nota === "neutro" ? "" : pick(VEREDITO[state.vibe][repeticao && r.nota === "certo" ? "agora" : r.nota]);
+  await brendaVivo([veredito, r.fala].filter(Boolean).join(" "));
+  if (sessao !== vivo.sessao) return;
+  if (r.repetir) {
+    Object.assign(vivo, { fase: "repetir", alvo: r.repetir, tentativa: vivo.tentativa + 1 });
+    if (vivo.ativo) ouvir();
+    return;
+  }
+  if (vivo.modo === "imita") { vivo.fase = "pergunta"; if (vivo.ativo) ouvir(); return; }
+  await pausa(500);
+  if (sessao === vivo.sessao) vivoProxima();
+}
+function pausarVivo(msg) {
+  vivo.ativo = false;
+  vivo.sessao++;
+  pararOuvir();
+  stopSpeaking();
+  vivo.falando = false;
+  atualizarMic();
+  if (msg) brendaVivo(msg);
+}
+function abrirVivo() {
+  stopSpeaking();
+  $("#vivo").hidden = false;
+  document.body.style.overflow = "hidden";
+  Object.assign(vivo, { ativo: true, silencios: 0 });
+  renderModos();
+  renderPlacar();
+  atualizarMascote();
+  vivoProxima(!vivo.jaAbriu);
+  vivo.jaAbriu = true;
+}
+function fecharVivo() {
+  vivo.ativo = false;
+  vivo.sessao++;
+  pararOuvir();
+  stopSpeaking();
+  vivo.falando = false;
+  mood(null);
+  $("#vivo").hidden = true;
+  document.body.style.overflow = "";
+  atualizarMascote();
+}
+
+$("#vivoBtn").addEventListener("click", abrirVivo);
+$("#vivoFechar").addEventListener("click", fecharVivo);
+$("#vivoMic").addEventListener("click", () => {
+  if (!Rec) return $("#vivoTexto").focus();
+  if (vivo.rec) return pausarVivo();
+  Object.assign(vivo, { ativo: true, silencios: 0 });
+  if (!vivo.item) return vivoProxima(true);
+  // interrompe a fala dela e já escuta (no iPhone o microfone só liga direto no toque)
+  vivo.sessao++;
+  vivo.falaN++;
+  stopSpeaking();
+  vivo.falando = false;
+  ouvir(true);
+});
+$("#vivoRepetir").addEventListener("click", async () => {
+  const sessao = ++vivo.sessao;
+  Object.assign(vivo, { ativo: true, silencios: 0 });
+  const modo = state.voice === "off" ? "ingles" : state.voice;
+  if (vivo.fase === "repetir") await brendaVivo(`[[${vivo.alvo}]]`, { bolha: false, velocidade: 0.7, modo: "ingles" });
+  else if (vivo.item) { const [falado, nota] = promptDe(vivo.item, vivo.modo); await brendaVivo(falado, { nota, modo }); }
+  else return vivoProxima(true);
+  if (sessao === vivo.sessao && vivo.ativo) ouvir();
+});
+$("#vivoPular").addEventListener("click", () => {
+  Object.assign(vivo, { ativo: true, silencios: 0 });
+  stopSpeaking();
+  vivoProxima();
+});
+$("#vivoModos").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-modo]");
+  if (!b || b.dataset.modo === vivo.modo) return;
+  Object.assign(vivo, { modo: b.dataset.modo, ativo: true, silencios: 0 });
+  store.set("vivoModo", vivo.modo);
+  renderModos();
+  stopSpeaking();
+  vivoProxima();
+});
+// Palavra em inglês tocada no balão: ela fala sem atrapalhar a escuta
+$("#vivo").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-say]");
+  if (!b) return;
+  e.stopPropagation();
+  const ouvindo = !!vivo.rec;
+  pararOuvir();
+  sayEn(b.dataset.say).then(() => { if (ouvindo && vivo.ativo && !vivo.rec && !vivo.falando) ouvir(); });
+});
+function enviarDigitado() {
+  const t = $("#vivoTexto").value.trim();
+  if (!t) return;
+  $("#vivoTexto").value = "";
+  vivo.sessao++;
+  pararOuvir();
+  stopSpeaking();
+  vivo.falando = false;
+  vivoResposta([t]);
+}
+$("#vivoEnviar").addEventListener("click", enviarDigitado);
+$("#vivoTexto").addEventListener("keydown", (e) => { if (e.key === "Enter") enviarDigitado(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && !$("#vivo").hidden && vivo.ativo) pausarVivo(); });
+
+/* ================= Toques na gata (igual Talking Tom) e Brenda sempre na tela ================= */
+const TOQUES = {
+  nariz: ["Atchim! 🤧 Espirro em inglês é [[achoo]]. E quando alguém espirra, você diz [[Bless you!]]", "Ei, meu nariz não é botão, {porra}! Nariz é [[nose]]. 👃"],
+  bochecha: ["Ai, apertou minha bochecha! Bochecha é [[cheek]]. 😽", "Fofa, né? [[I'm so cute!]] 😻"],
+  barriga: ["Hihihi! Cócegas! Em inglês é [[tickle]]. [[Stop tickling me!]] 😹", "Minha barriga não, hihi! Barriga é [[belly]]. 😹"],
+  rabo: ["Meu rabo não, {porra}! 😾 [[Don't touch my tail!]]", "Larga meu rabo! Rabo em inglês é [[tail]]. 😾"],
+};
+let toques = [];
+function tocarGata(av, ev) {
+  if (!$("#lesson").hidden) return petCat(av);
+  const r = av.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+  const parte = (x > 0.8 && y > 0.5) || (x > 0.7 && y > 0.82) ? "rabo" : y > 0.8 ? "barriga"
+    : y > 0.55 && y < 0.7 && x > 0.42 && x < 0.58 ? "nariz" : y > 0.55 ? "bochecha" : "cabeca";
+  const agora = Date.now();
+  toques = toques.filter((t) => agora - t < 3000).concat(agora);
+  const irritada = toques.length >= 5;
+  if (irritada) toques = [];
+  const h = document.createElement("span");
+  h.className = "heart";
+  h.textContent = irritada || parte === "rabo" ? "💢" : { cabeca: pick(["❤️", "💕", "😻"]), nariz: "💦", bochecha: "😽", barriga: "😹" }[parte];
+  h.style.left = 20 + Math.random() * Math.max(10, r.width - 40) + "px";
+  h.style.top = r.height * 0.2 + "px";
+  av.appendChild(h);
+  setTimeout(() => h.remove(), 1100);
+  mood(irritada || parte === "rabo" ? "angry" : "happy");
+  if (!$("#vivo").hidden) return; // na conversa ao vivo ela só reage, sem falar por cima de você
+  chatSay(pick(irritada ? CHAT.annoyed : parte === "cabeca" ? CHAT.pet : TOQUES[parte]));
+}
+
+let balaoMostrado = false;
+function heroNaTela() {
+  const v = $("#view-home");
+  if (!v.classList.contains("active")) return false;
+  const r = v.querySelector("[data-avatar]").getBoundingClientRect(), rv = v.getBoundingClientRect();
+  return r.bottom > rv.top + 20 && r.top < rv.bottom - 20;
+}
+function atualizarMascote() {
+  const esconder = !$("#lesson").hidden || !$("#vivo").hidden || heroNaTela();
+  $("#mascote").hidden = esconder;
+  if (!esconder && !balaoMostrado) {
+    balaoMostrado = true;
+    $("#mascoteBalao").hidden = false;
+    setTimeout(() => { $("#mascoteBalao").hidden = true; }, 6000);
+  }
+}
+$("#view-home").addEventListener("scroll", atualizarMascote, { passive: true });
+window.addEventListener("resize", atualizarMascote);
+$("#mascote").addEventListener("click", abrirVivo);
+
 /* ================= Navegação e configurações ================= */
 function switchView(v) {
   stopSpeaking();
   document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
   document.querySelectorAll(".view").forEach((s) => s.classList.toggle("active", s.id === "view-" + v));
   if (v === "dic" && !$("#dicOut").innerHTML) inicioDicionario();
+  atualizarMascote();
 }
 document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
 
+function preencherVozes() {
+  for (const [sel, lang, atual] of [["#sVozPt", "pt", state.vozPt], ["#sVozEn", "en", state.vozEn]]) {
+    const lista = vozesDe(lang);
+    $(sel).innerHTML = `<option value="">Automática (a melhor deste aparelho)</option>` +
+      lista.map((v) => `<option value="${esc(v.voiceURI)}">${notaVoz(v, lang) >= 80 ? "⭐ " : ""}${esc(v.name)}</option>`).join("");
+    $(sel).value = lista.some((v) => v.voiceURI === atual) ? atual : "";
+  }
+  const melhor = Math.max(-1, ...vozesDe("pt").map((v) => notaVoz(v, "pt")), ...vozesDe("en").map((v) => notaVoz(v, "en")));
+  $("#dicaVoz").textContent = melhor >= 80 ? "⭐ = voz natural (neural)." : "Dica: para uma voz bem natural, abra o app no Microsoft Edge (tem vozes neurais grátis) ou, no iPhone, baixe uma voz “Melhorada” em Ajustes › Acessibilidade › Conteúdo Falado › Vozes.";
+}
+$("#testarVoz").addEventListener("click", () => {
+  const antes = { vozPt: state.vozPt, vozEn: state.vozEn, tom: state.tom, rate: state.rate };
+  Object.assign(state, { vozPt: $("#sVozPt").value, vozEn: $("#sVozEn").value, tom: $("#sTom").value, rate: $("#sRate").value });
+  speak(fill("Oi, {nome}! Eu sou a Brenda. Bora treinar? [[Hi! How are you doing today?]]"), "tudo");
+  Object.assign(state, antes); // a voz já foi escolhida: dá pra voltar o estado na hora
+});
+
 function openSettings() {
   $("#sName").value = state.name; $("#sLevel").value = state.level; $("#sVibe").value = state.vibe;
-  $("#sVoice").value = state.voice; $("#sRate").value = state.rate;
+  $("#sVoice").value = state.voice; $("#sRate").value = state.rate; $("#sTom").value = state.tom;
+  preencherVozes();
   $("#settings").showModal();
 }
 $("#settingsBtn").addEventListener("click", openSettings);
 $("#saveSettings").addEventListener("click", () => {
-  const map = { name: "#sName", level: "#sLevel", vibe: "#sVibe", voice: "#sVoice", rate: "#sRate" };
+  const map = { name: "#sName", level: "#sLevel", vibe: "#sVibe", voice: "#sVoice", rate: "#sRate", vozPt: "#sVozPt", vozEn: "#sVozEn", tom: "#sTom" };
   for (const [k, sel] of Object.entries(map)) { state[k] = $(sel).value.trim(); store.set(k, state[k]); }
   store.set("setup", true);
+  vivo.filas = {}; // o nível pode ter mudado
   $("#settings").close();
   renderHome(true);
 });
@@ -2167,6 +3114,7 @@ renderHome(false);
 renderTrilha();
 renderMyCards();
 renderPhrases();
+atualizarMascote();
 $("#deckFilter").value = state.level;
 buildDeck();
 if (!store.get("setup", false)) openSettings();
