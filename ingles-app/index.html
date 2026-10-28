@@ -246,7 +246,7 @@
     background: radial-gradient(120% 70% at 50% 30%, #2a1d2e 0%, var(--bg) 70%);
   }
   .vivo-top { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
-  .vivo-top b { flex: 1; }
+  .vivo-top b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .vivo-placar { font-size: 14px; color: var(--muted); white-space: pre; }
   .vivo-modos { flex-wrap: nowrap; overflow-x: auto; width: max-content; max-width: 100%; margin: 0 auto; padding: 0 16px 4px; }
   .vivo-modos .chip { white-space: nowrap; }
@@ -274,6 +274,13 @@
   .mic-grande.ouvindo { background: var(--ok); animation: ouvindo 1.2s infinite; }
   .mic-grande.falando { opacity: .75; }
   .mic-grande.pausado { background: var(--panel-2); box-shadow: none; border: 2px solid var(--line); }
+  .mic-grande.chamando { animation: chamando 1.3s infinite; }
+  @keyframes chamando { from { box-shadow: 0 0 0 0 rgba(255,61,110,.7); } to { box-shadow: 0 0 0 20px rgba(255,61,110,0); } }
+  .vivo-aviso { width: 100%; max-width: 560px; font-size: 14px; }
+  #vivo.com-aviso .avatar.gigante { width: min(34vw, 18vh, 150px); height: min(34vw, 18vh, 150px); }
+  .vivo-aviso p, .dica-mic p { margin: 0 0 6px; }
+  .vivo-aviso p:last-child, .dica-mic p:last-child { margin: 0; }
+  .dica-mic { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 0 0 12px; font-size: 14px; }
   @keyframes ouvindo { from { box-shadow: 0 0 0 0 rgba(46,204,143,.6); } to { box-shadow: 0 0 0 22px rgba(46,204,143,0); } }
   .vivo-dica { text-align: center; margin: 8px 16px 0; min-height: 20px; }
   .vivo-digitar { width: 100%; max-width: 760px; margin: 0 auto; padding: 8px 16px calc(12px + env(safe-area-inset-bottom)); }
@@ -422,6 +429,7 @@
     <button class="icon-btn" id="vivoFechar" title="Sair">✕</button>
     <b>🎙️ Conversa ao vivo</b>
     <span class="vivo-placar" id="vivoPlacar"></span>
+    <button class="icon-btn" id="vivoPausa" title="Pausar">⏸️</button>
   </div>
   <div class="chips vivo-modos" id="vivoModos">
     <button class="chip" data-modo="papo" title="Ela pergunta, você responde">💬 Papo</button>
@@ -434,6 +442,7 @@
     <div class="avatar gigante" id="vivoGata" data-avatar></div>
     <div class="speech vivo-fala" id="vivoBrenda" aria-live="polite"></div>
     <div class="vivo-voce" id="vivoVoce"></div>
+    <div class="warn vivo-aviso" id="vivoAviso" hidden></div>
   </div>
   <div class="vivo-controles">
     <button class="btn redondo" id="vivoRepetir" title="Ouvir de novo">🔊</button>
@@ -507,7 +516,11 @@
       <option value="1.3">Gatinha (bem aguda)</option>
     </select>
   </div>
-  <div class="row" style="margin:0 0 12px"><button class="btn" id="testarVoz" type="button">🔊 Testar voz</button></div>
+  <div class="row" style="margin:0 0 12px">
+    <button class="btn" id="testarVoz" type="button">🔊 Testar voz</button>
+    <button class="btn" id="testarMic" type="button">🎤 Testar microfone</button>
+  </div>
+  <div class="dica-mic" id="dicaMic" hidden></div>
   <p class="muted" id="dicaVoz" style="margin-top:0"></p>
   <div class="warn">⚠️ No modo "sem filtro" a Brenda fala palavrão (sem ofensa preconceituosa). Conteúdo para maiores de idade.</div>
   <details class="creditos">
@@ -1278,6 +1291,46 @@ function stopSpeaking() {
 }
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => { if ($("#settings").open) preencherVozes(); };
 
+/* ================= Microfone ================= */
+const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const UA = navigator.userAgent;
+const NO_IPHONE = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+const NO_ANDROID = /Android/.test(UA);
+const DENTRO_DE_APP = /FBAN|FBAV|FB_IAB|Instagram|Line\/|Twitter|TikTok|musical_ly|BytedanceWebview|Snapchat|; wv\)/i.test(UA);
+// Explica por que ela não consegue te ouvir e o que fazer (erro = código do reconhecimento de voz)
+function porQueNaoOuve(erro) {
+  if (!Rec) {
+    if (DENTRO_DE_APP) return "Você abriu o app **dentro de outro app** (Instagram, Facebook, TikTok…) e aí o microfone não funciona. Toca nos **⋮** ou **···** e escolhe **Abrir no navegador**.";
+    if (NO_IPHONE) return /CriOS|FxiOS|EdgiOS|OPiOS/.test(UA) || !/Safari/.test(UA)
+      ? "No iPhone, só o **Safari** deixa eu te ouvir. Copia o link e abre no Safari."
+      : "O Safari deste iPhone não tem reconhecimento de voz. Atualiza o iPhone (precisa do iOS 14.5 ou mais novo).";
+    if (/Firefox/.test(UA)) return "O **Firefox** não tem reconhecimento de voz. Abre o link no **Chrome** ou no **Edge**.";
+    return "Este navegador não tem reconhecimento de voz. Abre o link no **Chrome**, no **Edge** ou, no iPhone, no **Safari**.";
+  }
+  if (erro === "not-allowed" || (erro === "service-not-allowed" && !NO_IPHONE)) {
+    if (/^(file|content):$/.test(location.protocol)) return "Você abriu o **arquivo** direto, e assim o navegador não libera o microfone. Abre pelo **link do site** (o do Netlify).";
+    if (location.protocol === "http:" && !/^(localhost|127\.)/.test(location.hostname)) return "O microfone só funciona em site com **https://**. Abre o link com https.";
+    if (NO_IPHONE) return "O microfone tá bloqueado. Toca no **aA** ao lado do endereço › **Ajustes do Site** › **Microfone** › **Permitir** (ou em Ajustes › Apps › Safari › Microfone). Depois toca no 🎤.";
+    if (NO_ANDROID) return "O microfone tá bloqueado. Toca no **cadeado** (ou ⓘ) ao lado do endereço › **Permissões** › **Microfone** › **Permitir**. Se não tiver essa opção: Configurações do celular › Apps › Chrome › Permissões › Microfone. Depois toca no 🎤.";
+    return "O microfone tá bloqueado. Clica no **cadeado** ao lado do endereço e permite o **Microfone**. Depois clica no 🎤.";
+  }
+  if (erro === "service-not-allowed") return "No iPhone eu te ouço pelo **Ditado** da Apple. Liga em **Ajustes › Geral › Teclado › Ativar Ditado** (e deixa a **Siri** ligada). Depois toca no 🎤.";
+  if (erro === "audio-capture") return "Não achei o microfone. Confere se ele tá ligado e se nenhum outro app (ligação, WhatsApp, gravador) tá usando. Depois toca no 🎤.";
+  if (erro === "network") return navigator.brave ? "O **Brave** bloqueia o reconhecimento de voz. Abre o link no **Chrome**."
+    : "Pra te ouvir eu preciso de **internet** (o reconhecimento de voz do Chrome é online). Confere a conexão e toca no 🎤. Se a internet tá boa, abre no **Chrome**: alguns navegadores bloqueiam isso.";
+  if (erro === "language-not-supported") return "Este aparelho não tem reconhecimento de voz em inglês. Tenta no **Chrome** atualizado.";
+  return "Não consegui ligar o microfone. Toca no 🎤 pra tentar de novo.";
+}
+// No iPhone a voz só sai se a primeira fala começar num toque
+let vozDestravada = false;
+function destravarVoz() {
+  if (vozDestravada || !NO_IPHONE || !("speechSynthesis" in window)) return;
+  vozDestravada = true;
+  const u = new SpeechSynthesisUtterance(" ");
+  u.volume = 0;
+  speechSynthesis.speak(u);
+}
+
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-say]");
   if (b) { e.stopPropagation(); sayEn(b.dataset.say); }
@@ -1956,11 +2009,10 @@ function renderStep() {
 
   if (step.t === "speak") {
     teacherSay(`Fala em voz alta: [[${step.en}]] (${step.pt})`);
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
     ex.innerHTML = `<div class="target">${esc(step.en)}</div><div class="muted">${esc(step.pt)}</div>
       <div class="row"><button class="btn" id="hear">🔊 Ouvir</button><button class="btn" id="slow">🐢 Devagar</button>
       ${Rec ? `<button class="btn primary mic" id="mic">🎤 Falar</button>` : ""}</div>
-      <div class="heard" id="heard">${Rec ? "Toca no 🎤 e fala a frase." : "Seu navegador não reconhece voz (usa o Chrome pra isso). Repete em voz alta e toca em \"Repeti\"."}</div>`;
+      <div class="heard" id="heard">${Rec ? "Toca no 🎤 e fala a frase." : md(porQueNaoOuve()) + "<p>Por enquanto, repete em voz alta e toca em “Repeti”.</p>"}</div>`;
     $("#hear").onclick = () => sayEn(step.en);
     $("#slow").onclick = () => { const r = state.rate; state.rate = "0.6"; sayEn(step.en); state.rate = r; };
     setNext(Rec ? "Pular" : "✓ Repeti", true, () => { if (!L.answered) answer(true, null, { skipped: !!Rec }); });
@@ -1980,9 +2032,9 @@ function renderStep() {
           if (best >= 0.7) answer(true, null);
           else { mood("angry"); teacherSay(`${pick(VIBE[state.vibe].wrong)} Tenta de novo, fala devagar: [[${step.en}]]`); }
         };
-        rec.onerror = (e) => { $("#heard").textContent = e.error === "not-allowed" ? "Libera o microfone no navegador." : "Não ouvi nada. Tenta de novo."; };
+        rec.onerror = (e) => { $("#heard").innerHTML = /no-speech|aborted/.test(e.error) ? "Não ouvi nada. Toca no 🎤 e fala de novo." : md(porQueNaoOuve(e.error)); };
         rec.onend = () => { rec = null; const m = $("#mic"); if (m) { m.classList.remove("rec"); m.textContent = "🎤 Falar"; } };
-        rec.start();
+        try { rec.start(); } catch { rec.onend(); $("#heard").innerHTML = md(porQueNaoOuve("start")); }
       };
     }
   }
@@ -2309,7 +2361,6 @@ $("#fraseGo").addEventListener("click", () => buscarFrases($("#fraseBusca").valu
 $("#fraseBusca").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarFrases(e.target.value); });
 
 /* ================= Conversa ao vivo (estilo Talking Tom) ================= */
-const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
 const nivelIdx = (l) => LEVELS.findIndex(([x]) => x === l);
 const pausa = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
@@ -2774,8 +2825,10 @@ function promptDe(item, modo) {
 /* ----- Tela e fluxo ----- */
 const MODOS = ["papo", "repete", "traduz", "imita"];
 const vivo = { ativo: false, modo: MODOS.includes(store.get("vivoModo")) ? store.get("vivoModo") : "papo", item: null, fase: "pergunta", alvo: "",
-  tentativa: 0, acertos: 0, erros: 0, seguidas: 0, rec: null, falando: false, falaN: 0, silencios: 0, sessao: 0, filas: {}, jaAbriu: false };
-const INTRO_VIVO = "Bora conversar, {nome}! Eu falo, você responde em inglês e eu te digo na hora se tá certo ou errado, {porra}. 🎙️";
+  tentativa: 0, acertos: 0, erros: 0, seguidas: 0, rec: null, falando: false, falaN: 0, silencios: 0, sessao: 0, filas: {}, jaAbriu: false,
+  soNoToque: false, falhasAuto: 0, falhas: 0, paradaManual: false };
+const INTRO_VIVO = Rec ? "Bora conversar, {nome}! Eu falo, você responde em inglês e eu te digo na hora se tá certo ou errado, {porra}. 🎙️"
+  : "Bora treinar, {nome}! Aqui eu não consigo te ouvir 🙉, então digita as respostas embaixo que eu te digo na hora se tá certo ou errado.";
 
 function renderModos() { document.querySelectorAll("#vivoModos [data-modo]").forEach((b) => b.classList.toggle("ativo", b.dataset.modo === vivo.modo)); }
 function renderPlacar() { $("#vivoPlacar").textContent = `✅ ${vivo.acertos}  ❌ ${vivo.erros}${vivo.seguidas >= 3 ? `  🔥 ${vivo.seguidas}` : ""}`; }
@@ -2787,12 +2840,26 @@ function atualizarMic() {
   const b = $("#vivoMic"), ouvindo = !!vivo.rec;
   b.classList.toggle("ouvindo", ouvindo);
   b.classList.toggle("falando", vivo.ativo && vivo.falando && !ouvindo);
-  b.classList.toggle("pausado", !vivo.ativo);
-  b.title = ouvindo ? "Pausar" : "Falar agora";
+  b.classList.toggle("pausado", !vivo.ativo || !Rec);
+  b.classList.toggle("chamando", !!Rec && vivo.ativo && vivo.soNoToque && !ouvindo && !vivo.falando);
+  b.title = ouvindo ? "Terminei de falar" : "Falar agora";
+  $("#vivoPausa").textContent = vivo.ativo ? "⏸️" : "▶️";
+  $("#vivoPausa").title = vivo.ativo ? "Pausar" : "Continuar";
   $("#vivoGata").classList.toggle("ouvindo", ouvindo);
-  $("#vivoDica").textContent = !Rec ? "Este navegador não ouve voz (use Chrome, Edge ou Safari). Digite a resposta aqui embaixo." :
-    ouvindo ? "Pode falar, tô ouvindo… 👂 (toque no 🎤 pra pausar)" : !vivo.ativo ? "Pausado. Toque no 🎤 pra falar." :
-    vivo.falando ? "Toque no 🎤 pra responder sem esperar." : "";
+  $("#vivoDica").textContent = !Rec ? "Aqui o microfone não funciona: digite a resposta embaixo. 👇" :
+    ouvindo ? "Pode falar, tô ouvindo… 👂 Terminou? Toque no 🎤." : !vivo.ativo ? "Pausado. Toque no 🎤 pra falar ou no ▶️ pra continuar." :
+    vivo.falando ? "Toque no 🎤 pra responder sem esperar." : vivo.soNoToque ? "Toque no 🎤 e fale. 👆" : "";
+}
+// Aviso de microfone: a gata encolhe pra explicação caber na tela
+function mostrarAviso(texto, codigo = "") {
+  $("#vivoAviso").innerHTML = md(fill(texto)) + (codigo ? `<p class="muted">código: ${esc(codigo)}</p>` : "");
+  $("#vivoAviso").hidden = false;
+  $("#vivo").classList.add("com-aviso");
+  requestAnimationFrame(() => $("#vivoAviso").scrollIntoView({ block: "nearest" }));
+}
+function esconderAviso() {
+  $("#vivoAviso").hidden = true;
+  $("#vivo").classList.remove("com-aviso");
 }
 function marcarPlacar(nota, repeticao) {
   const v = $("#vivoVeredito");
@@ -2822,12 +2889,21 @@ function pararOuvir() {
   if (vivo.rec) { const r = vivo.rec; vivo.rec = null; try { r.abort(); } catch { /* já tinha parado */ } }
   atualizarMic();
 }
+// Microfone ligado sozinho falhou: neste aparelho (iPhone, por exemplo) ele só liga com um toque
+function falhaAutomatica() {
+  pararOuvir();
+  vivo.falhasAuto++;
+  vivo.soNoToque = true;
+  atualizarMic();
+}
+// agora = veio de um toque no 🎤 (liga na hora); sem toque, espera ela terminar de falar
 function ouvir(agora = false, espera = 0) {
   if (!Rec) { atualizarMic(); return; }
   pararOuvir();
   const sessao = vivo.sessao;
-  // não escuta a própria voz: espera ela terminar de falar
-  if (!agora && espera < 40 && "speechSynthesis" in window && speechSynthesis.speaking) {
+  if (!agora && vivo.soNoToque) return;
+  // não escuta a própria voz: espera ela terminar de falar (e mais um tiquinho)
+  if (!agora && (espera === 0 || (espera < 40 && "speechSynthesis" in window && speechSynthesis.speaking))) {
     setTimeout(() => { if (sessao === vivo.sessao && vivo.ativo && !vivo.rec) ouvir(false, espera + 1); }, 250);
     return;
   }
@@ -2836,8 +2912,15 @@ function ouvir(agora = false, espera = 0) {
   rec.interimResults = true;
   rec.maxAlternatives = 5;
   rec.continuous = false;
-  let alternativas = null, parcial = "", erro = null;
+  let alternativas = null, parcial = "", erro = null, comecou = false;
   const limite = setTimeout(() => { if (vivo.rec === rec && !parcial) try { rec.stop(); } catch { /* já parou */ } }, 15000);
+  // se o microfone não liga em 4 s sem toque, passa a pedir um toque
+  const vigia = agora ? 0 : setTimeout(() => { if (vivo.rec === rec && !comecou) falhaAutomatica(); }, 4000);
+  rec.onstart = () => {
+    comecou = true;
+    esconderAviso();
+    if (agora && vivo.falhasAuto < 2) vivo.soNoToque = false; // funcionou: tenta de novo sem toque
+  };
   rec.onresult = (e) => {
     let texto = "";
     for (let i = 0; i < e.results.length; i++) texto += e.results[i][0].transcript;
@@ -2849,25 +2932,43 @@ function ouvir(agora = false, espera = 0) {
   rec.onerror = (e) => { erro = e.error; };
   rec.onend = () => {
     clearTimeout(limite);
+    clearTimeout(vigia);
     if (vivo.rec !== rec) return;
     vivo.rec = null;
+    const manual = vivo.paradaManual;
+    vivo.paradaManual = false;
     atualizarMic();
     if (sessao !== vivo.sessao || !vivo.ativo) return;
     if (!alternativas && parcial) alternativas = [parcial];
-    if (alternativas && alternativas.length) { vivo.silencios = 0; vivoResposta(alternativas); return; }
-    if (/not-allowed|service-not-allowed|audio-capture/.test(erro || "")) return semMicrofone("Não consigo te ouvir: libera o microfone pra mim (no cadeado ao lado do endereço) e toca no 🎤. Ou digita a resposta aqui embaixo.");
-    if (erro === "network") return semMicrofone("Pra te ouvir eu preciso de internet. Digita a resposta aqui embaixo ou toca no 🎤 pra tentar de novo.");
+    if (alternativas && alternativas.length) { Object.assign(vivo, { silencios: 0, falhas: 0 }); esconderAviso(); vivoResposta(alternativas); return; }
+    if (/not-allowed|service-not-allowed/.test(erro || "") && !agora) return falhaAutomatica();
+    if (/audio-capture|network/.test(erro || "") && !agora && ++vivo.falhas <= 1) {
+      // às vezes o microfone ainda tá preso na voz dela: tenta mais uma vez
+      setTimeout(() => { if (sessao === vivo.sessao && vivo.ativo && !vivo.rec) ouvir(); }, 700);
+      return;
+    }
+    if (/not-allowed|service-not-allowed|audio-capture|network|language-not-supported/.test(erro || "")) return semMicrofone(erro);
+    if (manual || vivo.soNoToque) { $("#vivoDica").textContent = "Não ouvi nada. Toque no 🎤 e fale."; return; }
     if (++vivo.silencios <= 2) { ouvir(); return; }
     pausarVivo("Tô te esperando, {nome}! Toca no 🎤 quando quiser responder.");
   };
   vivo.rec = rec;
   atualizarMic();
-  try { rec.start(); } catch { clearTimeout(limite); vivo.rec = null; atualizarMic(); }
+  try { rec.start(); } catch {
+    clearTimeout(limite);
+    clearTimeout(vigia);
+    vivo.rec = null;
+    if (!agora) return falhaAutomatica();
+    semMicrofone("start");
+  }
 }
-function semMicrofone(msg) {
+// Não deu pra ouvir: explica o porquê, pausa e deixa digitar
+function semMicrofone(erro) {
   vivo.ativo = false;
   atualizarMic();
-  brendaVivo(msg);
+  const texto = porQueNaoOuve(erro);
+  mostrarAviso(texto + "\nEnquanto isso, dá pra digitar a resposta aqui embaixo. 👇", erro === "start" ? "" : erro);
+  brendaVivo(texto, { bolha: false });
 }
 
 async function vivoProxima(intro = false) {
@@ -2925,10 +3026,13 @@ function pausarVivo(msg) {
   if (msg) brendaVivo(msg);
 }
 function abrirVivo() {
+  destravarVoz();
   stopSpeaking();
   $("#vivo").hidden = false;
   document.body.style.overflow = "hidden";
-  Object.assign(vivo, { ativo: true, silencios: 0 });
+  Object.assign(vivo, { ativo: true, silencios: 0, falhas: 0 });
+  esconderAviso();
+  if (!Rec) mostrarAviso(porQueNaoOuve());
   renderModos();
   renderPlacar();
   atualizarMascote();
@@ -2936,6 +3040,7 @@ function abrirVivo() {
   vivo.jaAbriu = true;
 }
 function fecharVivo() {
+  esconderAviso();
   vivo.ativo = false;
   vivo.sessao++;
   pararOuvir();
@@ -2950,9 +3055,10 @@ function fecharVivo() {
 $("#vivoBtn").addEventListener("click", abrirVivo);
 $("#vivoFechar").addEventListener("click", fecharVivo);
 $("#vivoMic").addEventListener("click", () => {
-  if (!Rec) return $("#vivoTexto").focus();
-  if (vivo.rec) return pausarVivo();
-  Object.assign(vivo, { ativo: true, silencios: 0 });
+  destravarVoz();
+  if (!Rec) { mostrarAviso(porQueNaoOuve()); return $("#vivoTexto").focus(); }
+  if (vivo.rec) { vivo.paradaManual = true; try { vivo.rec.stop(); } catch { /* já parou */ } return; } // terminei de falar
+  Object.assign(vivo, { ativo: true, silencios: 0, falhas: 0 });
   if (!vivo.item) return vivoProxima(true);
   // interrompe a fala dela e já escuta (no iPhone o microfone só liga direto no toque)
   vivo.sessao++;
@@ -2961,14 +3067,21 @@ $("#vivoMic").addEventListener("click", () => {
   vivo.falando = false;
   ouvir(true);
 });
-$("#vivoRepetir").addEventListener("click", async () => {
+// Ela repete a pergunta (ou a frase pra repetir, devagar) e volta a ouvir
+async function repetirPergunta() {
   const sessao = ++vivo.sessao;
-  Object.assign(vivo, { ativo: true, silencios: 0 });
+  Object.assign(vivo, { ativo: true, silencios: 0, falhas: 0 });
   const modo = state.voice === "off" ? "ingles" : state.voice;
   if (vivo.fase === "repetir") await brendaVivo(`[[${vivo.alvo}]]`, { bolha: false, velocidade: 0.7, modo: "ingles" });
   else if (vivo.item) { const [falado, nota] = promptDe(vivo.item, vivo.modo); await brendaVivo(falado, { nota, modo }); }
   else return vivoProxima(true);
   if (sessao === vivo.sessao && vivo.ativo) ouvir();
+}
+$("#vivoRepetir").addEventListener("click", () => { destravarVoz(); repetirPergunta(); });
+$("#vivoPausa").addEventListener("click", () => {
+  destravarVoz();
+  if (vivo.ativo) pausarVivo();
+  else repetirPergunta();
 });
 $("#vivoPular").addEventListener("click", () => {
   Object.assign(vivo, { ativo: true, silencios: 0 });
@@ -3084,10 +3197,32 @@ $("#testarVoz").addEventListener("click", () => {
   Object.assign(state, antes); // a voz já foi escolhida: dá pra voltar o estado na hora
 });
 
+// Mostra se o microfone funciona neste aparelho e, se não, o porquê
+$("#testarMic").addEventListener("click", () => {
+  const saida = $("#dicaMic");
+  saida.hidden = false;
+  if (!Rec) { saida.innerHTML = md(porQueNaoOuve()); return; }
+  stopSpeaking();
+  const rec = new Rec();
+  rec.lang = "en-US";
+  rec.interimResults = true;
+  let ouviu = "", erro = null;
+  saida.innerHTML = "<p>🎙️ Fala alguma coisa em inglês… (ex: <b>hello, how are you?</b>)</p>";
+  rec.onresult = (e) => { ouviu = Array.from(e.results, (r) => r[0].transcript).join("").trim(); saida.innerHTML = `<p>👂 ${esc(ouviu)}</p>`; };
+  rec.onerror = (e) => { erro = e.error; };
+  rec.onend = () => {
+    saida.innerHTML = ouviu ? `<p>✅ O microfone funciona! Entendi: “${esc(ouviu)}”</p>`
+      : erro && !/no-speech|aborted/.test(erro) ? md(porQueNaoOuve(erro)) + `<p class="muted">código: ${esc(erro)}</p>`
+      : "<p>Não ouvi nada. Toca de novo e fala mais perto do microfone.</p>";
+  };
+  try { rec.start(); } catch { saida.innerHTML = md(porQueNaoOuve("start")); }
+});
+
 function openSettings() {
   $("#sName").value = state.name; $("#sLevel").value = state.level; $("#sVibe").value = state.vibe;
   $("#sVoice").value = state.voice; $("#sRate").value = state.rate; $("#sTom").value = state.tom;
   preencherVozes();
+  $("#dicaMic").hidden = true;
   $("#settings").showModal();
 }
 $("#settingsBtn").addEventListener("click", openSettings);

@@ -29,6 +29,14 @@ A pasta `dados` precisa ficar junto do `index.html`, porque é nela que está o 
 ## Voz e microfone
 - A Brenda usa as vozes do próprio aparelho e escolhe sozinha as mais naturais: as vozes neurais do Microsoft Edge (grátis), as vozes "Melhorada"/"Premium" do iPhone e as vozes do Google no Chrome. Em ⚙️ dá para trocar a voz, deixar mais aguda e testar.
 - Para ela te ouvir, use Chrome, Edge ou Safari e permita o microfone. No Chrome o reconhecimento de voz precisa de internet. Sem microfone, dá para digitar as respostas.
+- Na conversa ao vivo ela já escuta sozinha depois de falar. O 🎤 serve pra falar na hora (interrompe a Brenda) e, enquanto ela escuta, pra avisar que você terminou. O ⏸️ pausa a conversa.
+
+### Se não der pra falar com a Brenda
+Em ⚙️, toque em **🎤 Testar microfone**: o app diz se o microfone funciona e, se não funcionar, o que fazer. Os casos mais comuns:
+- **Abriu dentro de outro app** (Instagram, Facebook…) **ou abriu o arquivo do zip direto:** abra o **link do site** no navegador.
+- **Android:** use o **Chrome** e permita o microfone (cadeado ao lado do endereço › Permissões › Microfone › Permitir).
+- **iPhone:** use o **Safari** e ligue o **Ditado** (Ajustes › Geral › Teclado › Ativar Ditado). No iPhone o microfone só liga com um toque, então toque no 🎤 pra responder.
+- **Firefox e Brave** não deixam o site usar o reconhecimento de voz: use Chrome, Edge ou Safari.
 
 O progresso fica salvo no `localStorage` do navegador.
 
