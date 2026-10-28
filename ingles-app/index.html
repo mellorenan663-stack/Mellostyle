@@ -501,11 +501,18 @@
     </select>
   </div>
   <div class="field">
-    <label>Voz em português</label>
+    <label>Inglês da Brenda</label>
+    <select id="sVozGravada">
+      <option value="sim">⭐ Voz natural gravada (recomendado)</option>
+      <option value="nao">Voz do aparelho</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Voz em português (do aparelho)</label>
     <select id="sVozPt"></select>
   </div>
   <div class="field">
-    <label>Voz em inglês</label>
+    <label>Voz do aparelho em inglês (pras frases sem gravação)</label>
     <select id="sVozEn"></select>
   </div>
   <div class="field">
@@ -524,13 +531,14 @@
   <p class="muted" id="dicaVoz" style="margin-top:0"></p>
   <div class="warn">⚠️ No modo "sem filtro" a Brenda fala palavrão (sem ofensa preconceituosa). Conteúdo para maiores de idade.</div>
   <details class="creditos">
-    <summary>📜 Créditos e licenças do dicionário</summary>
+    <summary>📜 Créditos e licenças do dicionário e da voz</summary>
     <ul>
       <li><b>WordNet 3.0</b>: © 2006 Princeton University (licença WordNet).</li>
       <li><b>OpenWN-PT</b>, o WordNet em português, de Alexandre Rademaker e Valeria de Paiva: CC BY-SA 3.0, via Open Multilingual Wordnet.</li>
       <li><b>FreeDict</b> inglês↔português: GNU GPL 2.0 ou posterior.</li>
       <li>Frases do <b>Tatoeba</b> (tatoeba.org): CC BY 2.0 FR, via Tatoeba Challenge (Helsinki-NLP).</li>
       <li><b>FrequencyWords</b>, de Hermit Dave (legendas do OpenSubtitles 2018): CC BY-SA 4.0.</li>
+      <li>Voz natural do inglês: <b>Kokoro-82M</b> (hexgrad), voz af_heart: Apache 2.0.</li>
     </ul>
     <p class="muted">Detalhes em dados/LICENCAS.txt.</p>
   </details>
@@ -1162,6 +1170,7 @@ const state = {
   vozPt: store.get("vozPt", ""),
   vozEn: store.get("vozEn", ""),
   tom: store.get("tom", "1"),
+  vozGravada: store.get("vozGravada", "sim"),
   xp: store.get("xp", 0),
   streak: store.get("streak", { days: 0, last: null }),
   done: store.get("done", []),
@@ -1232,10 +1241,108 @@ function setTalking(on) { document.querySelectorAll("[data-avatar]").forEach((a)
 function textoFalado(t, en) {
   t = t.replace(/\*\*/g, "").replace(/\p{Extended_Pictographic}|\uFE0F/gu, "").replace(/[“”"]/g, "");
   if (!en) t = t.replace(/\s*(→|->)\s*/g, ", ").replace(/\s*≈\s*/g, ", parecido com ").replace(/\s+\/\s+/g, " ou ").replace(/\s·\s/g, ", ");
+  else t = t.replace(/\s+\/\s+/g, ", "); // "Hello / Hi" -> "Hello, Hi"
   return t.replace(/\s+/g, " ").trim();
 }
 
-// Fala um texto com [[inglês]] misturado: PT com voz brasileira, EN com voz americana.
+/* ----- Inglês gravado com voz natural (dados/voz, feito por ferramentas/gerar_voz.py) ----- */
+const chaveVoz = (t) => String(t).normalize("NFC").replace(/[’‘`´]/g, "'").replace(/[“”"]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+// cyrb53: hash de 53 bits (o gerador em Python calcula igual)
+function cyrb53(str, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+const idDaChave = (k) => cyrb53(k).toString(36).padStart(11, "0").slice(0, 10);
+let VOZ_GRAVADA = null; // ids das frases gravadas (dados/voz/indice.js)
+const VELOCIDADE_GRAVADA = 0.9; // a gravação está no ritmo "Normal"
+// Acha o áudio gravado de uma frase em inglês ("How are you" também acha "How are you?")
+function audioGravado(t) {
+  if (!VOZ_GRAVADA || state.vozGravada === "nao") return null;
+  const k = chaveVoz(t), base = k.replace(/[.!?]+$/, "");
+  for (const c of new Set([k, base, base + ".", base + "!", base + "?"])) {
+    const id = idDaChave(c);
+    if (VOZ_GRAVADA.has(id)) return `dados/voz/${id[0]}/${id}.mp3`;
+  }
+  return null;
+}
+const player = typeof Audio === "function" ? new Audio() : null;
+// Celular só toca áudio depois de um toque: o primeiro toque na tela "destrava" o player
+let playerLiberado = false;
+function liberarPlayer() {
+  if (playerLiberado || !player) return;
+  playerLiberado = true;
+  if (player.src) return; // já tocou alguma frase num toque: já está liberado
+  player.src = "data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQIAAACAgA==";
+  player.play().catch(() => {});
+}
+["touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, liberarPlayer, true));
+function pararSom() {
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  if (player && !player.paused) player.pause();
+}
+const falandoAgora = () => ("speechSynthesis" in window && speechSynthesis.speaking) || !!(player && !player.paused && !player.ended);
+
+// Toca uma frase gravada; devolve false se não deu (aí ela fala com a voz do aparelho)
+function tocarGravado(p, gen) {
+  return new Promise((ok) => {
+    let feito = false;
+    let prazo = setTimeout(() => pronto(false), 6000); // não começou em 6 s (internet lenta): vai de voz do aparelho
+    const acabou = () => pronto(true), falhou = () => pronto(false);
+    const comecou = () => {
+      clearTimeout(prazo);
+      prazo = setTimeout(acabou, ((player.duration || 8) / player.playbackRate + 2) * 1000);
+      if (gen === speakGen) setTalking(true);
+    };
+    // os ouvintes são só desta frase: o fim de uma fala antiga não mexe na fala nova
+    function pronto(tocou) {
+      if (feito) return;
+      feito = true;
+      clearTimeout(prazo);
+      player.removeEventListener("ended", acabou);
+      player.removeEventListener("error", falhou);
+      player.removeEventListener("playing", comecou);
+      if (!tocou && gen === speakGen) player.pause();
+      ok(tocou);
+    }
+    player.addEventListener("ended", acabou);
+    player.addEventListener("error", falhou);
+    player.addEventListener("playing", comecou);
+    player.src = p.url;
+    player.defaultPlaybackRate = player.playbackRate = Math.min(2, Math.max(0.5, p.rate / VELOCIDADE_GRAVADA));
+    player.preservesPitch = player.webkitPreservesPitch = player.mozPreservesPitch = true; // mais devagar sem voz grossa
+    const tocando = player.play();
+    if (tocando) tocando.catch(() => pronto(false));
+  });
+}
+// Uma frase com a voz do aparelho; termina quando ela acaba (ou dá erro)
+function falarParte(p, gen, tom) {
+  return new Promise((ok) => {
+    let feito = false;
+    const pronto = () => { if (!feito) { feito = true; clearTimeout(demorou); ok(); } };
+    const demorou = setTimeout(pronto, 4000 + p.t.length * 120);
+    const u = new SpeechSynthesisUtterance(p.t);
+    u.lang = p.en ? "en-US" : "pt-BR";
+    u.rate = p.rate;
+    u.pitch = tom;
+    if (p.voz) u.voice = p.voz;
+    u.onstart = () => gen === speakGen && setTalking(true);
+    u.onend = u.onerror = pronto;
+    falasVivas.length = 0;
+    falasVivas.push(u);
+    speechSynthesis.speak(u);
+  });
+}
+
+// Fala um texto com [[inglês]] misturado: PT com voz brasileira, EN com a voz gravada (ou a americana do aparelho).
 // Devolve uma Promise que termina quando ela para de falar.
 function speak(text, mode = state.voice, { tom = Number(state.tom) || 1, velocidade = null } = {}) {
   const gen = ++speakGen;
@@ -1250,11 +1357,19 @@ function speak(text, mode = state.voice, { tom = Number(state.tom) || 1, velocid
       if (f && /[\p{L}\d]/u.test(f)) partes.push({ t: f, en });
     }
   });
-  if (!("speechSynthesis" in window) || mode === "off" || !partes.length) {
+  const temVoz = "speechSynthesis" in window;
+  // decide tudo agora (voz, velocidade, gravação): mudar as configurações no meio não bagunça a fala
+  for (const p of partes) {
+    p.rate = velocidade ?? (p.en ? Number(state.rate) : 1);
+    p.voz = temVoz ? voiceFor(p.en ? "en" : "pt") : null;
+    p.url = p.en && tom < 1.5 && player ? audioGravado(p.t) : null; // voz bem aguda é o eco do Talking Tom: fica com a do aparelho
+  }
+  if (mode === "off" || !partes.length || (!temVoz && !partes.some((p) => p.url))) {
     return new Promise((ok) => setTimeout(ok, mode === "off" && partes.length ? Math.min(2500, 300 + String(text).length * 25) : 0));
   }
-  speechSynthesis.cancel();
-  falasVivas.length = 0;
+  // enquanto ela fala o português, já baixa os áudios do inglês que vem depois
+  partes.forEach((p, i) => { if (p.url && i > 0) { const a = new Audio(); a.preload = "auto"; a.src = p.url; } });
+  pararSom();
   return new Promise((ok) => {
     let acabou = false;
     const fim = () => {
@@ -1266,27 +1381,23 @@ function speak(text, mode = state.voice, { tom = Number(state.tom) || 1, velocid
       ok();
     };
     fimDaFala = fim;
-    const seguranca = setTimeout(fim, 4000 + partes.reduce((n, p) => n + p.t.length, 0) * 110);
-    partes.forEach((p, i) => {
-      const u = new SpeechSynthesisUtterance(p.t);
-      u.lang = p.en ? "en-US" : "pt-BR";
-      u.rate = velocidade ?? (p.en ? Number(state.rate) : 1);
-      u.pitch = tom;
-      const v = voiceFor(p.en ? "en" : "pt");
-      if (v) u.voice = v;
-      if (i === 0) u.onstart = () => gen === speakGen && setTalking(true);
-      if (i === partes.length - 1) u.onend = fim;
-      u.onerror = () => { if (i === partes.length - 1 || gen !== speakGen) fim(); };
-      falasVivas.push(u);
-      speechSynthesis.speak(u);
-    });
+    const seguranca = setTimeout(fim, 8000 + partes.reduce((n, p) => n + p.t.length, 0) * 150);
+    let i = 0;
+    const proxima = () => {
+      const p = partes[i++];
+      if (acabou || gen !== speakGen || !p) return fim();
+      const comVoz = () => (temVoz ? falarParte(p, gen, tom) : Promise.resolve()).then(proxima);
+      if (p.url) tocarGravado(p, gen).then((tocou) => (tocou || gen !== speakGen ? proxima() : comVoz()));
+      else comVoz();
+    };
+    proxima();
   });
 }
 const sayEn = (en) => speak(`[[${en}]]`, "ingles");
 function stopSpeaking() {
   speakGen++;
   if (fimDaFala) fimDaFala();
-  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  pararSom();
   setTalking(false);
 }
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => { if ($("#settings").open) preencherVozes(); };
@@ -2806,7 +2917,13 @@ async function montarFila(modo) {
         if (!porPt.has(f.npt)) porPt.set(f.npt, { pt: f.pt, en: [] });
         porPt.get(f.npt).en.push(f.en);
       }
-      lista.push(...shuffle([...porPt.values()]).slice(0, 400));
+      // prefere as frases com voz gravada (e a gravada como resposta principal)
+      let grupos = [...porPt.values()];
+      if (VOZ_GRAVADA && state.vozGravada !== "nao") {
+        grupos = grupos.filter((g) => g.en.some(audioGravado));
+        for (const g of grupos) g.en.sort((a, b) => !!audioGravado(b) - !!audioGravado(a));
+      }
+      lista.push(...shuffle(grupos).slice(0, 400));
     }
   } catch { /* sem a pasta dados: usa só o conteúdo das aulas */ }
   return shuffle(lista.map((x) => (modo === "traduz" ? { pt: x.pt, en: [].concat(x.en) } : x)));
@@ -2903,7 +3020,7 @@ function ouvir(agora = false, espera = 0) {
   const sessao = vivo.sessao;
   if (!agora && vivo.soNoToque) return;
   // não escuta a própria voz: espera ela terminar de falar (e mais um tiquinho)
-  if (!agora && (espera === 0 || (espera < 40 && "speechSynthesis" in window && speechSynthesis.speaking))) {
+  if (!agora && (espera === 0 || (espera < 40 && falandoAgora()))) {
     setTimeout(() => { if (sessao === vivo.sessao && vivo.ativo && !vivo.rec) ouvir(false, espera + 1); }, 250);
     return;
   }
@@ -3191,8 +3308,8 @@ function preencherVozes() {
   $("#dicaVoz").textContent = melhor >= 80 ? "⭐ = voz natural (neural)." : "Dica: para uma voz bem natural, abra o app no Microsoft Edge (tem vozes neurais grátis) ou, no iPhone, baixe uma voz “Melhorada” em Ajustes › Acessibilidade › Conteúdo Falado › Vozes.";
 }
 $("#testarVoz").addEventListener("click", () => {
-  const antes = { vozPt: state.vozPt, vozEn: state.vozEn, tom: state.tom, rate: state.rate };
-  Object.assign(state, { vozPt: $("#sVozPt").value, vozEn: $("#sVozEn").value, tom: $("#sTom").value, rate: $("#sRate").value });
+  const antes = { vozPt: state.vozPt, vozEn: state.vozEn, tom: state.tom, rate: state.rate, vozGravada: state.vozGravada };
+  Object.assign(state, { vozPt: $("#sVozPt").value, vozEn: $("#sVozEn").value, tom: $("#sTom").value, rate: $("#sRate").value, vozGravada: $("#sVozGravada").value });
   speak(fill("Oi, {nome}! Eu sou a Brenda. Bora treinar? [[Hi! How are you doing today?]]"), "tudo");
   Object.assign(state, antes); // a voz já foi escolhida: dá pra voltar o estado na hora
 });
@@ -3220,14 +3337,14 @@ $("#testarMic").addEventListener("click", () => {
 
 function openSettings() {
   $("#sName").value = state.name; $("#sLevel").value = state.level; $("#sVibe").value = state.vibe;
-  $("#sVoice").value = state.voice; $("#sRate").value = state.rate; $("#sTom").value = state.tom;
+  $("#sVoice").value = state.voice; $("#sRate").value = state.rate; $("#sTom").value = state.tom; $("#sVozGravada").value = state.vozGravada;
   preencherVozes();
   $("#dicaMic").hidden = true;
   $("#settings").showModal();
 }
 $("#settingsBtn").addEventListener("click", openSettings);
 $("#saveSettings").addEventListener("click", () => {
-  const map = { name: "#sName", level: "#sLevel", vibe: "#sVibe", voice: "#sVoice", rate: "#sRate", vozPt: "#sVozPt", vozEn: "#sVozEn", tom: "#sTom" };
+  const map = { name: "#sName", level: "#sLevel", vibe: "#sVibe", voice: "#sVoice", rate: "#sRate", vozPt: "#sVozPt", vozEn: "#sVozEn", tom: "#sTom", vozGravada: "#sVozGravada" };
   for (const [k, sel] of Object.entries(map)) { state[k] = $(sel).value.trim(); store.set(k, state[k]); }
   store.set("setup", true);
   vivo.filas = {}; // o nível pode ter mudado
@@ -3250,6 +3367,7 @@ renderTrilha();
 renderMyCards();
 renderPhrases();
 atualizarMascote();
+carregarDados("voz/indice").then((ids) => { VOZ_GRAVADA = new Set(ids.split(" ")); }).catch(() => { /* sem a pasta dados/voz: só a voz do aparelho */ });
 $("#deckFilter").value = state.level;
 buildDeck();
 if (!store.get("setup", false)) openSettings();

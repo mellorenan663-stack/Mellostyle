@@ -1,0 +1,4 @@
+Voz em inglês da Brenda
+
+Os áudios desta pasta foram gerados com o Kokoro-82M (https://github.com/hexgrad/kokoro),
+voz af_heart, licença Apache 2.0, usando o kokoro-onnx (MIT) e o misaki (MIT) para a pronúncia.
