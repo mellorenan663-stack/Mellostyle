@@ -38,7 +38,13 @@ KBPS = 40
 # Onde o leitor de fonemas erra: letras faladas pelo nome
 FONEMAS_FIXOS = {
     "a, e, i, o, u": "ˈA, ˈi, ˈI, ˈO, jˈu",
+    "ye": "jˈi",  # "you" antigo: o leitor de fonemas não conhece
 }
+# Palavra solta sai pior sem nada antes ("fish" vira "vish", "slap" vira "is lap"): grava "Oh... fish." de uma vez
+# e corta o "Oh..." no silêncio da pausa. Se a pausa não aparecer ou o corte pegar só um pedaço da palavra,
+# tenta o próximo apoio; se nenhum der certo, fica a gravação simples.
+APOIOS = ("ˈO... ", "ˈO?! ", "ˈO. ", "ˈɑ... ")
+SONS_SOPRADOS = set("fvθðszʃʒ")  # com "h" a gravação simples já sai certa
 # Textos que precisam ser lidos de outro jeito (telefone se fala número por número)
 TEXTOS_FIXOS = {
     "in case of fire, dial 119.": "In case of fire, dial one one nine.",
@@ -99,11 +105,12 @@ def arquivo(i):
 
 
 # ---------- trabalho de cada processo ----------
-_kokoro = _g2p = None
+_kokoro = _g2p = _cache = None
 
 
-def _iniciar(modelo):
-    global _kokoro, _g2p
+def _iniciar(modelo, cache=None):
+    global _kokoro, _g2p, _cache
+    _cache = Path(cache) if cache else None
     import onnxruntime as rt
     from kokoro_onnx import Kokoro
     from misaki import en, espeak
@@ -116,15 +123,90 @@ def _iniciar(modelo):
     _g2p = en.G2P(trf=False, british=False, fallback=espeak.EspeakFallback(british=False))
 
 
+def _precisa_apoio(texto, fonemas):
+    palavras, inicio = texto.split(), fonemas.lstrip("ˈˌ")[:1]
+    return (len(palavras) == 1 and inicio != "h") or (len(palavras) <= 3 and inicio in SONS_SOPRADOS)
+
+
+def _duracao_fala(audio):
+    import numpy as np
+
+    acima = np.flatnonzero(np.abs(np.asarray(audio)) > 0.0003)
+    return (acima[-1] - acima[0]) / TAXA if acima.size else 0
+
+
+def _com_apoio(fonemas, simples):
+    """Grava "Oh... palavra" numa passada só (o create() separaria as frases) e devolve só a palavra, ou None."""
+    import numpy as np
+
+    alvo = _duracao_fala(simples)
+    if fonemas[-1] not in ".!?…":
+        fonemas += "."
+    q = TAXA // 200  # 5 ms
+    soprado = fonemas.lstrip("ˈˌ")[:1] in SONS_SOPRADOS
+    for apoio in APOIOS:
+        tokens = _kokoro.tokenizer.tokenize(apoio + fonemas)
+        audio, _ = _kokoro._infer(tokens, _kokoro._style_for(_kokoro.voices[VOZ], len(tokens)), VELOCIDADE)
+        audio = np.asarray(audio, dtype=np.float32)
+        n = len(audio) // q
+        blocos = audio[: n * q].reshape(n, q)
+        rms = np.sqrt(np.mean(blocos ** 2, axis=1))
+        fala = np.flatnonzero(rms > 0.05)
+        if not fala.size:
+            continue
+        cortes = []
+        if soprado:
+            # a vogal do "Oh" vira chiado (f, s, sh, th): a energia cai e o sinal passa a cruzar o zero o tempo todo
+            zcr = np.mean(np.abs(np.diff(np.sign(blocos), axis=1)) > 0, axis=1)
+            pico = rms[fala[0] : fala[0] + 40].max()
+            for k in range(fala[0] + 10, min(n, fala[0] + 120)):
+                if zcr[k] > 0.25 and zcr[k - 1] <= 0.25 and rms[k] < 0.35 * pico:
+                    cortes.append(max(0, k - 2) * q)
+                    break
+        i = fala[0] + 10  # passa do começo do "Oh"
+        while i < n and rms[i] > 0.003:  # até o "Oh" acabar
+            i += 1
+        j = i
+        while j < n and rms[j] < 0.003:  # a pausa
+            j += 1
+        if j - i >= 8 and j < n:  # 40 ms de silêncio e a palavra depois
+            cortes.append(max(i, j - 16) * q)  # até 80 ms antes da palavra: o resto da pausa vira atraso
+        for corte in cortes:
+            palavra = audio[corte:]
+            # o corte pode ter caído no fechamento de um "p" ou "t" de dentro da palavra: aí sobra só um pedaço
+            if alvo and 0.85 <= _duracao_fala(palavra) / alvo <= 1.3:
+                return palavra
+    return None
+
+
+def _comeco_do_chiado(audio):
+    """Começa no chiado (f, th, s, sh): tira o restinho do "Oh" que às vezes sobra antes dele."""
+    import numpy as np
+
+    q = TAXA // 200
+    n = min(len(audio) // q, 60)  # só nos primeiros 300 ms
+    blocos = np.asarray(audio[: n * q], dtype=np.float32).reshape(n, q)
+    rms = np.sqrt(np.mean(blocos ** 2, axis=1))
+    zcr = np.mean(np.abs(np.diff(np.sign(blocos), axis=1)) > 0, axis=1)
+    for k in range(n - 3):
+        if rms[k] > 0.001 and (zcr[k : k + 4] > 0.35).all():  # 20 ms seguidos de chiado de verdade
+            return audio[k * q :]
+    return audio
+
+
 def _limpar_audio(audio):
     import numpy as np
 
     audio = np.asarray(audio, dtype=np.float32)
-    acima = np.flatnonzero(np.abs(audio) > 0.004)
-    if acima.size:
-        ini = max(0, acima[0] - int(0.05 * TAXA))
-        fim = min(audio.size, acima[-1] + int(0.08 * TAXA))
-        audio = audio[ini:fim]
+    # corta o silêncio das pontas pelo nível a cada 5 ms: o ruído de fundo da voz fica em ~0,0002 e o fim de
+    # "fish", "stuff" e "ship" (baixinho, mas não pode sumir) fica acima de 0,001 até quase acabar
+    q = TAXA // 200
+    n = audio.size // q
+    if n:
+        rms = np.sqrt(np.mean(audio[: n * q].reshape(n, q) ** 2, axis=1))
+        comeco, final = np.flatnonzero(rms > 0.0005), np.flatnonzero(rms > 0.001)
+        if comeco.size and final.size:
+            audio = audio[max(0, comeco[0] * q - int(0.03 * TAXA)) : min(audio.size, (final[-1] + 1) * q + int(0.08 * TAXA))]
     pico = float(np.max(np.abs(audio))) if audio.size else 0
     if pico > 0:
         audio = audio * (0.89 / pico)  # -1 dBFS: todas no mesmo volume
@@ -136,6 +218,8 @@ def _limpar_audio(audio):
 
 
 def _gravar(item):
+    import numpy as np
+
     i, texto = item
     try:
         fonemas = FONEMAS_FIXOS.get(chave(texto))
@@ -144,8 +228,18 @@ def _gravar(item):
         fonemas = "".join(c for c in fonemas if c in _kokoro.tokenizer.vocab).strip()
         if not fonemas:
             return i, texto, "sem fonemas"
-        audio, taxa = _kokoro.create(fonemas, voice=VOZ, speed=VELOCIDADE, is_phonemes=True)
-        assert taxa == TAXA
+        guardado = _cache / f"{i}.npy" if _cache else None
+        if guardado and guardado.exists():
+            audio = np.load(guardado)
+        else:
+            simples, taxa = _kokoro.create(fonemas, voice=VOZ, speed=VELOCIDADE, is_phonemes=True)
+            assert taxa == TAXA
+            audio = _com_apoio(fonemas, simples) if _precisa_apoio(texto, fonemas) else None
+            audio = np.asarray(simples if audio is None else audio, dtype=np.float32)
+            if guardado:
+                np.save(guardado, audio)
+        if fonemas.lstrip("ˈˌ")[:1] in "fθsʃ":
+            audio = _comeco_do_chiado(audio)
         audio = _limpar_audio(audio)
         mp3 = subprocess.run(
             ["ffmpeg", "-loglevel", "error", "-f", "f32le", "-ar", str(TAXA), "-ac", "1", "-i", "pipe:0",
@@ -167,6 +261,8 @@ def main():
     ap.add_argument("--modelo", required=True, help="pasta com kokoro-v1.0.onnx e voices-v1.0.bin")
     ap.add_argument("--processos", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--limite", type=int, default=0, help="grava só os N primeiros (pra testar)")
+    ap.add_argument("--refazer-apoio", action="store_true", help="regrava as palavras soltas e frases curtas que usam o apoio")
+    ap.add_argument("--cache", help="pasta pra guardar o áudio cru (aí mudar o corte não exige gravar de novo)")
     args = ap.parse_args()
 
     textos = [t for t in TEXTOS.read_text(encoding="utf-8").splitlines() if t.strip()]
@@ -176,6 +272,24 @@ def main():
         if i in por_id and chave(por_id[i]) != chave(t):
             sys.exit(f"Colisão de hash entre {por_id[i]!r} e {t!r}: mude o tamanho do id no app e aqui.")
         por_id.setdefault(i, t)
+    if args.refazer_apoio:
+        import espeakng_loader
+        from misaki import en, espeak
+        from phonemizer.backend.espeak.wrapper import EspeakWrapper
+
+        EspeakWrapper.set_library(espeakng_loader.get_library_path())
+        EspeakWrapper.set_data_path(espeakng_loader.get_data_path())
+        g2p = en.G2P(trf=False, british=False, fallback=espeak.EspeakFallback(british=False))
+        apagados = 0
+        for i, t in por_id.items():
+            fonemas = FONEMAS_FIXOS.get(chave(t)) or g2p(TEXTOS_FIXOS.get(chave(t), t))[0] or ""
+            inicio = fonemas.lstrip("ˈˌ")[:1] if fonemas else ""
+            palavras = len(t.split())
+            # o que usava apoio antes (inclusive palavras com "h", que agora voltam pra gravação simples)
+            if fonemas and (palavras == 1 or (palavras <= 3 and inicio in SONS_SOPRADOS | {"h"})) and arquivo(i).exists():
+                arquivo(i).unlink()
+                apagados += 1
+        print(f"{apagados} áudios apagados pra regravar com o apoio", flush=True)
     faltando = [(i, t) for i, t in por_id.items() if not arquivo(i).exists()]
     if args.limite:
         faltando = faltando[: args.limite]
@@ -184,7 +298,9 @@ def main():
     erros = []
     inicio = time.time()
     if faltando:
-        with mp.get_context("spawn").Pool(args.processos, initializer=_iniciar, initargs=(args.modelo,)) as pool:
+        if args.cache:
+            Path(args.cache).mkdir(parents=True, exist_ok=True)
+        with mp.get_context("spawn").Pool(args.processos, initializer=_iniciar, initargs=(args.modelo, args.cache)) as pool:
             for n, (i, texto, erro) in enumerate(pool.imap_unordered(_gravar, faltando, chunksize=8), 1):
                 if erro:
                     erros.append((texto, erro))

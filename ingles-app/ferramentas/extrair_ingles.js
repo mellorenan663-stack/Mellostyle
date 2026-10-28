@@ -16,7 +16,7 @@ const path = require("path");
     const add = (t) => {
       if (t == null) return;
       t = textoFalado(String(t), true);
-      if (!t || !/[a-z]/i.test(t) || t.includes("${")) return;
+      if (!t || !/[a-z]/i.test(t) || /[{}$]/.test(t)) return; // pula moldes como {trecho}
       const k = t.toLowerCase();
       if (!vistos.has(k)) vistos.set(k, t);
     };

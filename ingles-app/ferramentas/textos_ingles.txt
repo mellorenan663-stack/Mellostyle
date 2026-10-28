@@ -752,7 +752,6 @@ Stop tickling me!
 belly
 Don't touch my tail!
 tail
-{trecho}
 Yes, I do.
 What's your name?
 My name is Ana.
@@ -3301,7 +3300,6 @@ They ran naked in the park.
 post
 sugar
 damage
-We estimated the damage at $1,000.
 silence
 Are you afraid of silence?
 success

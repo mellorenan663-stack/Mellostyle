@@ -69,4 +69,6 @@ node ferramentas/extrair_ingles.js        # lista as frases (precisa de Node e P
 python3 ferramentas/gerar_voz.py --modelo PASTA_DO_MODELO
 ```
 
-`gerar_voz.py` só grava as frases novas e apaga as que saíram. Ele precisa do `kokoro-onnx`, do `misaki` (com o spaCy e o modelo `en_core_web_sm`), do `ffmpeg` e dos arquivos `kokoro-v1.0.onnx` e `voices-v1.0.bin` do [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0).
+`gerar_voz.py` só grava as frases novas e apaga as que saíram. Ele precisa do `kokoro-onnx`, do `misaki` (com o spaCy e o modelo `en_core_web_sm`), do `ffmpeg` e dos arquivos `kokoro-v1.0.onnx` e `voices-v1.0.bin` do [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0). Com `--cache PASTA` ele guarda o áudio cru e, se só o corte mudar, refaz tudo em poucos minutos sem gravar de novo.
+
+Palavra solta gravada sem nada antes sai pior ("fish" vira "vish"). Por isso o gerador grava "Oh... fish." de uma vez e recorta a palavra, conferindo pela duração se pegou a palavra inteira. As 5.868 gravações foram conferidas com um reconhecedor de voz offline: 96% saem idênticas ao texto, e o resto é quase todo interjeição ("uh", "hmm"), número que ele escreve com algarismo ou palavra que soa igual a outra ("weight"/"wait").
