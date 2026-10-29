@@ -420,6 +420,7 @@ function getConfig(){
     investimento:toNumber(cfg.investimento,0),
     impostoRegime:["simples2","simples3","fixa"].includes(cfg.impostoRegime)?cfg.impostoRegime:"simples2",
     impostoAliquota:toNumber(cfg.impostoAliquota,0),
+    dasMes:(cfg.dasMes&&typeof cfg.dasMes==="object")?cfg.dasMes:{},
     provisaoMeses:(cfg.provisaoMeses && typeof cfg.provisaoMeses==="object")?cfg.provisaoMeses:{},
     tetosCategoria:(cfg.tetosCategoria && typeof cfg.tetosCategoria==="object")?cfg.tetosCategoria:{}
   };
@@ -448,6 +449,8 @@ function sanitizeConfigPayload(raw={}){
   if(raw.investimento!==undefined) out.investimento=Math.max(0,num(raw.investimento,atual.investimento||0));
   if(raw.impostoRegime!==undefined&&["simples2","simples3","fixa"].includes(raw.impostoRegime)) out.impostoRegime=raw.impostoRegime;
   if(raw.impostoAliquota!==undefined) out.impostoAliquota=Math.max(0,num(raw.impostoAliquota,atual.impostoAliquota||0));
+  if(raw.dasMes&&typeof raw.dasMes==="object")
+    out.dasMes=Object.fromEntries(Object.entries(raw.dasMes).filter(([k,v])=>/^\d{4}-\d{2}$/.test(k)&&Number.isFinite(num(v,NaN))).map(([k,v])=>[k,Math.max(0,num(v,0))]));
   if(raw.provisaoMeses!==undefined && raw.provisaoMeses && typeof raw.provisaoMeses==="object") out.provisaoMeses=raw.provisaoMeses;
   return out;
 }
@@ -840,24 +843,35 @@ function __fmtPct1(v){
    123/2006, art. 18, tabelas da LC 155/2016. Empresa no 1º ano: no 1º mês
    de atividade usa o faturamento do mês × 12; nos 11 meses seguintes, a
    média dos meses anteriores × 12. O 1º mês de atividade é o 1º mês com
-   faturamento no sistema. Também dá para usar a alíquota impressa no DAS. */
+   faturamento no sistema. Também dá para usar a alíquota impressa no DAS.
+   Mas o que vale é o DAS de verdade: o valor da guia digitado para o mês
+   entra no lugar da conta, e os meses ainda sem guia usam a porcentagem do
+   DAS mais perto (DAS ÷ faturamento daquele mês). A tabela só é usada
+   quando nenhum DAS foi digitado. */
 const __SIMPLES={
   simples2:{rot:"Simples · Anexo II",faixas:[[180000,.045,0],[360000,.078,5940],[720000,.10,13860],[1800000,.112,22500],[3600000,.147,85500],[4800000,.30,720000]]},
   simples3:{rot:"Simples · Anexo III",faixas:[[180000,.06,0],[360000,.112,9360],[720000,.135,17640],[1800000,.16,35640],[3600000,.21,125640],[4800000,.33,648000]]}
 };
 function __mesMais(mes,n){ const [a,m]=mes.split("-").map(Number); return monthKeyLocal(new Date(a,m-1+n,1)); }
-let __inicioAtiv={versao:-1,mes:""};
-function __mesInicioAtividade(){
-  if(__inicioAtiv.versao===__dadosVersao&&__inicioAtiv.fonte===lotes) return __inicioAtiv.mes;
-  let menor="";
+/* Faturamento de cada mês numa passada só pelas OFs — a mesma regra e a
+   mesma ordem de soma do resumo do mês (lotePertenceAoMes), sem refazer o
+   resumo inteiro (folha, gastos) de doze meses só para somar OFs. */
+let __fatMes={versao:-1,fonte:null,mapa:new Map(),inicio:""};
+function __faturamentoPorMes(){
+  if(__fatMes.versao===__dadosVersao&&__fatMes.fonte===lotes) return __fatMes;
+  const mapa=new Map(); let inicio="";
   for(const l of lotes){
-    if(l?.status==="Cancelado"||!(calcFaturamentoLote(l)>0)) continue;
+    if(l?.status==="Cancelado") continue;
     const m=getLoteCompetenciaFinal(l);
-    if(/^\d{4}-\d{2}$/.test(m)&&(!menor||m<menor)) menor=m;
+    if(!/^\d{4}-\d{2}$/.test(m)) continue;
+    const v=calcFaturamentoLote(l);
+    mapa.set(m,(mapa.get(m)||0)+v);
+    if(v>0&&(!inicio||m<inicio)) inicio=m;
   }
-  __inicioAtiv={versao:__dadosVersao,fonte:lotes,mes:menor};
-  return menor;
+  __fatMes={versao:__dadosVersao,fonte:lotes,mapa,inicio};
+  return __fatMes;
 }
+const __nomeMes=m=>__fmtMesAno.format(new Date(m+"-02")).replace(/\s+de\s+\d{4}$/,"").toLowerCase();
 /* O DAS lançado como gasto já é o imposto: o calculado entra no lugar dele,
    para não descontar duas vezes. Encargos da folha e IPTU/IPVA não são o
    imposto do faturamento e continuam como custo. */
@@ -873,19 +887,34 @@ function calcImpostoMes(mes){
     if(__IMPOSTO_LANCADO.test(t)&&!__OUTRO_IMPOSTO.test(t)) lancado+=toNumber(g.valor,0);
   }
   const base={receita,lucro:r.lucro,lancado:__noCentavo(lancado),regime:cfg.impostoRegime};
-  let aliq=0,rbt12=null,regra="",rot="alíquota do DAS";
+  const fm=__faturamentoPorMes();
+  const das=cfg.dasMes||{};
+  const dasDoMes=toNumber(das[mes],0);
+  const fim=imposto=>({...base,imposto,lucroAposImposto:__noCentavo(r.lucro+lancado-imposto)});
+  // 1) o DAS deste mês foi digitado: é ele, sem conta
+  if(dasDoMes>0)
+    return {...fim(__noCentavo(dasDoMes)),fonte:"das",aliquota:receita>0?dasDoMes/receita:null,rbt12:null,regra:"",acimaDoLimite:false};
+  // 2) há DAS de outro mês: a porcentagem dele (o mais perto, de preferência antes)
+  const refs=Object.keys(das).filter(k=>/^\d{4}-\d{2}$/.test(k)&&toNumber(das[k],0)>0&&(fm.mapa.get(k)||0)>0).sort();
+  if(refs.length){
+    const antes=refs.filter(k=>k<mes), ref=antes.length?antes[antes.length-1]:refs[0];
+    const aliq=toNumber(das[ref],0)/fm.mapa.get(ref);
+    return {...fim(__noCentavo(receita*aliq)),fonte:"estimado-das",ref,aliquota:aliq,rbt12:null,regra:"",acimaDoLimite:false};
+  }
+  // 3) nenhum DAS digitado: alíquota fixa ou a tabela do Simples
+  let aliq=0,rbt12=null,regra="",rot="alíquota fixa";
   if(cfg.impostoRegime==="fixa") aliq=Math.max(0,toNumber(cfg.impostoAliquota,0))/100;
   else{
     const tab=__SIMPLES[cfg.impostoRegime]||__SIMPLES.simples2;
     rot=tab.rot; rbt12=0;
-    const inicio=__mesInicioAtividade();
+    const inicio=fm.inicio;
     if(inicio&&mes>=inicio){
       const [ai,mi]=inicio.split("-").map(Number), [am,mm]=mes.split("-").map(Number);
       const k=(am-ai)*12+(mm-mi);            // meses de atividade antes deste
       if(k===0){ rbt12=receita*12; regra="1º mês de atividade: faturamento do mês × 12"; }
       else{
         const n=Math.min(k,12); let s=0;
-        for(let i=1;i<=n;i++) s+=calcResumoMensal(__mesMais(mes,-i)).faturamento||0;
+        for(let i=1;i<=n;i++) s+=fm.mapa.get(__mesMais(mes,-i))||0;
         rbt12=k<=11?s/k*12:s;
         regra=k<=11?`1º ano: média de ${k} ${k===1?"mês":"meses"} × 12`:"soma dos 12 meses anteriores";
       }
@@ -893,9 +922,8 @@ function calcImpostoMes(mes){
     const f=rbt12>0?(tab.faixas.find(x=>rbt12<=x[0])||tab.faixas[tab.faixas.length-1]):tab.faixas[0];
     aliq=rbt12>0?(rbt12*f[1]-f[2])/rbt12:f[1];
   }
-  const imposto=__noCentavo(receita*aliq);
-  return {...base,rot,aliquota:aliq,rbt12:rbt12===null?null:__noCentavo(rbt12),regra,acimaDoLimite:rbt12>4800000,
-    imposto,lucroAposImposto:__noCentavo(r.lucro+lancado-imposto)};
+  return {...fim(__noCentavo(receita*aliq)),fonte:cfg.impostoRegime==="fixa"?"fixa":"tabela",rot,aliquota:aliq,
+    rbt12:rbt12===null?null:__noCentavo(rbt12),regra,acimaDoLimite:rbt12>4800000};
 }
 /* ── Excel de verdade (.xlsx), sem biblioteca externa ──────────
    Um .xlsx é um ZIP com XMLs dentro. Aqui o ZIP é gravado sem
@@ -6368,6 +6396,23 @@ window.setImpostoAliquota=function(val){
   persistConfigParcial({impostoAliquota:n});
   renderMetas();
 };
+/* Valor da guia do DAS de um mês (o "período de apuração" impresso nela).
+   Campo vazio apaga guardando 0: a gravação junta o mapa com o que já está
+   no banco, então só tirar o mês daqui não apagaria lá. */
+window.setDasMes=function(mes,val){
+  if(!/^\d{4}-\d{2}$/.test(String(mes||""))) return;
+  const bruto=String(val??"").replace(/[R$\s]/gi,"");
+  const n=bruto?toNumber(bruto,NaN):0;
+  if(!Number.isFinite(n)||n<0){
+    toast("Não entendi o valor do DAS. Escreva como está na guia: 4.152,09","err");
+    renderMetas();
+    return;
+  }
+  const v=__noCentavo(n);
+  setConfigField("dasMes",{...(getStoredConfig().dasMes||{}),[mes]:v});
+  persistConfigParcial({dasMes:{[mes]:v}});
+  renderMetas();
+};
 window.setProvisaoMesesFunc=function(id,val){
   const cfg=getStoredConfig();
   const pm={...(cfg.provisaoMeses||{})};
@@ -6708,32 +6753,52 @@ function renderMetas(){
     const subE=e.foraOp>0
       ? `lucro de <b>${fmtMoney(e.lucro)}</b> + <b>${fmtMoney(e.foraOp)}</b> de ${e.grupos.join(", ")}`
       : `igual ao lucro: o mês não tem gasto com juros, empréstimo, IR ou depreciação`;
-    const nomeMes=__fmtMesAno.format(new Date(mesAtual+"-02")).replace(/\s+de\s+\d{4}$/,"").toLowerCase();
+    const nomeMes=__nomeMes(mesAtual);
     const subR=r.roiMes===null
       ? `informe abaixo quanto foi investido na fábrica`
       : `no ano, até ${nomeMes}: <b>${__fmtPct1(r.roiAno)}</b> · lucro de <b>${fmtMoney(r.lucroMes)}</b> no mês`;
     const investidoTxt=r.investido>0?fmtMoney(r.investido).replace(/^R\$\s*/,""):"";
-    /* Lucro depois do imposto do faturamento (DAS do Simples Nacional). */
+    /* Lucro depois do imposto do faturamento (DAS do Simples Nacional).
+       Com a guia digitada é o valor dela; sem, a porcentagem do DAS mais
+       perto; sem DAS nenhum, a tabela (ou a alíquota fixa). */
     const im=calcImpostoMes(mesAtual);
     const pct2=v=>(v*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
-    const subI=`imposto do mês <b>${fmtMoney(im.imposto)}</b> (${pct2(im.aliquota)} do faturamento)`
-      +(im.lancado>0?` · os <b>${fmtMoney(im.lancado)}</b> de imposto lançados em Gastos foram trocados por este`:"");
-    const baseI=im.rbt12===null?"alíquota informada, do DAS"
-      :im.rbt12>0?`faturamento de 12 meses: ${fmtMoney(im.rbt12)} (${im.regra})`:"sem faturamento antes deste mês";
+    const rotMes=m=>__nomeMes(m)+(m.slice(0,4)!==mesAtual.slice(0,4)?" de "+m.slice(0,4):"");
+    let tagI,subI,baseI;
+    if(im.fonte==="das"){
+      tagI="DAS real";
+      subI=`DAS de ${nomeMes}: <b>${fmtMoney(im.imposto)}</b>`+(im.aliquota!==null?` (${pct2(im.aliquota)} do faturamento)`:"");
+      baseI="valor da guia, sem estimativa";
+    }else if(im.fonte==="estimado-das"){
+      tagI="estimado";
+      subI=`imposto estimado <b>${fmtMoney(im.imposto)}</b> (${pct2(im.aliquota)}, a mesma porcentagem do DAS de ${rotMes(im.ref)})`;
+      baseI=`a guia de ${nomeMes} vence em ${__nomeMes(__mesMais(mesAtual,1))}: quando chegar, digite o valor abaixo`;
+    }else{
+      tagI=im.acimaDoLimite?"acima do limite do Simples":im.rot;
+      subI=`imposto do mês <b>${fmtMoney(im.imposto)}</b> (${pct2(im.aliquota)} do faturamento)`;
+      baseI=im.rbt12===null?"alíquota informada"
+        :im.rbt12>0?`faturamento de 12 meses: ${fmtMoney(im.rbt12)} (${im.regra})`:"sem faturamento antes deste mês";
+    }
+    if(im.lancado>0) subI+=` · os <b>${fmtMoney(im.lancado)}</b> de imposto lançados em Gastos foram trocados por este`;
+    const dasDigitado=toNumber((getConfig().dasMes||{})[mesAtual],0);
+    const dasTxt=dasDigitado>0?fmtMoney(dasDigitado).replace(/^R\$\s*/,""):"";
     const opI=(v,t)=>`<option value="${v}"${im.regime===v?" selected":""}>${t}</option>`;
     const aliqTxt=getConfig().impostoAliquota>0?String(getConfig().impostoAliquota).replace(".",","):"";
     return `<div class="dsh-apoio dsh-fin">
       <div class="dsh-ap" data-sit="${im.lucroAposImposto<0||im.acimaDoLimite?"atraso":"andando"}">
         <div class="dsh-ap-l"><span class="dsh-ap-dot"></span><span class="dsh-ap-rot">Lucro após imposto</span>
-          <span class="dsh-ap-tag">${im.acimaDoLimite?"acima do limite do Simples":im.rot}</span></div>
+          <span class="dsh-ap-tag">${tagI}</span></div>
         <div class="dsh-ap-v">${dinheiro(im.lucroAposImposto)}</div>
         <div class="dsh-ap-s">${subI}</div>
         <div class="dsh-ap-s dsh-imp-base">${baseI}</div>
-        <label class="dsh-inv"><span>Como calcular</span>
+        <label class="dsh-inv"><span>DAS de ${nomeMes}</span>
+          <span class="dsh-inv-campo"><small>R$</small><input id="dash-das" type="text" inputmode="decimal"
+            placeholder="0,00" value="${dasTxt}" onchange="setDasMes('${mesAtual}',this.value)"/></span></label>
+        ${im.fonte==="tabela"||im.fonte==="fixa"?`<label class="dsh-inv"><span>Sem DAS, calcular por</span>
           <span class="dsh-inv-ops"><select id="dash-imposto-regime" onchange="setImpostoRegime(this.value)">
-            ${opI("simples2","Simples – Anexo II (indústria)")}${opI("simples3","Simples – Anexo III (serviço)")}${opI("fixa","Alíquota do DAS")}
+            ${opI("simples2","Simples – Anexo II (indústria)")}${opI("simples3","Simples – Anexo III (serviço)")}${opI("fixa","Alíquota fixa (%)")}
           </select>${im.regime==="fixa"?`<span class="dsh-inv-campo"><input id="dash-imposto-aliq" type="text" inputmode="decimal"
-            placeholder="0,00" value="${aliqTxt}" onchange="setImpostoAliquota(this.value)"/><small>%</small></span>`:""}</span></label>
+            placeholder="0,00" value="${aliqTxt}" onchange="setImpostoAliquota(this.value)"/><small>%</small></span>`:""}</span></label>`:""}
       </div>
       <div class="dsh-ap" data-sit="${e.ebitda<0?"atraso":"andando"}">
         <div class="dsh-ap-l"><span class="dsh-ap-dot"></span><span class="dsh-ap-rot">EBITDA</span>
@@ -20852,7 +20917,7 @@ main,.main{ padding-bottom:96px!important; }
   border:1px solid var(--bd); border-radius:10px; padding:4px 10px; }
 .dsh-inv-campo:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .dsh-inv-campo small{ font-size:12px; font-weight:700; color:var(--t3); letter-spacing:0; }
-#dash-investimento{ width:132px; border:0!important; background:transparent!important; box-shadow:none!important;
+#dash-investimento,#dash-das{ width:132px; border:0!important; background:transparent!important; box-shadow:none!important;
   padding:3px 0!important; font-family:var(--fm); font-size:16px!important; font-weight:700; color:var(--t)!important;
   text-align:right; font-variant-numeric:tabular-nums; outline:none; }
 @media (max-width:640px){
