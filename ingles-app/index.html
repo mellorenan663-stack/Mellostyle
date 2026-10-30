@@ -201,6 +201,7 @@
   .field input, .field select, select.btn {
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
   }
+  .field select:disabled { opacity: .45; }
   .deck-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 
   /* Frases */
@@ -506,8 +507,8 @@
   <div class="field">
     <label>Voz do inglês</label>
     <select id="sVozGravada">
-      <option value="sim">⭐ Brenda: voz natural americana (recomendado)</option>
-      <option value="jarvis">🤖 Estilo Jarvis: mordomo britânico, voz de IA</option>
+      <option value="sim">⭐ Brenda (americana, natural)</option>
+      <option value="jarvis">🤖 Estilo Jarvis (britânico, IA)</option>
       <option value="nao">Voz do aparelho</option>
     </select>
   </div>
