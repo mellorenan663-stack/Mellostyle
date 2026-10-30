@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Grava o inglês fixo do app com uma voz neural natural (Kokoro-82M, licença Apache 2.0).
 
-Lê ferramentas/textos_ingles.txt (gerado por extrair_ingles.js) e cria:
-  dados/voz/<x>/<id>.mp3   um áudio por frase
-  dados/voz/indice.js      a lista de ids que o app consulta antes de tocar
+Lê ferramentas/textos_ingles.txt (gerado por extrair_ingles.js) e cria, pra cada voz:
+  dados/<pasta>/<x>/<id>.mp3   um áudio por frase
+  dados/<pasta>/indice.js      a lista de ids que o app consulta antes de tocar
+Vozes: brenda (americana, pasta "voz") e jarvis (mordomo britânico com efeito de IA, pasta "voz-jarvis").
 
 O id é o hash cyrb53 do texto normalizado, igual ao que o app calcula em idVoz().
 Só grava o que ainda não existe e apaga os áudios de frases que saíram do app.
@@ -14,7 +15,7 @@ Precisa de:
   kokoro-v1.0.onnx e voices-v1.0.bin de
   https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0
 
-Uso: python3 ferramentas/gerar_voz.py --modelo PASTA_DO_MODELO [--processos 4]
+Uso: python3 ferramentas/gerar_voz.py --modelo PASTA_DO_MODELO [--voz brenda|jarvis] [--processos 4]
 """
 import argparse
 import multiprocessing as mp
@@ -28,21 +29,39 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 TEXTOS = RAIZ / "ferramentas" / "textos_ingles.txt"
-SAIDA = RAIZ / "dados" / "voz"
 TAXA = 24000
-
-VOZ = "af_heart"  # a voz americana mais natural do Kokoro
 VELOCIDADE = 0.92  # um pouco mais devagar que o normal: soa natural e fica fácil de entender
 KBPS = 40
 
-# Onde o leitor de fonemas erra: letras faladas pelo nome
+VOZES = {
+    "brenda": {"voz": "af_heart", "britanico": False, "pasta": "voz", "efeito": None,  # a americana mais natural do Kokoro
+               "titulo": "Voz em inglês da Brenda", "detalhe": "voz af_heart"},
+    # estilo mordomo de IA: voz masculina britânica grave (a mais clara no reconhecedor) e um efeito leve,
+    # dois ecos curtinhos (brilho de "sala de computador") e presença; não é a voz de nenhum ator
+    "jarvis": {"voz": "bm_lewis", "britanico": True, "pasta": "voz-jarvis",
+               "efeito": "highpass=f=75,equalizer=f=220:t=q:w=1:g=-1.5,equalizer=f=3500:t=q:w=1.2:g=2.5,"
+                         "aecho=1.0:0.9:16|29:0.16|0.1,volume=0.9,alimiter=limit=0.89:level=false",
+               "titulo": "Voz em inglês no estilo mordomo de IA", "detalhe": "voz bm_lewis com um efeito leve de eco"},
+}
+CONFIG = VOZES["brenda"]
+VOZ, SAIDA = CONFIG["voz"], RAIZ / "dados" / CONFIG["pasta"]
+
+
+def configurar(nome):
+    """Escolhe a voz: muda a pasta de saída e o sotaque."""
+    global CONFIG, VOZ, SAIDA
+    CONFIG = VOZES[nome]
+    VOZ, SAIDA = CONFIG["voz"], RAIZ / "dados" / CONFIG["pasta"]
+
+
+# Onde o leitor de fonemas erra: letras faladas pelo nome (americano, britânico)
 FONEMAS_FIXOS = {
-    "a, e, i, o, u": "ˈA, ˈi, ˈI, ˈO, jˈu",
-    "ye": "jˈi",  # "you" antigo: o leitor de fonemas não conhece
+    "a, e, i, o, u": ("ˈA, ˈi, ˈI, ˈO, jˈu", "ˈA, ˈiː, ˈI, ˈQ, jˈuː"),
+    "ye": ("jˈi", "jˈiː"),  # "you" antigo: o leitor de fonemas não conhece
 }
 # Palavra solta sai pior sem nada antes ("fish" vira "vish", "slap" vira "is lap"): grava "Oh... fish." de uma vez
 # e corta o "Oh..." no silêncio da pausa. Se a pausa não aparecer ou o corte pegar só um pedaço da palavra,
-# tenta o próximo apoio; se nenhum der certo, fica a gravação simples.
+# tenta o próximo apoio; se nenhum der certo, fica a gravação simples. (No britânico o "Oh" muda: sai do leitor.)
 APOIOS = ("ˈO... ", "ˈO?! ", "ˈO. ", "ˈɑ... ")
 SONS_SOPRADOS = set("fvθðszʃʒ")  # com "h" a gravação simples já sai certa
 # Textos que precisam ser lidos de outro jeito (telefone se fala número por número)
@@ -50,10 +69,10 @@ TEXTOS_FIXOS = {
     "in case of fire, dial 119.": "In case of fire, dial one one nine.",
 }
 
-LICENCA = """Voz em inglês da Brenda
+LICENCA = """{titulo}
 
 Os áudios desta pasta foram gerados com o Kokoro-82M (https://github.com/hexgrad/kokoro),
-voz af_heart, licença Apache 2.0, usando o kokoro-onnx (MIT) e o misaki (MIT) para a pronúncia.
+{detalhe}, licença Apache 2.0, usando o kokoro-onnx (MIT) e o misaki (MIT) para a pronúncia.
 """
 
 
@@ -108,8 +127,15 @@ def arquivo(i):
 _kokoro = _g2p = _cache = None
 
 
-def _iniciar(modelo, cache=None):
-    global _kokoro, _g2p, _cache
+def _fixos(texto):
+    """Fonemas escritos à mão pra esse texto (no sotaque da voz), ou None."""
+    par = FONEMAS_FIXOS.get(chave(texto))
+    return par[CONFIG["britanico"]] if par else None
+
+
+def _iniciar(modelo, cache=None, voz="brenda"):
+    global _kokoro, _g2p, _cache, APOIOS
+    configurar(voz)
     _cache = Path(cache) if cache else None
     import onnxruntime as rt
     from kokoro_onnx import Kokoro
@@ -120,7 +146,11 @@ def _iniciar(modelo, cache=None):
     opcoes.inter_op_num_threads = 1
     sessao = rt.InferenceSession(str(Path(modelo) / "kokoro-v1.0.onnx"), opcoes, providers=["CPUExecutionProvider"])
     _kokoro = Kokoro.from_session(sessao, str(Path(modelo) / "voices-v1.0.bin"))
-    _g2p = en.G2P(trf=False, british=False, fallback=espeak.EspeakFallback(british=False))
+    britanico = CONFIG["britanico"]
+    _g2p = en.G2P(trf=False, british=britanico, fallback=espeak.EspeakFallback(british=britanico))
+    if britanico:
+        oh, ah = (_g2p(p)[0].strip(" .") for p in ("Oh", "Ah"))
+        APOIOS = (f"{oh}... ", f"{oh}?! ", f"{oh}. ", f"{ah}... ")
 
 
 def _precisa_apoio(texto, fonemas):
@@ -222,7 +252,7 @@ def _gravar(item):
 
     i, texto = item
     try:
-        fonemas = FONEMAS_FIXOS.get(chave(texto))
+        fonemas = _fixos(texto)
         if not fonemas:
             fonemas, _ = _g2p(TEXTOS_FIXOS.get(chave(texto), texto))
         fonemas = "".join(c for c in fonemas if c in _kokoro.tokenizer.vocab).strip()
@@ -243,7 +273,7 @@ def _gravar(item):
         audio = _limpar_audio(audio)
         mp3 = subprocess.run(
             ["ffmpeg", "-loglevel", "error", "-f", "f32le", "-ar", str(TAXA), "-ac", "1", "-i", "pipe:0",
-             "-c:a", "libmp3lame", "-b:a", f"{KBPS}k", "-map_metadata", "-1", "-id3v2_version", "0", "-f", "mp3", "pipe:1"],
+             *(["-af", CONFIG["efeito"]] if CONFIG["efeito"] else []), "-c:a", "libmp3lame", "-b:a", f"{KBPS}k", "-map_metadata", "-1", "-id3v2_version", "0", "-f", "mp3", "pipe:1"],
             input=audio.tobytes(), capture_output=True, check=True,
         ).stdout
         destino = arquivo(i)
@@ -259,11 +289,13 @@ def _gravar(item):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--modelo", required=True, help="pasta com kokoro-v1.0.onnx e voices-v1.0.bin")
+    ap.add_argument("--voz", choices=sorted(VOZES), default="brenda")
     ap.add_argument("--processos", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--limite", type=int, default=0, help="grava só os N primeiros (pra testar)")
     ap.add_argument("--refazer-apoio", action="store_true", help="regrava as palavras soltas e frases curtas que usam o apoio")
     ap.add_argument("--cache", help="pasta pra guardar o áudio cru (aí mudar o corte não exige gravar de novo)")
     args = ap.parse_args()
+    configurar(args.voz)
 
     textos = [t for t in TEXTOS.read_text(encoding="utf-8").splitlines() if t.strip()]
     por_id = {}
@@ -279,10 +311,11 @@ def main():
 
         EspeakWrapper.set_library(espeakng_loader.get_library_path())
         EspeakWrapper.set_data_path(espeakng_loader.get_data_path())
-        g2p = en.G2P(trf=False, british=False, fallback=espeak.EspeakFallback(british=False))
+        britanico = CONFIG["britanico"]
+        g2p = en.G2P(trf=False, british=britanico, fallback=espeak.EspeakFallback(british=britanico))
         apagados = 0
         for i, t in por_id.items():
-            fonemas = FONEMAS_FIXOS.get(chave(t)) or g2p(TEXTOS_FIXOS.get(chave(t), t))[0] or ""
+            fonemas = _fixos(t) or g2p(TEXTOS_FIXOS.get(chave(t), t))[0] or ""
             inicio = fonemas.lstrip("ˈˌ")[:1] if fonemas else ""
             palavras = len(t.split())
             # o que usava apoio antes (inclusive palavras com "h", que agora voltam pra gravação simples)
@@ -300,7 +333,7 @@ def main():
     if faltando:
         if args.cache:
             Path(args.cache).mkdir(parents=True, exist_ok=True)
-        with mp.get_context("spawn").Pool(args.processos, initializer=_iniciar, initargs=(args.modelo, args.cache)) as pool:
+        with mp.get_context("spawn").Pool(args.processos, initializer=_iniciar, initargs=(args.modelo, args.cache, args.voz)) as pool:
             for n, (i, texto, erro) in enumerate(pool.imap_unordered(_gravar, faltando, chunksize=8), 1):
                 if erro:
                     erros.append((texto, erro))
@@ -316,8 +349,8 @@ def main():
     ids = sorted(i for i in por_id if arquivo(i).exists())
     SAIDA.mkdir(parents=True, exist_ok=True)
     (SAIDA / "indice.js").write_text(
-        '(window.SFE_DATA = window.SFE_DATA || {})["voz/indice"] = "' + " ".join(ids) + '";\n', encoding="utf-8")
-    (SAIDA / "LICENCA.txt").write_text(LICENCA, encoding="utf-8")
+        f'(window.SFE_DATA = window.SFE_DATA || {{}})["{CONFIG["pasta"]}/indice"] = "' + " ".join(ids) + '";\n', encoding="utf-8")
+    (SAIDA / "LICENCA.txt").write_text(LICENCA.format(**CONFIG), encoding="utf-8")
     tamanho = sum(f.stat().st_size for f in SAIDA.glob("*/*.mp3"))
     print(f"{len(ids)} áudios, {tamanho / 1e6:.1f} MB; {len(erros)} erro(s)")
     for texto, erro in erros[:20]:

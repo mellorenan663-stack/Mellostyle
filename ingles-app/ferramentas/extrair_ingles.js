@@ -39,7 +39,8 @@ const path = require("path");
     for (const p of PAPO) { add(p.q); add(p.exemplo); }
     for (const q of ["Do", "Can", "Are", "Have", "Did", "Will"]) { add(respostaCurta(q + " you", false)); add(respostaCurta(q + " you", true)); }
     for (let n = 1; n <= 100; n++) add(`I'm ${n} years old.`);
-    ["Purr... meow!", "Stop it!", "Hi! How are you doing today?", "hello, how are you?"].forEach(add);
+    varre(TESTE_VOZ);
+    ["Purr... meow!", "Stop it!", "hello, how are you?"].forEach(add);
     const b = await dadosBase();
     for (const [en, , ex] of b.top) { add(en); add(ex); }
     return [...vistos.values()];

@@ -84,6 +84,9 @@
   .avatar.angry .ear-r { animation: none; transform: rotate(16deg); }
   @keyframes twitch { 0%, 92%, 100% { transform: rotate(0); } 95% { transform: rotate(-10deg); } }
   .avatar .pupil { transition: transform .12s; }
+  /* voz estilo Jarvis: a Brenda ganha um brilho azul de IA, mais forte quando ela fala */
+  body.modo-jarvis .avatar svg { filter: drop-shadow(0 0 4px rgba(64, 200, 255, .5)); transition: filter .3s; }
+  body.modo-jarvis .avatar.talking svg { filter: drop-shadow(0 0 10px rgba(64, 200, 255, .95)); }
   .heart { position: absolute; pointer-events: none; font-size: 20px; animation: floaty 1.1s ease-out forwards; }
   @keyframes floaty { from { opacity: 1; transform: translateY(0) scale(.8); } to { opacity: 0; transform: translateY(-60px) scale(1.3); } }
   .you { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
@@ -501,9 +504,10 @@
     </select>
   </div>
   <div class="field">
-    <label>Inglês da Brenda</label>
+    <label>Voz do inglês</label>
     <select id="sVozGravada">
-      <option value="sim">⭐ Voz natural gravada (recomendado)</option>
+      <option value="sim">⭐ Brenda: voz natural americana (recomendado)</option>
+      <option value="jarvis">🤖 Estilo Jarvis: mordomo britânico, voz de IA</option>
       <option value="nao">Voz do aparelho</option>
     </select>
   </div>
@@ -538,7 +542,7 @@
       <li><b>FreeDict</b> inglês↔português: GNU GPL 2.0 ou posterior.</li>
       <li>Frases do <b>Tatoeba</b> (tatoeba.org): CC BY 2.0 FR, via Tatoeba Challenge (Helsinki-NLP).</li>
       <li><b>FrequencyWords</b>, de Hermit Dave (legendas do OpenSubtitles 2018): CC BY-SA 4.0.</li>
-      <li>Voz natural do inglês: <b>Kokoro-82M</b> (hexgrad), voz af_heart: Apache 2.0.</li>
+      <li>Vozes naturais do inglês: <b>Kokoro-82M</b> (hexgrad), vozes af_heart (Brenda) e bm_lewis (estilo Jarvis): Apache 2.0.</li>
     </ul>
     <p class="muted">Detalhes em dados/LICENCAS.txt.</p>
   </details>
@@ -1225,10 +1229,17 @@ function notaVoz(v, lang) {
   if (/francisca|thalita|luciana|fernanda|vit[oó]ria|camila|helena|joana|leila|aria|jenny|ava|samantha|allison|susan|zira|emma|michelle|female|feminin/.test(nome)) n += 8;
   return n;
 }
+// No estilo Jarvis, a voz do aparelho também é de homem (e britânica no inglês), quando o aparelho tem
+const VOZ_DE_HOMEM = /\b(male|masculin[ao]|ant[oô]nio|donato|f[aá]bio|humberto|j[uú]lio|nicolau|val[eé]rio|daniel|felipe|ryan|thomas|alfie|elliot|ethan|noah|oliver|george|arthur|guy|andrew|brian|christopher|eric|roger|steffan|davis|tony|jason|aaron|evan|nathan)\b/;
+function preferenciaVoz(v, lang) {
+  if (state.vozGravada !== "jarvis") return 0;
+  const code = v.lang.replace("_", "-").toLowerCase();
+  return (VOZ_DE_HOMEM.test(v.name.toLowerCase()) ? 25 : 0) + (lang === "en" && code === "en-gb" ? 15 : 0);
+}
 function vozesDe(lang) {
   if (!("speechSynthesis" in window)) return [];
   return speechSynthesis.getVoices().map((v) => [notaVoz(v, lang), v]).filter(([n]) => n > -500)
-    .sort((a, b) => b[0] - a[0]).map(([, v]) => v);
+    .map(([n, v]) => [n + preferenciaVoz(v, lang), v]).sort((a, b) => b[0] - a[0]).map(([, v]) => v);
 }
 function voiceFor(lang) {
   const escolhida = lang === "en" ? state.vozEn : state.vozPt;
@@ -1245,7 +1256,7 @@ function textoFalado(t, en) {
   return t.replace(/\s+/g, " ").trim();
 }
 
-/* ----- Inglês gravado com voz natural (dados/voz, feito por ferramentas/gerar_voz.py) ----- */
+/* ----- Inglês gravado com voz natural (dados/voz e dados/voz-jarvis, feitos por ferramentas/gerar_voz.py) ----- */
 const chaveVoz = (t) => String(t).normalize("NFC").replace(/[’‘`´]/g, "'").replace(/[“”"]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 // cyrb53: hash de 53 bits (o gerador em Python calcula igual)
 function cyrb53(str, seed = 0) {
@@ -1262,15 +1273,24 @@ function cyrb53(str, seed = 0) {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 const idDaChave = (k) => cyrb53(k).toString(36).padStart(11, "0").slice(0, 10);
-let VOZ_GRAVADA = null; // ids das frases gravadas (dados/voz/indice.js)
+const PASTA_GRAVADA = { sim: "voz", jarvis: "voz-jarvis" }; // a pasta de cada voz (state.vozGravada)
+const GRAVADAS = {}; // pasta -> ids das frases gravadas (dados/<pasta>/indice.js)
+function carregarGravadas(escolha) {
+  const pasta = PASTA_GRAVADA[escolha];
+  if (!pasta || GRAVADAS[pasta]) return Promise.resolve();
+  return carregarDados(pasta + "/indice").then((ids) => { GRAVADAS[pasta] = new Set(ids.split(" ")); })
+    .catch(() => { /* sem essa pasta em dados: só a voz do aparelho */ });
+}
+const gravadasAtuais = () => GRAVADAS[PASTA_GRAVADA[state.vozGravada]] || null;
 const VELOCIDADE_GRAVADA = 0.9; // a gravação está no ritmo "Normal"
 // Acha o áudio gravado de uma frase em inglês ("How are you" também acha "How are you?")
 function audioGravado(t) {
-  if (!VOZ_GRAVADA || state.vozGravada === "nao") return null;
+  const pasta = PASTA_GRAVADA[state.vozGravada], ids = GRAVADAS[pasta];
+  if (!ids) return null;
   const k = chaveVoz(t), base = k.replace(/[.!?]+$/, "");
   for (const c of new Set([k, base, base + ".", base + "!", base + "?"])) {
     const id = idDaChave(c);
-    if (VOZ_GRAVADA.has(id)) return `dados/voz/${id[0]}/${id}.mp3`;
+    if (ids.has(id)) return `dados/${pasta}/${id[0]}/${id}.mp3`;
   }
   return null;
 }
@@ -1330,7 +1350,7 @@ function falarParte(p, gen, tom) {
     const pronto = () => { if (!feito) { feito = true; clearTimeout(demorou); ok(); } };
     const demorou = setTimeout(pronto, 4000 + p.t.length * 120);
     const u = new SpeechSynthesisUtterance(p.t);
-    u.lang = p.en ? "en-US" : "pt-BR";
+    u.lang = (p.voz && p.voz.lang.replace("_", "-")) || (p.en ? "en-US" : "pt-BR");
     u.rate = p.rate;
     u.pitch = tom;
     if (p.voz) u.voice = p.voz;
@@ -1344,7 +1364,8 @@ function falarParte(p, gen, tom) {
 
 // Fala um texto com [[inglês]] misturado: PT com voz brasileira, EN com a voz gravada (ou a americana do aparelho).
 // Devolve uma Promise que termina quando ela para de falar.
-function speak(text, mode = state.voice, { tom = Number(state.tom) || 1, velocidade = null } = {}) {
+const tomDaVoz = () => (state.vozGravada === "jarvis" ? 1 : Number(state.tom) || 1); // fofa/gatinha é coisa da Brenda
+function speak(text, mode = state.voice, { tom = tomDaVoz(), velocidade = null } = {}) {
   const gen = ++speakGen;
   if (fimDaFala) fimDaFala();
   const partes = [];
@@ -2919,7 +2940,7 @@ async function montarFila(modo) {
       }
       // prefere as frases com voz gravada (e a gravada como resposta principal)
       let grupos = [...porPt.values()];
-      if (VOZ_GRAVADA && state.vozGravada !== "nao") {
+      if (gravadasAtuais()) {
         grupos = grupos.filter((g) => g.en.some(audioGravado));
         for (const g of grupos) g.en.sort((a, b) => !!audioGravado(b) - !!audioGravado(a));
       }
@@ -3298,21 +3319,42 @@ function switchView(v) {
 document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
 
 function preencherVozes() {
-  for (const [sel, lang, atual] of [["#sVozPt", "pt", state.vozPt], ["#sVozEn", "en", state.vozEn]]) {
+  const vozGravada = state.vozGravada;
+  state.vozGravada = $("#sVozGravada").value; // ordena pela voz escolhida agora no seletor
+  for (const [sel, lang, atual] of [["#sVozPt", "pt", $("#sVozPt").value || state.vozPt], ["#sVozEn", "en", $("#sVozEn").value || state.vozEn]]) {
     const lista = vozesDe(lang);
     $(sel).innerHTML = `<option value="">Automática (a melhor deste aparelho)</option>` +
       lista.map((v) => `<option value="${esc(v.voiceURI)}">${notaVoz(v, lang) >= 80 ? "⭐ " : ""}${esc(v.name)}</option>`).join("");
     $(sel).value = lista.some((v) => v.voiceURI === atual) ? atual : "";
   }
+  state.vozGravada = vozGravada;
   const melhor = Math.max(-1, ...vozesDe("pt").map((v) => notaVoz(v, "pt")), ...vozesDe("en").map((v) => notaVoz(v, "en")));
   $("#dicaVoz").textContent = melhor >= 80 ? "⭐ = voz natural (neural)." : "Dica: para uma voz bem natural, abra o app no Microsoft Edge (tem vozes neurais grátis) ou, no iPhone, baixe uma voz “Melhorada” em Ajustes › Acessibilidade › Conteúdo Falado › Vozes.";
 }
+// A frase do teste de cada voz (o extrair_ingles.js pega o inglês daqui pra gravar)
+const TESTE_VOZ = {
+  sim: "Oi, {nome}! Eu sou a Brenda. Bora treinar? [[Hi! How are you doing today?]]",
+  jarvis: "Às suas ordens, {nome}. [[At your service. How may I help you today?]]",
+};
 $("#testarVoz").addEventListener("click", () => {
-  const antes = { vozPt: state.vozPt, vozEn: state.vozEn, tom: state.tom, rate: state.rate, vozGravada: state.vozGravada };
-  Object.assign(state, { vozPt: $("#sVozPt").value, vozEn: $("#sVozEn").value, tom: $("#sTom").value, rate: $("#sRate").value, vozGravada: $("#sVozGravada").value });
-  speak(fill("Oi, {nome}! Eu sou a Brenda. Bora treinar? [[Hi! How are you doing today?]]"), "tudo");
-  Object.assign(state, antes); // a voz já foi escolhida: dá pra voltar o estado na hora
+  const escolha = { vozPt: $("#sVozPt").value, vozEn: $("#sVozEn").value, tom: $("#sTom").value, rate: $("#sRate").value, vozGravada: $("#sVozGravada").value };
+  const testar = () => {
+    const antes = { vozPt: state.vozPt, vozEn: state.vozEn, tom: state.tom, rate: state.rate, vozGravada: state.vozGravada };
+    Object.assign(state, escolha);
+    speak(fill(TESTE_VOZ[escolha.vozGravada] || TESTE_VOZ.sim), "tudo");
+    Object.assign(state, antes); // a voz já foi escolhida: dá pra voltar o estado na hora
+  };
+  // a voz recém-escolhida pode ainda não ter a lista de gravações: espera ela chegar (o player já foi liberado neste toque)
+  if (GRAVADAS[PASTA_GRAVADA[escolha.vozGravada]] || !PASTA_GRAVADA[escolha.vozGravada]) testar();
+  else carregarGravadas(escolha.vozGravada).then(testar);
 });
+// Trocou a voz: já busca a lista dela; o jeito fofo/gatinha não vale pro estilo Jarvis
+function mostrarEscolhaDaVoz() {
+  const v = $("#sVozGravada").value;
+  carregarGravadas(v);
+  $("#sTom").disabled = v === "jarvis";
+}
+$("#sVozGravada").addEventListener("change", () => { mostrarEscolhaDaVoz(); preencherVozes(); });
 
 // Mostra se o microfone funciona neste aparelho e, se não, o porquê
 $("#testarMic").addEventListener("click", () => {
@@ -3338,7 +3380,9 @@ $("#testarMic").addEventListener("click", () => {
 function openSettings() {
   $("#sName").value = state.name; $("#sLevel").value = state.level; $("#sVibe").value = state.vibe;
   $("#sVoice").value = state.voice; $("#sRate").value = state.rate; $("#sTom").value = state.tom; $("#sVozGravada").value = state.vozGravada;
+  $("#sVozPt").value = $("#sVozEn").value = "";
   preencherVozes();
+  mostrarEscolhaDaVoz();
   $("#dicaMic").hidden = true;
   $("#settings").showModal();
 }
@@ -3347,7 +3391,8 @@ $("#saveSettings").addEventListener("click", () => {
   const map = { name: "#sName", level: "#sLevel", vibe: "#sVibe", voice: "#sVoice", rate: "#sRate", vozPt: "#sVozPt", vozEn: "#sVozEn", tom: "#sTom", vozGravada: "#sVozGravada" };
   for (const [k, sel] of Object.entries(map)) { state[k] = $(sel).value.trim(); store.set(k, state[k]); }
   store.set("setup", true);
-  vivo.filas = {}; // o nível pode ter mudado
+  aplicarVoz();
+  vivo.filas = {}; // o nível e a voz podem ter mudado
   $("#settings").close();
   renderHome(true);
 });
@@ -3367,7 +3412,11 @@ renderTrilha();
 renderMyCards();
 renderPhrases();
 atualizarMascote();
-carregarDados("voz/indice").then((ids) => { VOZ_GRAVADA = new Set(ids.split(" ")); }).catch(() => { /* sem a pasta dados/voz: só a voz do aparelho */ });
+function aplicarVoz() {
+  carregarGravadas(state.vozGravada);
+  document.body.classList.toggle("modo-jarvis", state.vozGravada === "jarvis");
+}
+aplicarVoz();
 $("#deckFilter").value = state.level;
 buildDeck();
 if (!store.get("setup", false)) openSettings();

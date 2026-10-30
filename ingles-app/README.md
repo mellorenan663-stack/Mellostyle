@@ -28,6 +28,7 @@ A pasta `dados` precisa ficar junto do `index.html`, porque é nela que está o 
 
 ## Voz e microfone
 - **O inglês da Brenda vem gravado com uma voz neural natural** (Kokoro, voz *af_heart*, sotaque americano), num ritmo um pouco mais calmo pra ficar fácil de entender. São cerca de 5.900 frases: tudo das aulas, frases prontas, cartões, as 3.000 palavras mais usadas com os exemplos e as perguntas da conversa ao vivo. A velocidade escolhida em ⚙️ vale pra elas também, sem a voz ficar grossa.
+- **Voz estilo Jarvis:** em ⚙️ › *Voz do inglês* dá pra trocar a Brenda por um mordomo britânico de IA, calmo e elegante (Kokoro, voz *bm_lewis*, sotaque britânico, com um efeito leve de eco de "sala de computador"). É uma voz no estilo, não a voz do ator do filme. As mesmas 5.900 frases vêm gravadas nela. Nesse modo a voz do aparelho também procura uma voz masculina (e britânica no inglês), o "jeito da voz" fofo/gatinha fica desligado e a gata ganha um brilho azul de IA.
 - O que não tem como gravar antes usa a voz do aparelho: o português da Brenda, as correções montadas na hora, o eco de gatinha da conversa ao vivo, as frases da busca e as palavras do dicionário fora das 3.000 mais usadas. O app escolhe sozinho a voz mais natural do aparelho (as vozes neurais do Microsoft Edge, as "Melhorada"/"Premium" do iPhone, as do Google no Chrome). Em ⚙️ dá para trocar a voz, deixar mais aguda e testar.
 - Para ela te ouvir, use Chrome, Edge ou Safari e permita o microfone. No Chrome o reconhecimento de voz precisa de internet. Sem microfone, dá para digitar as respostas.
 - Na conversa ao vivo ela já escuta sozinha depois de falar. O 🎤 serve pra falar na hora (interrompe a Brenda) e, enquanto ela escuta, pra avisar que você terminou. O ⏸️ pausa a conversa.
@@ -51,7 +52,7 @@ A pasta `dados` é gerada por `ferramentas/gerar_dicionario.py`, que baixa e jun
 | FreeDict inglês ↔ português | traduções e pronúncia (IPA) | GPL 2.0+ |
 | Tatoeba (via Tatoeba Challenge) | frases reais com tradução | CC BY 2.0 FR |
 | FrequencyWords (OpenSubtitles 2018) | frequência das palavras | CC BY-SA 4.0 |
-| Kokoro-82M (voz af_heart) | a voz gravada do inglês (pasta `dados/voz`) | Apache 2.0 |
+| Kokoro-82M (vozes af_heart e bm_lewis) | as vozes gravadas do inglês (pastas `dados/voz` e `dados/voz-jarvis`) | Apache 2.0 |
 
 As traduções das 3.000 palavras mais usadas foram revisadas à mão e ficam em `ferramentas/traducoes_manuais.tsv`.
 Os créditos completos estão em `dados/LICENCAS.txt` e na tela de ⚙️ configurações do app.
@@ -66,7 +67,8 @@ Para gravar de novo a voz do inglês (depois de mudar o conteúdo do app):
 
 ```
 node ferramentas/extrair_ingles.js        # lista as frases (precisa de Node e Playwright)
-python3 ferramentas/gerar_voz.py --modelo PASTA_DO_MODELO
+python3 ferramentas/gerar_voz.py --modelo PASTA_DO_MODELO              # voz da Brenda (dados/voz)
+python3 ferramentas/gerar_voz.py --modelo PASTA_DO_MODELO --voz jarvis  # estilo Jarvis (dados/voz-jarvis)
 ```
 
 `gerar_voz.py` só grava as frases novas e apaga as que saíram. Ele precisa do `kokoro-onnx`, do `misaki` (com o spaCy e o modelo `en_core_web_sm`), do `ffmpeg` e dos arquivos `kokoro-v1.0.onnx` e `voices-v1.0.bin` do [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0). Com `--cache PASTA` ele guarda o áudio cru e, se só o corte mudar, refaz tudo em poucos minutos sem gravar de novo.
