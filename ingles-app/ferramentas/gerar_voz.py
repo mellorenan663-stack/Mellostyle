@@ -33,14 +33,20 @@ TAXA = 24000
 VELOCIDADE = 0.92  # um pouco mais devagar que o normal: soa natural e fica fácil de entender
 KBPS = 40
 
+VOGAIS = set("aeiouæɑɐɒɔəɛɜɪʊʌAIOQWYᵊ")
 VOZES = {
     "brenda": {"voz": "af_heart", "britanico": False, "pasta": "voz", "efeito": None,  # a americana mais natural do Kokoro
+               "sem_apoio": set(), "corte_no_chiado": set("fvθðszʃʒ"),
                "titulo": "Voz em inglês da Brenda", "detalhe": "voz af_heart"},
     # estilo mordomo de IA: voz masculina britânica grave (a mais clara no reconhecedor) e um efeito leve,
     # dois ecos curtinhos (brilho de "sala de computador") e presença; não é a voz de nenhum ator
     "jarvis": {"voz": "bm_lewis", "britanico": True, "pasta": "voz-jarvis",
                "efeito": "highpass=f=75,equalizer=f=220:t=q:w=1:g=-1.5,equalizer=f=3500:t=q:w=1.2:g=2.5,"
                          "aecho=1.0:0.9:16|29:0.16|0.1,volume=0.9,alimiter=limit=0.89:level=false",
+               # depois do "Oh..." ela emenda um "w" na vogal ("Oh... w-I'll" vira "vile"): essas palavras vão sozinhas
+               "sem_apoio": VOGAIS | {"j"},
+               # o fim do "Oh" dela é soprado: nas sonoras (v, o th de "the", z) o corte pelo chiado cairia nele
+               "corte_no_chiado": set("fθsʃ"),
                "titulo": "Voz em inglês no estilo mordomo de IA", "detalhe": "voz bm_lewis com um efeito leve de eco"},
 }
 CONFIG = VOZES["brenda"]
@@ -155,6 +161,8 @@ def _iniciar(modelo, cache=None, voz="brenda"):
 
 def _precisa_apoio(texto, fonemas):
     palavras, inicio = texto.split(), fonemas.lstrip("ˈˌ")[:1]
+    if inicio in CONFIG["sem_apoio"]:
+        return False
     return (len(palavras) == 1 and inicio != "h") or (len(palavras) <= 3 and inicio in SONS_SOPRADOS)
 
 
@@ -173,7 +181,7 @@ def _com_apoio(fonemas, simples):
     if fonemas[-1] not in ".!?…":
         fonemas += "."
     q = TAXA // 200  # 5 ms
-    soprado = fonemas.lstrip("ˈˌ")[:1] in SONS_SOPRADOS
+    soprado = fonemas.lstrip("ˈˌ")[:1] in CONFIG["corte_no_chiado"]
     for apoio in APOIOS:
         tokens = _kokoro.tokenizer.tokenize(apoio + fonemas)
         audio, _ = _kokoro._infer(tokens, _kokoro._style_for(_kokoro.voices[VOZ], len(tokens)), VELOCIDADE)
